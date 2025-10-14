@@ -5,17 +5,16 @@ import java.util.List;
 import java.util.Map;
 
 public class CsvData {
-    
-    private List<Map<String, String>> rows = new ArrayList<>();
 
-    public CsvData() {
-    }
+  private List<Map<String, String>> rows = new ArrayList<>();
 
-    public List<Map<String, String>> getRows() {
-        return rows;
-    }
+  public CsvData() {}
 
-    public void setRows(List<Map<String, String>> rows) {
-        this.rows = rows;
-    }
+  public List<Map<String, String>> getRows() {
+    return rows;
+  }
+
+  public void setRows(List<Map<String, String>> rows) {
+    this.rows = rows;
+  }
 }

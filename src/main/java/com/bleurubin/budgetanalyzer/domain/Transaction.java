@@ -1,6 +1,5 @@
 package com.bleurubin.budgetanalyzer.domain;
 
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,7 +10,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.validation.constraints.NotNull;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,124 +17,119 @@ import java.time.LocalDate;
 @Entity
 public class Transaction {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    // @NotNull
-    private String accountId;
+  // @NotNull
+  private String accountId;
 
-    @NotNull
-    private String bankName;
+  @NotNull private String bankName;
 
-    @NotNull
-    private LocalDate date;
+  @NotNull private LocalDate date;
 
-    @NotNull
-    private String currencyIsoCode;
+  @NotNull private String currencyIsoCode;
 
-    @NotNull
-    private BigDecimal amount;
+  @NotNull private BigDecimal amount;
 
-    // @NotNull
-    @Enumerated(EnumType.STRING)
-    private TransactionType type;
+  // @NotNull
+  @Enumerated(EnumType.STRING)
+  private TransactionType type;
 
-    @NotNull
-    private String description;
+  @NotNull private String description;
 
-    @Column(updatable = false)
-    private Instant createdAt;
+  @Column(updatable = false)
+  private Instant createdAt;
 
-    private Instant updatedAt;
+  private Instant updatedAt;
 
-    @PrePersist
-    public void onCreate() {
-        createdAt = updatedAt = Instant.now();
-    }
+  @PrePersist
+  public void onCreate() {
+    createdAt = updatedAt = Instant.now();
+  }
 
-    @PreUpdate
-    public void onUpdate() {
-        updatedAt = Instant.now();
-    }
+  @PreUpdate
+  public void onUpdate() {
+    updatedAt = Instant.now();
+  }
 
-    public Long getId() {
-        return id;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    public String getAccountId() {
-        return accountId;
-    }
+  public String getAccountId() {
+    return accountId;
+  }
 
-    public void setAccountId(String accountId) {
-        this.accountId = accountId;
-    }
+  public void setAccountId(String accountId) {
+    this.accountId = accountId;
+  }
 
-    public String getBankName() {
-        return bankName;
-    }
+  public String getBankName() {
+    return bankName;
+  }
 
-    public void setBankName(String bankName) {
-        this.bankName = bankName;
-    }
+  public void setBankName(String bankName) {
+    this.bankName = bankName;
+  }
 
-    public LocalDate getDate() {
-        return date;
-    }
+  public LocalDate getDate() {
+    return date;
+  }
 
-    public void setDate(LocalDate date) {
-        this.date = date;
-    }
+  public void setDate(LocalDate date) {
+    this.date = date;
+  }
 
-    public String getCurrencyIsoCode() {
-        return currencyIsoCode;
-    }
+  public String getCurrencyIsoCode() {
+    return currencyIsoCode;
+  }
 
-    public void setCurrencyIsoCode(String currencyIsoCode) {
-        this.currencyIsoCode = currencyIsoCode;
-    }
+  public void setCurrencyIsoCode(String currencyIsoCode) {
+    this.currencyIsoCode = currencyIsoCode;
+  }
 
-    public BigDecimal getAmount() {
-        return amount;
-    }
+  public BigDecimal getAmount() {
+    return amount;
+  }
 
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
+  public void setAmount(BigDecimal amount) {
+    this.amount = amount;
+  }
 
-    public TransactionType getType() {
-        return type;
-    }
+  public TransactionType getType() {
+    return type;
+  }
 
-    public void setType(TransactionType type) {
-        this.type = type;
-    }
+  public void setType(TransactionType type) {
+    this.type = type;
+  }
 
-    public String getDescription() {
-        return description;
-    }
+  public String getDescription() {
+    return description;
+  }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
+  public void setDescription(String description) {
+    this.description = description;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
+  public void setCreatedAt(Instant createdAt) {
+    this.createdAt = createdAt;
+  }
 
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
+  public Instant getUpdatedAt() {
+    return updatedAt;
+  }
 
-    public void setUpdatedAt(Instant updatedAt) {
-        this.updatedAt = updatedAt;
-    }
+  public void setUpdatedAt(Instant updatedAt) {
+    this.updatedAt = updatedAt;
+  }
 }

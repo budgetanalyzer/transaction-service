@@ -8,8 +8,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @SpringBootApplication
 @EnableConfigurationProperties(BudgetAnalyzerProperties.class)
 public class BudgetAnalyzerApplication {
-    
-    public static void main(String[] args) {
-        SpringApplication.run(BudgetAnalyzerApplication.class, args);
-    }
+
+  public static void main(String[] args) {
+    SpringApplication.run(BudgetAnalyzerApplication.class, args);
+  }
 }

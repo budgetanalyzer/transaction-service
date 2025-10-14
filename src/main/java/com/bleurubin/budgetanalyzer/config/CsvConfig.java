@@ -1,16 +1,14 @@
 package com.bleurubin.budgetanalyzer.config;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 public record CsvConfig(
-        @NotBlank String bankName,
-        //defaultCurrencyCode- can override per account basis in future
-        @NotBlank String defaultCurrencyIsoCode,
-        @NotBlank String creditHeader,
-        @NotBlank String dateHeader,
-        @NotBlank String dateFormat,
-        @NotBlank String debitHeader,
-        @NotBlank String descriptionHeader,
-        String typeHeader
-) {}
+    @NotBlank String bankName,
+    // defaultCurrencyCode- can override per account basis in future
+    @NotBlank String defaultCurrencyIsoCode,
+    @NotBlank String creditHeader,
+    @NotBlank String dateHeader,
+    @NotBlank String dateFormat,
+    @NotBlank String debitHeader,
+    @NotBlank String descriptionHeader,
+    String typeHeader) {}
