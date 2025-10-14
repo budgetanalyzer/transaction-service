@@ -1,20 +1,12 @@
 package com.bleurubin.budgetanalyzer.config;
 
+import jakarta.validation.Valid;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.Map;
 
 @ConfigurationProperties(prefix = "budget-analyzer")
-public class BudgetAnalyzerProperties {
-
-    private Map<String, BankConfig> bankConfigMap;
-
-    public Map<String, BankConfig> getBankConfigMap() {
-        return bankConfigMap;
-    }
-
-    public void setBankConfigMap(Map<String, BankConfig> bankConfigMap) {
-        this.bankConfigMap = bankConfigMap;
-    }
-}
+@Validated
+public record BudgetAnalyzerProperties(@Valid Map<String, CsvConfig> csvConfigMap) {}
 

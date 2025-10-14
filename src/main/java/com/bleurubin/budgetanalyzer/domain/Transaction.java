@@ -14,6 +14,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Entity
 public class Transaction {
@@ -22,11 +23,14 @@ public class Transaction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotNull
+    // @NotNull
     private String accountId;
 
-    //@NotNull
-    private Instant date;
+    @NotNull
+    private String bankName;
+
+    @NotNull
+    private LocalDate date;
 
     @NotNull
     private String currencyIsoCode;
@@ -72,11 +76,19 @@ public class Transaction {
         this.accountId = accountId;
     }
 
-    public Instant getDate() {
+    public String getBankName() {
+        return bankName;
+    }
+
+    public void setBankName(String bankName) {
+        this.bankName = bankName;
+    }
+
+    public LocalDate getDate() {
         return date;
     }
 
-    public void setDate(Instant date) {
+    public void setDate(LocalDate date) {
         this.date = date;
     }
 

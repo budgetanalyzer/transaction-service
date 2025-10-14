@@ -8,9 +8,23 @@
 <body>
 <h2>Upload a File</h2>
 <form action="/budget-analyzer/csv" method="POST" enctype="multipart/form-data">
+    <label for="accountId">Account Id:</label>
+    <input type="text" id="accountId" name="accountId">
+    <br><br>
+
+    <label for="csvVersion">CSV Version:</label>
+
+    <select id="csvVersion" name="csvVersion">
+        <option value="capital-one">Capital One</option>
+        <option value="bkk-bank">Bangkok Bank</option>
+        <option value="truist">Truist</option>
+    </select>
+    <br><br>
+
     <label for="file">Choose a file to upload:</label>
     <input type="file" id="file" name="file" required>
     <br><br>
+
     <button type="submit">Upload File</button>
 </form>
 </body>
