@@ -1,0 +1,44 @@
+server:
+  servlet:
+    context-path: /budget-analyzer
+  port: 8080
+
+logging:
+  level:
+    root: WARN
+    com.bleurubin: TRACE
+
+spring:
+  application:
+    name: budget-analyzer
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+  jackson:
+    serialization:
+      indent_output: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/budget_analyzer
+    username: budget_analyzer
+    password: budget_analyzer
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create  # use 'validate' or 'none' in production
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+budget-analyzer:
+  bank-config-map:
+    capital-one:
+      bank-name: "Capital One"
+      currency-iso-code: "USD"
+      account-id-header: "Account Number"
+      amount-header: "Transaction Amount"
+      date-header: "Transaction Date"
+      description-header: "Transaction Description"
+      type-header: "Transaction Type"
+
+
