@@ -1,6 +1,6 @@
 package com.bleurubin.budgetanalyzer.api;
 
-public class APIErrorResponse {
+public class ApiErrorResponse {
 
     private String message;
 

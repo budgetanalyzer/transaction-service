@@ -27,18 +27,47 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create  # use 'validate' or 'none' in production
-    show-sql: true
+    show-sql: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
 budget-analyzer:
-  bank-config-map:
+
+  # ==================================================================
+  #  I wasn't sure if this was bank-config-map or csv-config-map;
+  #  Capital One has different formats for different accounts,
+  #  Bangkok Bank can support accounts with different currencies.
+  #
+  #  Banks can always change formats for future versions, so this
+  #  configuration represents the configuration for a specific
+  #  csv version from a specific bank.  If a bank changes the version,
+  #  create an entry like capital-one-v2 and make the changes.
+  # ==================================================================
+  csv-config-map:
     capital-one:
       bank-name: "Capital One"
-      currency-iso-code: "USD"
-      account-id-header: "Account Number"
-      amount-header: "Transaction Amount"
+      default-currency-iso-code: "USD"
+      credit-header: "Transaction Amount"
+      debit-header: "Transaction Amount"
       date-header: "Transaction Date"
+      date-format: "MM/dd/uu"
       description-header: "Transaction Description"
+      type-header: "Transaction Type"
+    bkk-bank:
+      bank-name: "Bangkok Bank"
+      default-currency-iso-code: "THB"
+      credit-header: "Credit"
+      date-header: "Date"
+      date-format: "d MMM uuuu HH:mm"
+      debit-header:  "Debit"
+      description-header: "Description"
+    truist:
+      bank-name: "Truist"
+      default-currency-iso-code: "USD"
+      credit-header: "Amount"
+      date-header: "Transaction Date"
+      date-format: "MM/dd/uuuu"
+      debit-header: "Amount"
+      description-header: "Description"
       type-header: "Transaction Type"
 
 
