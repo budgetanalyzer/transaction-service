@@ -28,8 +28,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
-
-    //implementation("com.opencsv:opencsv:5.6")
     implementation("com.opencsv:opencsv:3.7")
 
     runtimeOnly("org.postgresql:postgresql")
