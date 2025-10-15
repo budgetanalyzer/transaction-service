@@ -38,38 +38,25 @@ public class CsvTransactionMapper {
     }
   }
 
-  // wouldn't be practical to be higher in the call chain for user input validation since these are
-  // multiple rows in a file
-  private static TransactionType parseTransactionType(String val) {
-    Objects.requireNonNull(val, "Type must not be null");
-
-    var rv = transactionTypeMap.get(val.trim().toLowerCase(Locale.ROOT));
-    if (rv == null) {
-      throw new IllegalArgumentException("Unknown transaction type: " + val);
-    }
-
-    return rv;
-  }
-
   public CsvTransactionMapper(Map<String, CsvConfig> csvConfigMap) {
     this.csvConfigMap = csvConfigMap;
-    dateFormatterMap =
+
+    // cache date formats so we don't create a new DateFormatter for every row
+    this.dateFormatterMap =
         csvConfigMap.values().stream()
             .collect(
                 Collectors.toMap(
                     CsvConfig::dateFormat,
-                    c ->
-                        DateTimeFormatter.ofPattern(c.dateFormat(), Locale.ROOT)
-                            .withResolverStyle(ResolverStyle.STRICT),
-                    (existing, replacement) -> replacement));
+                    c -> buildDateFormatter(c.dateFormat()),
+                    (existing, replacement) -> existing));
   }
 
-  public Transaction map(String csvVersion, String accountId, Map<String, String> csvRow) {
-    var csvConfig = csvConfigMap.get(csvVersion);
+  public Transaction map(String format, String accountId, Map<String, String> csvRow) {
+    var csvConfig = csvConfigMap.get(format);
     log.debug("Processing row: {}", csvRow);
 
     if (csvConfig == null) {
-      throw new IllegalArgumentException("No csvConfig found for bank " + csvVersion);
+      throw new IllegalArgumentException("No csvConfig found for bank " + format);
     }
 
     var rv = new Transaction();
@@ -82,15 +69,16 @@ public class CsvTransactionMapper {
     var typeHeader = csvConfig.typeHeader();
     var amountHeader = csvConfig.debitHeader();
     /*
-       Some csv files show a single amount column and a type column to indicate DEBIT or CREDIT,
-       others have separate columns for each and the type is implicit.
-    */
+     * Some csv files show a single amount column and a type column to indicate
+     * DEBIT or CREDIT,
+     * others have separate columns for each and the type is implicit.
+     */
     if (typeHeader != null) {
       var rawType = csvRow.get(typeHeader);
       if (rawType == null) {
         // FIXME- create a parsing exception
         throw new IllegalArgumentException(
-            "No value found for column " + typeHeader + " in file for csvVersion: " + csvVersion);
+            "No value found for column " + typeHeader + " in file for format: " + format);
       }
 
       var type = parseTransactionType(rawType);
@@ -121,7 +109,7 @@ public class CsvTransactionMapper {
     if (rawDate == null) {
       // FIXME- create a parsing exception
       throw new IllegalArgumentException(
-          "No value found for column " + dateHeader + " in file for csvVersion: " + csvVersion);
+          "No value found for column " + dateHeader + " in file for format: " + format);
     }
 
     var date = parseDate(rawDate, csvConfig.dateFormat());
@@ -133,6 +121,26 @@ public class CsvTransactionMapper {
     return rv;
   }
 
+  /*
+   * It wouldn't be practical to put this higher in the call chain
+   * for user input validation since these are multiple rows in a file.
+   */
+  private TransactionType parseTransactionType(String val) {
+    Objects.requireNonNull(val, "Type must not be null");
+
+    var rv = transactionTypeMap.get(val.trim().toLowerCase(Locale.ROOT));
+    if (rv == null) {
+      throw new IllegalArgumentException("Unknown transaction type: " + val);
+    }
+
+    return rv;
+  }
+
+  /*
+   * Find a cached formatter for the given dateFormat.  If it fails, try stripping
+   * the time fields from the rawDate input.  If that succeeds, lazily cache the
+   * date only pattern
+   */
   private LocalDate parseDate(String rawDate, String dateFormat) {
     Objects.requireNonNull(rawDate, "rawDate must not be null");
     Objects.requireNonNull(dateFormat, "dateFormat must not be null");
@@ -150,6 +158,11 @@ public class CsvTransactionMapper {
     return LocalDate.from(accessor);
   }
 
+  /*
+   * Strip the time fields from the date format and try again.  Some banks
+   * send both a LocalDate format and a LocalDateTime format depending on
+   * the transaction.
+   */
   private DateTimeFormatter getSimpleFormatter(String dateFormat) {
     var simplifiedPattern =
         dateFormat
@@ -158,16 +171,19 @@ public class CsvTransactionMapper {
 
     var simpleFormatter = dateFormatterMap.get(simplifiedPattern);
     if (simpleFormatter == null) {
-      simpleFormatter =
-          DateTimeFormatter.ofPattern(simplifiedPattern, Locale.ROOT)
-              .withResolverStyle(ResolverStyle.STRICT);
+      simpleFormatter = buildDateFormatter(simplifiedPattern);
       dateFormatterMap.put(simplifiedPattern, simpleFormatter);
     }
 
     return simpleFormatter;
   }
 
-  private static String sanitizeNumberField(String val) {
+  private DateTimeFormatter buildDateFormatter(String dateFormat) {
+    return DateTimeFormatter.ofPattern(dateFormat, Locale.ROOT)
+        .withResolverStyle(ResolverStyle.STRICT);
+  }
+
+  private String sanitizeNumberField(String val) {
     return val.replaceAll("[$,]", "");
   }
 }

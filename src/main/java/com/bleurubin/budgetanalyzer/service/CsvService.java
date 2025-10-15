@@ -7,6 +7,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface CsvService {
 
-  List<Transaction> importCsvFile(String csvVersion, String accountId, MultipartFile file)
+  List<Transaction> importCsvFile(String format, String accountId, MultipartFile file)
       throws IOException;
 }

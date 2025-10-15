@@ -11,19 +11,25 @@ logging:
 spring:
   application:
     name: budget-analyzer
+
   servlet:
     multipart:
       enabled: true
       max-file-size: 10MB
       max-request-size: 10MB
+
   jackson:
+    default-property-inclusion: non_null
     serialization:
-      indent_output: true
+      indent-output: true           # Pretty print JSON
+    date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+
   datasource:
     url: jdbc:postgresql://localhost:5432/budget_analyzer
     username: budget_analyzer
     password: budget_analyzer
     driver-class-name: org.postgresql.Driver
+
   jpa:
     hibernate:
       ddl-auto: create  # use 'validate' or 'none' in production

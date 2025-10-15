@@ -35,21 +35,17 @@ public class CsvServiceImpl implements CsvService {
 
   @Override
   @Transactional(rollbackFor = IOException.class)
-  public List<Transaction> importCsvFile(String csvVersion, String accountId, MultipartFile file)
+  public List<Transaction> importCsvFile(String format, String accountId, MultipartFile file)
       throws IOException {
-    log.trace(
-        "Importing csv file csvVersion: {} for file: {}", csvVersion, file.getOriginalFilename());
+    log.trace("Importing csv file format: {} for file: {}", format, file.getOriginalFilename());
 
     var csvData = csvParser.parseCsvFile(file);
-    return createTransactions(csvVersion, accountId, csvData);
+    return createTransactions(format, accountId, csvData);
   }
 
-  private List<Transaction> createTransactions(
-      String csvVersion, String accountId, CsvData csvData) {
+  private List<Transaction> createTransactions(String format, String accountId, CsvData csvData) {
     var transactions =
-        csvData.getRows().stream()
-            .map(r -> transactionMapper.map(csvVersion, accountId, r))
-            .toList();
+        csvData.getRows().stream().map(r -> transactionMapper.map(format, accountId, r)).toList();
 
     return transactionService.createTransactions(transactions);
   }
