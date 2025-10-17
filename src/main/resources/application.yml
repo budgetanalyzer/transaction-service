@@ -32,7 +32,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create  # use 'validate' or 'none' in production
+      ddl-auto: validate  # use 'validate' or 'none' in production
     show-sql: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 

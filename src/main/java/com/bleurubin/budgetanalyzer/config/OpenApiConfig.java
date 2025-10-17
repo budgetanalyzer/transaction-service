@@ -58,13 +58,11 @@ public class OpenApiConfig {
     switch (httpMethod) {
       case POST:
         addBadRequestResponse(operation);
-        addUnprocessableEntityResponse(operation);
         break;
 
       case PUT:
       case PATCH:
         addBadRequestResponse(operation);
-        addUnprocessableEntityResponse(operation);
         addNotFoundResponse(operation);
         break;
 
@@ -81,12 +79,6 @@ public class OpenApiConfig {
 
   private void addBadRequestResponse(Operation operation) {
     operation.getResponses().addApiResponse("400", buildApiErrorResponse(HttpStatus.BAD_REQUEST));
-  }
-
-  private void addUnprocessableEntityResponse(Operation operation) {
-    operation
-        .getResponses()
-        .addApiResponse("422", buildApiErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY));
   }
 
   private void addNotFoundResponse(Operation operation) {
