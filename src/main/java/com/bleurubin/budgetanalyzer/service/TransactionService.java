@@ -8,6 +8,8 @@ public interface TransactionService {
 
   Transaction createTransaction(Transaction transaction);
 
+  Transaction getTransaction(Long id);
+
   List<Transaction> createTransactions(List<Transaction> transactions);
 
   List<Transaction> search(TransactionFilter filter);

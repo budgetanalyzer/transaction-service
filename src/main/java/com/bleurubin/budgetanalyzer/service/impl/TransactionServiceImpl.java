@@ -25,6 +25,13 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   @Override
+  public Transaction getTransaction(Long id) {
+    return transactionRepository
+        .findById(id)
+        .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+  }
+
+  @Override
   @Transactional
   public List<Transaction> createTransactions(List<Transaction> transactions) {
     return transactionRepository.saveAll(transactions);
