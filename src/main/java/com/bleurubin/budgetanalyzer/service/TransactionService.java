@@ -10,5 +10,7 @@ public interface TransactionService {
 
   List<Transaction> createTransactions(List<Transaction> transactions);
 
+  Transaction getTransaction(Long id);
+
   List<Transaction> search(TransactionFilter filter);
 }

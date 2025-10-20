@@ -25,6 +25,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -68,7 +69,7 @@ public class TransactionController {
                     mediaType = "application/json",
                     schema = @Schema(implementation = ApiErrorResponse.class)))
       })
-  @PostMapping(path = "", consumes = "multipart/form-data", produces = "application/json")
+  @PostMapping(path = "/import", consumes = "multipart/form-data", produces = "application/json")
   public List<Transaction> importTransactions(
       @Parameter(description = "CSV format type", example = "capital-one")
           @NotNull
@@ -99,6 +100,42 @@ public class TransactionController {
       log.warn("Error uploading file: {}", e.getMessage());
       throw e;
     }
+  }
+
+  @Operation(summary = "Get transaction", description = "Get transaction by id")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "Transaction found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = Transaction.class))),
+      })
+  @GetMapping(path = "/{id}", produces = "application/json")
+  public Transaction getTransaction(@PathVariable("id") Long id) {
+    log.info("Received get transaction request id: {}", id);
+    return transactionService.getTransaction(id);
+  }
+
+  @Operation(summary = "Get transactions", description = "Get all transactions")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "List of transactions",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = Transaction.class)))),
+      })
+  @GetMapping(path = "", produces = "application/json")
+  public List<Transaction> getTransactions() {
+    log.info("Received get transactions request");
+    return transactionService.search(
+        new TransactionFilter(
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null));
   }
 
   @Operation(summary = "Search transactions", description = "Paginated search over transactions")
