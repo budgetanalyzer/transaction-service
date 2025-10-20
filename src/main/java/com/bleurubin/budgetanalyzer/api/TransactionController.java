@@ -102,6 +102,23 @@ public class TransactionController {
     }
   }
 
+  @Operation(summary = "Get transaction", description = "Get transaction by id")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "Transaction found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = Transaction.class))),
+      })
+  @GetMapping(path = "/{id}", produces = "application/json")
+  public Transaction getTransaction(@PathVariable("id") Long id) {
+    log.info("Received get transaction request id: {}", id);
+    return transactionService.getTransaction(id);
+  }
+
   @Operation(summary = "Get transactions", description = "Get all transactions")
   @ApiResponses(
       value = {
@@ -119,23 +136,6 @@ public class TransactionController {
     return transactionService.search(
         new TransactionFilter(
             null, null, null, null, null, null, null, null, null, null, null, null, null, null));
-  }
-
-  @Operation(summary = "Get transaction", description = "Get transaction by id")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Transaction found",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = Transaction.class))),
-      })
-  @GetMapping(path = "/{id}", produces = "application/json")
-  public Transaction getTransaction(@PathVariable("id") Long id) {
-    log.info("Received get transaction request id: {}", id);
-    return transactionService.getTransaction(id);
   }
 
   @Operation(summary = "Search transactions", description = "Paginated search over transactions")
