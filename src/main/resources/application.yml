@@ -1,6 +1,6 @@
 server:
   servlet:
-    context-path: /budget-analyzer
+    context-path: /budget-analyzer-api
   port: 8080
 
 logging:
@@ -10,7 +10,7 @@ logging:
 
 spring:
   application:
-    name: budget-analyzer
+    name: budget-analyzer-api
 
   servlet:
     multipart:
