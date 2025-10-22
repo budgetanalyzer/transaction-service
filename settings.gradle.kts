@@ -1,1 +1,1 @@
-rootProject.name = "budget-analyzer"
+rootProject.name = "budget-analyzer-api"

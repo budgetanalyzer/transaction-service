@@ -29,7 +29,7 @@ import org.springframework.http.HttpStatus;
             contact = @Contact(name = "Bleu Rubin", email = "support@bleurubin.com"),
             license = @License(name = "MIT", url = "https://opensource.org/licenses/MIT")),
     servers = {
-      @Server(url = "http://localhost:8080/budget-analyzer", description = "Local environment"),
+      @Server(url = "http://localhost:8080/budget-analyzer-api", description = "Local environment"),
       @Server(url = "https://api.bleurubin.com", description = "Production environment")
     },
     externalDocs =
@@ -103,7 +103,7 @@ public class OpenApiConfig {
             .type(httpStatus.name().toLowerCase())
             .title(httpStatus.getReasonPhrase())
             .status(httpStatus.value())
-            .instance("/budget-analyzer/transactions")
+            .instance("/budget-analyzer-api/transactions")
             .timestamp(Instant.now())
             .build();
 
