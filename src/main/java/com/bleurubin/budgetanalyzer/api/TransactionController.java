@@ -6,7 +6,6 @@ import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.budgetanalyzer.util.JsonUtils;
-import com.bleurubin.budgetanalyzer.util.TransactionUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -18,9 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -153,35 +150,5 @@ public class TransactionController {
   public List<Transaction> searchTransactions(@RequestBody @Valid TransactionFilter filter) {
     log.info("Received search request filter: {}", JsonUtils.toJson(filter));
     return transactionService.search(filter);
-  }
-
-  @Operation(
-      summary = "Get pre-formatted summary of transactions",
-      description = "Paginated search over transactions")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Summary was successfully generated",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    array = @ArraySchema(schema = @Schema(implementation = Transaction.class)))),
-      })
-  @GetMapping(path = "/summary", produces = "application/json")
-  public Map<String, BigDecimal> getTransactionSummary() {
-    log.info("Received summary request");
-
-    var transactions =
-        transactionService.search(
-            new TransactionFilter(
-                null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null));
-
-    var rv = TransactionUtils.getMonthlyDebitTotals(transactions);
-    var monthlyAverage = TransactionUtils.averageMonthlyTotal(rv);
-    rv.put("Average", monthlyAverage);
-
-    return rv;
   }
 }
