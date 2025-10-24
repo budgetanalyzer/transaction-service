@@ -101,6 +101,13 @@ public class Transaction {
       example = "2025-10-14T12:34:56Z")
   private Instant updatedAt;
 
+  /** Boolean indicating if the transaction has been soft deleted. */
+  @Column(nullable = false)
+  private Boolean deleted = false;
+
+  /** Timestamp when the transaction was soft deleted. */
+  private Instant deletedAt;
+
   /** Sets the creation and update timestamps before persisting. */
   @PrePersist
   public void onCreate() {
@@ -291,5 +298,41 @@ public class Transaction {
    */
   public void setUpdatedAt(Instant updatedAt) {
     this.updatedAt = updatedAt;
+  }
+
+  /**
+   * Returns whether or not the transaction was soft deleted.
+   *
+   * @return true if transaction was soft deleted
+   */
+  public Boolean getDeleted() {
+    return deleted;
+  }
+
+  /**
+   * Sets the soft deleted flag.
+   *
+   * @param deleted the soft deleted flag
+   */
+  public void setDeleted(Boolean deleted) {
+    this.deleted = deleted;
+  }
+
+  /**
+   * Returns the soft deleted timestamp.
+   *
+   * @return the soft deleted timestamp
+   */
+  public Instant getDeletedAt() {
+    return deletedAt;
+  }
+
+  /**
+   * Sets the soft deleted timestamp.
+   *
+   * @param deletedAt the soft deleted timestamp
+   */
+  public void setDeletedAt(Instant deletedAt) {
+    this.deletedAt = deletedAt;
   }
 }

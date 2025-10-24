@@ -12,5 +12,9 @@ public interface TransactionService {
 
   Transaction getTransaction(Long id);
 
+  Transaction updateTransaction(Long id, Transaction transaction);
+
+  void deleteTransaction(Long id);
+
   List<Transaction> search(TransactionFilter filter);
 }
