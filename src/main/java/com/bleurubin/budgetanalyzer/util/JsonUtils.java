@@ -14,10 +14,6 @@ import org.slf4j.LoggerFactory;
 public final class JsonUtils {
 
   private static final Logger log = LoggerFactory.getLogger(JsonUtils.class);
-
-  // Private constructor to prevent instantiation
-  private JsonUtils() {}
-
   // Reusable ObjectMapper instance
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -28,6 +24,9 @@ public final class JsonUtils {
     MAPPER.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     MAPPER.configure(SerializationFeature.INDENT_OUTPUT, true);
   }
+
+  // Private constructor to prevent instantiation
+  private JsonUtils() {}
 
   /**
    * Converts an object to its JSON string representation. Returns "{}" if serialization fails.
