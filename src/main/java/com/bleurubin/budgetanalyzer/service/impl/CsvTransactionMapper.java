@@ -22,22 +22,14 @@ public class CsvTransactionMapper {
 
   private static final Map<String, TransactionType> transactionTypeMap = new HashMap<>();
 
-  private final Logger log = LoggerFactory.getLogger(this.getClass());
-
-  private final Map<String, CsvConfig> csvConfigMap;
-
-  private final Map<String, DateTimeFormatter> dateFormatterMap;
-
   static {
     add(TransactionType.CREDIT, "credit", "deposit");
     add(TransactionType.DEBIT, "debit", "withdrawal");
   }
 
-  private static void add(TransactionType type, String... aliases) {
-    for (String alias : aliases) {
-      transactionTypeMap.put(alias.toLowerCase(Locale.ROOT), type);
-    }
-  }
+  private final Logger log = LoggerFactory.getLogger(this.getClass());
+  private final Map<String, CsvConfig> csvConfigMap;
+  private final Map<String, DateTimeFormatter> dateFormatterMap;
 
   public CsvTransactionMapper(Map<String, CsvConfig> csvConfigMap) {
     this.csvConfigMap = csvConfigMap;
@@ -50,6 +42,12 @@ public class CsvTransactionMapper {
                     CsvConfig::dateFormat,
                     c -> buildDateFormatter(c.dateFormat()),
                     (existing, replacement) -> existing));
+  }
+
+  private static void add(TransactionType type, String... aliases) {
+    for (String alias : aliases) {
+      transactionTypeMap.put(alias.toLowerCase(Locale.ROOT), type);
+    }
   }
 
   public Transaction map(String format, String accountId, Map<String, String> csvRow) {

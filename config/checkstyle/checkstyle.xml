@@ -336,6 +336,10 @@
                     RECORD_COMPONENT_DEF"/>
         </module>
         <module name="NoWhitespaceBeforeCaseDefaultColon"/>
+        <module name="DeclarationOrder">
+            <property name="ignoreConstructors" value="false"/>
+            <property name="ignoreModifiers" value="false"/>
+        </module>
         <module name="OverloadMethodsDeclarationOrder"/>
         <module name="ConstructorsDeclarationGrouping"/>
         <module name="VariableDeclarationUsageDistance"/>
