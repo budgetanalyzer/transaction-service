@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-@Tag(name = "Transaction Handler", description = "Endpoints for operations on transactions")
+@Tag(name = "Transactions", description = "Endpoints for operations on transactions")
 @RestController
 @RequestMapping(path = "/transactions")
 public class TransactionController {
@@ -88,7 +88,7 @@ public class TransactionController {
           List<MultipartFile> files)
       throws IOException {
     log.info(
-        "Received uploadCSVFile request format: {} accountId: {} fileCount: {} fileNames: {}",
+        "Received importTransactions request format: {} accountId: {} fileCount: {} fileNames: {}",
         format,
         accountId.orElse(null),
         files.size(),
