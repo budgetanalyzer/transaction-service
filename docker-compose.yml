@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:latest
-    container_name: postgres-container
+    container_name: budget-analyzer-api-postgres-container
     restart: always
     environment:
       POSTGRES_USER: budget_analyzer
