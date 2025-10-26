@@ -1,7 +1,7 @@
 server:
   servlet:
     context-path: /budget-analyzer-api
-  port: 8080
+  port: 8082
 
 logging:
   level:
