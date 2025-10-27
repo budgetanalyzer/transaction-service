@@ -1,6 +1,6 @@
 package com.bleurubin.budgetanalyzer.config;
 
-import com.bleurubin.budgetanalyzer.api.response.ApiErrorResponse;
+import com.bleurubin.service.api.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.ExternalDocumentation;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Contact;

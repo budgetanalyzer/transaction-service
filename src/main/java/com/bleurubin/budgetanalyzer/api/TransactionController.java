@@ -1,11 +1,11 @@
 package com.bleurubin.budgetanalyzer.api;
 
 import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
-import com.bleurubin.budgetanalyzer.api.response.ApiErrorResponse;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.budgetanalyzer.util.JsonUtils;
+import com.bleurubin.service.api.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
