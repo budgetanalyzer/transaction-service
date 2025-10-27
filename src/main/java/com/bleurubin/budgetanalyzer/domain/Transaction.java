@@ -1,6 +1,9 @@
 package com.bleurubin.budgetanalyzer.domain;
 
-import io.swagger.v3.oas.annotations.media.Schema;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,9 +14,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.validation.constraints.NotNull;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /** Transaction entity representing a financial transaction. */
 @Entity

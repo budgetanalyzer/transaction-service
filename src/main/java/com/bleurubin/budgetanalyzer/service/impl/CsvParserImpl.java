@@ -1,8 +1,5 @@
 package com.bleurubin.budgetanalyzer.service.impl;
 
-import com.bleurubin.budgetanalyzer.domain.CsvData;
-import com.bleurubin.budgetanalyzer.service.CsvParser;
-import com.opencsv.CSVReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -10,10 +7,16 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.opencsv.CSVReader;
+
+import com.bleurubin.budgetanalyzer.domain.CsvData;
+import com.bleurubin.budgetanalyzer.service.CsvParser;
 
 @Service
 public class CsvParserImpl implements CsvParser {

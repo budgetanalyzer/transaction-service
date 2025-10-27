@@ -1,8 +1,9 @@
 package com.bleurubin.budgetanalyzer.service;
 
+import java.util.List;
+
 import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
-import java.util.List;
 
 public interface TransactionService {
 

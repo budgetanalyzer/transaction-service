@@ -1,11 +1,14 @@
 package com.bleurubin.budgetanalyzer.repository.spec;
 
-import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
-import com.bleurubin.budgetanalyzer.domain.Transaction;
-import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
+
+import jakarta.persistence.criteria.Predicate;
+
 import org.springframework.data.jpa.domain.Specification;
+
+import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
+import com.bleurubin.budgetanalyzer.domain.Transaction;
 
 /** Specification builder for {@link Transaction} queries based on {@link TransactionFilter}. */
 public class TransactionSpecifications {

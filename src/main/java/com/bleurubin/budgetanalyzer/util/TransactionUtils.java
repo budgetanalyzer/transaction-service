@@ -1,7 +1,5 @@
 package com.bleurubin.budgetanalyzer.util;
 
-import com.bleurubin.budgetanalyzer.domain.Transaction;
-import com.bleurubin.budgetanalyzer.domain.TransactionType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
@@ -9,6 +7,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.bleurubin.budgetanalyzer.domain.Transaction;
+import com.bleurubin.budgetanalyzer.domain.TransactionType;
 
 public class TransactionUtils {
 
