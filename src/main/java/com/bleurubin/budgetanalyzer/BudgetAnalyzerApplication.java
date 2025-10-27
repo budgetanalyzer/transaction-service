@@ -9,8 +9,8 @@ import com.bleurubin.budgetanalyzer.config.BudgetAnalyzerProperties;
 import com.bleurubin.service.api.DefaultApiExceptionHandler;
 
 @SpringBootApplication
-@Import(DefaultApiExceptionHandler.class)
 @EnableConfigurationProperties(BudgetAnalyzerProperties.class)
+@Import(DefaultApiExceptionHandler.class)
 public class BudgetAnalyzerApplication {
 
   public static void main(String[] args) {
