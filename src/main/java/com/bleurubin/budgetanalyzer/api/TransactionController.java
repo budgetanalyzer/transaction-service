@@ -34,7 +34,7 @@ import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
-import com.bleurubin.budgetanalyzer.util.JsonUtils;
+import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.api.ApiErrorResponse;
 import com.bleurubin.service.exception.InvalidRequestException;
 
@@ -43,7 +43,7 @@ import com.bleurubin.service.exception.InvalidRequestException;
 @RequestMapping(path = "/transactions")
 public class TransactionController {
 
-  private final Logger log = LoggerFactory.getLogger(this.getClass());
+  private static final Logger log = LoggerFactory.getLogger(TransactionController.class);
 
   private final CsvService csvService;
   private final TransactionService transactionService;

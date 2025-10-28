@@ -15,13 +15,13 @@ import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
 import com.bleurubin.budgetanalyzer.service.CsvParser;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
-import com.bleurubin.budgetanalyzer.util.JsonUtils;
+import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
 @Service
 public class CsvServiceImpl implements CsvService {
 
-  private final Logger log = LoggerFactory.getLogger(this.getClass());
+  private static final Logger log = LoggerFactory.getLogger(CsvServiceImpl.class);
 
   private final CsvParser csvParser;
   private final CsvTransactionMapper transactionMapper;

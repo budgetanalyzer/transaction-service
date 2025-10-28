@@ -18,11 +18,12 @@ import com.bleurubin.budgetanalyzer.domain.CsvRow;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.domain.TransactionType;
 import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
-import com.bleurubin.budgetanalyzer.util.JsonUtils;
+import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
 public class CsvTransactionMapper {
 
+  private static final Logger log = LoggerFactory.getLogger(CsvTransactionMapper.class);
   private static final Map<String, TransactionType> TRANSACTION_TYPE_MAP =
       initializeTransactionTypeMap();
 
@@ -34,7 +35,6 @@ public class CsvTransactionMapper {
     return Map.copyOf(rv); // Make it immutable
   }
 
-  private final Logger log = LoggerFactory.getLogger(this.getClass());
   private final Map<String, CsvConfig> csvConfigMap;
   private final Map<String, DateTimeFormatter> dateFormatterMap;
 
