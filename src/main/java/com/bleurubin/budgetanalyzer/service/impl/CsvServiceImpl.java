@@ -1,6 +1,5 @@
 package com.bleurubin.budgetanalyzer.service.impl;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,11 +11,12 @@ import org.springframework.web.multipart.MultipartFile;
 import com.bleurubin.budgetanalyzer.config.BudgetAnalyzerProperties;
 import com.bleurubin.budgetanalyzer.domain.CsvData;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
+import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
 import com.bleurubin.budgetanalyzer.service.CsvParser;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.budgetanalyzer.util.JsonUtils;
-import com.bleurubin.service.exception.ServiceException;
+import com.bleurubin.service.exception.BusinessException;
 
 @Service
 public class CsvServiceImpl implements CsvService {
@@ -64,8 +64,13 @@ public class CsvServiceImpl implements CsvService {
           files.size());
 
       return importedTransactions;
-    } catch (IOException e) {
-      throw new ServiceException("Failed to import CSV files: " + e.getMessage(), e);
+    } catch (BusinessException businessException) {
+      throw businessException;
+    } catch (Exception e) {
+      throw new BusinessException(
+          "Failed to import CSV files: " + e.getMessage(),
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+          e);
     }
   }
 

@@ -135,7 +135,7 @@ public class CsvTransactionMapper {
   private BigDecimal parseAmount(String raw) {
     if (isBlank(raw)) {
       throw new BusinessException(
-          "Missing transaction amount value", BudgetAnalyzerError.CSV_DATA_ERROR.name());
+          "Missing transaction amount value", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
     }
 
     var cleaned = raw.replaceAll("[^\\d.-]", "");
@@ -196,7 +196,7 @@ public class CsvTransactionMapper {
           String.format(
               "Invalid value for required column '%s' at line %d in file '%s'",
               csvConfig.typeHeader(), fileContext.lineNumber(), fileContext.fileName()),
-          BudgetAnalyzerError.CSV_DATA_ERROR.name());
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name());
     }
 
     return type;
@@ -210,7 +210,7 @@ public class CsvTransactionMapper {
           String.format(
               "Missing value for required column '%s' at line %d in file '%s'",
               columnName, fileContext.lineNumber(), fileContext.fileName()),
-          BudgetAnalyzerError.CSV_DATA_ERROR.name());
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name());
     }
 
     return val;
