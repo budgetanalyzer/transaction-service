@@ -36,13 +36,6 @@ spring:
     show-sql: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
-springdoc:
-  override-with-generic-response: false
-  show-actuator: false
-  use-management-port: false
-  api-docs:
-    resolve-schema-properties: false
-
 budget-analyzer:
 
   # ==================================================================
