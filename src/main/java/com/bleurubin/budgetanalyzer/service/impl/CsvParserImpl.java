@@ -22,7 +22,7 @@ import com.bleurubin.budgetanalyzer.service.CsvParser;
 @Service
 public class CsvParserImpl implements CsvParser {
 
-  private final Logger log = LoggerFactory.getLogger(this.getClass());
+  private static final Logger log = LoggerFactory.getLogger(CsvParserImpl.class);
 
   @Override
   public CsvData parseCsvFile(MultipartFile file, String format) throws IOException {
