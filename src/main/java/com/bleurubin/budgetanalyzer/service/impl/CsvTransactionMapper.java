@@ -21,7 +21,9 @@ import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
 import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
-public class CsvTransactionMapper {
+// package private class- this is just an implementation detail and shouldn't be
+// used outside of the service.impl package
+class CsvTransactionMapper {
 
   private static final Logger log = LoggerFactory.getLogger(CsvTransactionMapper.class);
   private static final Map<String, TransactionType> TRANSACTION_TYPE_MAP =
