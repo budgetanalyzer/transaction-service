@@ -9,12 +9,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.bleurubin.budgetanalyzer.config.BudgetAnalyzerProperties;
-import com.bleurubin.budgetanalyzer.domain.CsvData;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
-import com.bleurubin.budgetanalyzer.service.CsvParser;
 import com.bleurubin.budgetanalyzer.service.CsvService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
+import com.bleurubin.core.csv.CsvData;
+import com.bleurubin.core.csv.CsvParser;
 import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
