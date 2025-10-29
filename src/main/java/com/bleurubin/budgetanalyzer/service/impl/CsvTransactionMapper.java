@@ -17,7 +17,7 @@ import com.bleurubin.budgetanalyzer.config.CsvConfig;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.domain.TransactionType;
 import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
-import com.bleurubin.core.domain.CsvRow;
+import com.bleurubin.core.csv.CsvRow;
 import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
