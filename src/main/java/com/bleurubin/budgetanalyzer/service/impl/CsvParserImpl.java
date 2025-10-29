@@ -15,9 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.opencsv.CSVReader;
 
-import com.bleurubin.budgetanalyzer.domain.CsvData;
-import com.bleurubin.budgetanalyzer.domain.CsvRow;
 import com.bleurubin.budgetanalyzer.service.CsvParser;
+import com.bleurubin.core.domain.CsvData;
+import com.bleurubin.core.domain.CsvRow;
 
 @Service
 public class CsvParserImpl implements CsvParser {
