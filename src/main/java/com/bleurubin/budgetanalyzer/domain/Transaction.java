@@ -107,7 +107,7 @@ public class Transaction implements SoftDeletable {
       example = "2025-10-14T12:34:56Z")
   private Instant updatedAt;
 
-  @Embedded private final SoftDeleteInfo softDelete = new SoftDeleteInfo();
+  @Embedded private SoftDeleteInfo softDelete;
 
   /** Sets the creation and update timestamps before persisting. */
   @PrePersist
@@ -303,6 +303,6 @@ public class Transaction implements SoftDeletable {
 
   @Override
   public SoftDeleteInfo getSoftDelete() {
-    return null;
+    return softDelete;
   }
 }
