@@ -24,8 +24,8 @@ public class TransactionImportServiceImpl implements TransactionImportService {
   private static final Logger log = LoggerFactory.getLogger(TransactionImportServiceImpl.class);
 
   private final CsvParser csvParser;
-  private final CsvTransactionMapper transactionMapper;
   private final TransactionService transactionService;
+  private final CsvTransactionMapper transactionMapper;
 
   public TransactionImportServiceImpl(
       BudgetAnalyzerProperties appProperties,
