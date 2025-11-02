@@ -16,7 +16,6 @@ import com.bleurubin.budgetanalyzer.service.TransactionImportService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.core.csv.CsvData;
 import com.bleurubin.core.csv.CsvParser;
-import com.bleurubin.core.util.JsonUtils;
 import com.bleurubin.service.exception.BusinessException;
 
 @Service
@@ -35,8 +34,6 @@ public class TransactionImportServiceImpl implements TransactionImportService {
     this.csvParser = csvParser;
     this.transactionService = transactionService;
     this.transactionMapper = new CsvTransactionMapper(appProperties.csvConfigMap());
-
-    log.info("Initializing application configuration: {}", JsonUtils.toJson(appProperties));
   }
 
   @Override
