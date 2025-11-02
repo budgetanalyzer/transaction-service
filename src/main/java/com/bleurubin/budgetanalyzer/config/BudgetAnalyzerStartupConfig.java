@@ -6,7 +6,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import com.bleurubin.core.util.JsonUtils;
+import com.bleurubin.core.logging.SafeLogger;
 
 @Component
 public class BudgetAnalyzerStartupConfig {
@@ -25,6 +25,6 @@ public class BudgetAnalyzerStartupConfig {
   }
 
   private void logConfiguration() {
-    log.info("Budget Analyzer API Configuration:\n{}", JsonUtils.toJson(budgetAnalyzerProperties));
+    log.info("Budget Analyzer API Configuration:\n{}", SafeLogger.toJson(budgetAnalyzerProperties));
   }
 }

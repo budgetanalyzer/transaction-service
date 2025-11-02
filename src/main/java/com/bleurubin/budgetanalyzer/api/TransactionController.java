@@ -35,7 +35,7 @@ import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.service.TransactionImportService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
-import com.bleurubin.core.util.JsonUtils;
+import com.bleurubin.core.logging.SafeLogger;
 import com.bleurubin.service.api.ApiErrorResponse;
 import com.bleurubin.service.exception.InvalidRequestException;
 
@@ -172,7 +172,7 @@ public class TransactionController {
       })
   @PostMapping(path = "/search", consumes = "application/json", produces = "application/json")
   public List<Transaction> searchTransactions(@RequestBody @Valid TransactionFilter filter) {
-    log.info("Received search request filter: {}", JsonUtils.toJson(filter));
+    log.info("Received search request filter: {}", SafeLogger.toJson(filter));
     return transactionService.search(filter);
   }
 }

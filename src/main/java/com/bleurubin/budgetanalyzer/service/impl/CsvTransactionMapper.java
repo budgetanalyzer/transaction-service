@@ -18,7 +18,7 @@ import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.domain.TransactionType;
 import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
 import com.bleurubin.core.csv.CsvRow;
-import com.bleurubin.core.util.JsonUtils;
+import com.bleurubin.core.logging.SafeLogger;
 import com.bleurubin.service.exception.BusinessException;
 
 // package private class- this is just an implementation detail and shouldn't be
@@ -66,7 +66,7 @@ class CsvTransactionMapper {
   public Transaction map(String fileName, String format, String accountId, CsvRow csvRow) {
     var csvConfig = getConfig(format);
     var fileContext = new CsvFileContext(fileName, format, csvRow);
-    log.debug("Processing fileContext: {}", JsonUtils.toJson(fileContext));
+    log.debug("Processing fileContext: {}", SafeLogger.toJson(fileContext));
 
     var rv = buildTransaction(csvConfig, fileContext, accountId);
     mapTypeAndAmount(rv, csvConfig, fileContext);
