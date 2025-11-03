@@ -41,7 +41,7 @@ import com.bleurubin.service.exception.InvalidRequestException;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
 @RestController
-@RequestMapping(path = "/transactions")
+@RequestMapping(path = "/v1/transactions")
 public class TransactionController {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionController.class);
