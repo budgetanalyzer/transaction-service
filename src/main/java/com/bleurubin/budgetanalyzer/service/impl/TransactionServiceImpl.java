@@ -12,11 +12,17 @@ import com.bleurubin.budgetanalyzer.repository.spec.TransactionSpecifications;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.service.exception.ResourceNotFoundException;
 
+/** Implementation of TransactionService for managing financial transactions. */
 @Service
 public class TransactionServiceImpl implements TransactionService {
 
   private final TransactionRepository transactionRepository;
 
+  /**
+   * Constructs a new TransactionServiceImpl.
+   *
+   * @param transactionRepository the transaction repository
+   */
   public TransactionServiceImpl(TransactionRepository transactionRepository) {
     this.transactionRepository = transactionRepository;
   }

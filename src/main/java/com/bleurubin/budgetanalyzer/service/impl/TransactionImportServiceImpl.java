@@ -18,6 +18,7 @@ import com.bleurubin.core.csv.CsvData;
 import com.bleurubin.core.csv.CsvParser;
 import com.bleurubin.service.exception.BusinessException;
 
+/** Implementation of TransactionImportService for importing transactions from CSV files. */
 @Service
 public class TransactionImportServiceImpl implements TransactionImportService {
 
@@ -27,6 +28,13 @@ public class TransactionImportServiceImpl implements TransactionImportService {
   private final TransactionService transactionService;
   private final CsvTransactionMapper transactionMapper;
 
+  /**
+   * Constructs a new TransactionImportServiceImpl.
+   *
+   * @param appProperties the application properties containing CSV configuration
+   * @param csvParser the CSV parser utility
+   * @param transactionService the transaction service for persisting transactions
+   */
   public TransactionImportServiceImpl(
       BudgetAnalyzerProperties appProperties,
       CsvParser csvParser,
