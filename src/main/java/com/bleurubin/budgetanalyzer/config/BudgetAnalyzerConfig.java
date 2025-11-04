@@ -6,5 +6,5 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableConfigurationProperties(BudgetAnalyzerProperties.class)
-@ComponentScan({"com.bleurubin.core.csv", "com.bleurubin.service.api"})
+@ComponentScan({"com.bleurubin.core.csv"})
 public class BudgetAnalyzerConfig {}
