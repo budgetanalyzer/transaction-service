@@ -32,14 +32,6 @@ class CsvTransactionMapper {
   private static final Map<String, TransactionType> TRANSACTION_TYPE_MAP =
       initializeTransactionTypeMap();
 
-  private static Map<String, TransactionType> initializeTransactionTypeMap() {
-    var rv = new HashMap<String, TransactionType>();
-    addTransactionType(rv, TransactionType.CREDIT, "credit", "deposit");
-    addTransactionType(rv, TransactionType.DEBIT, "debit", "withdrawal");
-
-    return Map.copyOf(rv); // Make it immutable
-  }
-
   private final Map<String, CsvConfig> csvConfigMap;
   private final Map<String, DateTimeFormatter> dateFormatterMap;
 
@@ -54,6 +46,14 @@ class CsvTransactionMapper {
                     CsvConfig::dateFormat,
                     c -> buildDateFormatter(c.dateFormat()),
                     (existing, replacement) -> existing));
+  }
+
+  private static Map<String, TransactionType> initializeTransactionTypeMap() {
+    var rv = new HashMap<String, TransactionType>();
+    addTransactionType(rv, TransactionType.CREDIT, "credit", "deposit");
+    addTransactionType(rv, TransactionType.DEBIT, "debit", "withdrawal");
+
+    return Map.copyOf(rv); // Make it immutable
   }
 
   private static void addTransactionType(
