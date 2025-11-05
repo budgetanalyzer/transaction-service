@@ -118,6 +118,7 @@ public class TransactionController {
 
     var transactions =
         transactionImportService.importCsvFiles(format, accountId.orElse(null), files);
+
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
@@ -136,11 +137,13 @@ public class TransactionController {
   @GetMapping(path = "", produces = "application/json")
   public List<TransactionResponse> getTransactions() {
     log.info("Received get transactions request");
+
     var transactions =
         transactionService.search(
             new TransactionFilter(
                 null, null, null, null, null, null, null, null, null, null, null, null, null,
                 null));
+
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
@@ -157,6 +160,7 @@ public class TransactionController {
   @GetMapping(path = "/{id}", produces = "application/json")
   public TransactionResponse getTransaction(@PathVariable("id") Long id) {
     log.info("Received get transaction request id: {}", id);
+
     var transaction = transactionService.getTransaction(id);
     return TransactionResponse.from(transaction);
   }
@@ -167,6 +171,7 @@ public class TransactionController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteTransaction(@PathVariable("id") Long id) {
     log.info("Received delete transaction request id: {}", id);
+
     transactionService.deleteTransaction(id);
   }
 
@@ -186,6 +191,7 @@ public class TransactionController {
   public List<TransactionResponse> searchTransactions(
       @RequestBody @Valid TransactionFilter filter) {
     log.info("Received search request filter: {}", SafeLogger.toJson(filter));
+
     var transactions = transactionService.search(filter);
     return transactions.stream().map(TransactionResponse::from).toList();
   }
