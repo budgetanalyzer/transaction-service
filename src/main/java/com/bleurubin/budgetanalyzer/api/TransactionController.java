@@ -32,7 +32,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
-import com.bleurubin.budgetanalyzer.domain.Transaction;
+import com.bleurubin.budgetanalyzer.api.response.TransactionResponse;
 import com.bleurubin.budgetanalyzer.service.TransactionImportService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
 import com.bleurubin.core.logging.SafeLogger;
@@ -66,7 +66,9 @@ public class TransactionController {
             content =
                 @Content(
                     mediaType = "application/json",
-                    array = @ArraySchema(schema = @Schema(implementation = Transaction.class)))),
+                    array =
+                        @ArraySchema(
+                            schema = @Schema(implementation = TransactionResponse.class)))),
         @ApiResponse(
             responseCode = "422",
             content =
@@ -88,7 +90,7 @@ public class TransactionController {
                     }))
       })
   @PostMapping(path = "/import", consumes = "multipart/form-data", produces = "application/json")
-  public List<Transaction> importTransactions(
+  public List<TransactionResponse> importTransactions(
       @Parameter(description = "CSV format type", example = "capital-one")
           @NotNull
           @RequestParam("format")
@@ -114,7 +116,10 @@ public class TransactionController {
       throw new InvalidRequestException("No files provided");
     }
 
-    return transactionImportService.importCsvFiles(format, accountId.orElse(null), files);
+    var transactions =
+        transactionImportService.importCsvFiles(format, accountId.orElse(null), files);
+
+    return transactions.stream().map(TransactionResponse::from).toList();
   }
 
   @Operation(summary = "Get transactions", description = "Get all transactions")
@@ -125,14 +130,21 @@ public class TransactionController {
             content =
                 @Content(
                     mediaType = "application/json",
-                    array = @ArraySchema(schema = @Schema(implementation = Transaction.class)))),
+                    array =
+                        @ArraySchema(
+                            schema = @Schema(implementation = TransactionResponse.class)))),
       })
   @GetMapping(path = "", produces = "application/json")
-  public List<Transaction> getTransactions() {
+  public List<TransactionResponse> getTransactions() {
     log.info("Received get transactions request");
-    return transactionService.search(
-        new TransactionFilter(
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+    var transactions =
+        transactionService.search(
+            new TransactionFilter(
+                null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null));
+
+    return transactions.stream().map(TransactionResponse::from).toList();
   }
 
   @Operation(summary = "Get transaction", description = "Get transaction by id")
@@ -143,12 +155,14 @@ public class TransactionController {
             content =
                 @Content(
                     mediaType = "application/json",
-                    schema = @Schema(implementation = Transaction.class))),
+                    schema = @Schema(implementation = TransactionResponse.class))),
       })
   @GetMapping(path = "/{id}", produces = "application/json")
-  public Transaction getTransaction(@PathVariable("id") Long id) {
+  public TransactionResponse getTransaction(@PathVariable("id") Long id) {
     log.info("Received get transaction request id: {}", id);
-    return transactionService.getTransaction(id);
+
+    var transaction = transactionService.getTransaction(id);
+    return TransactionResponse.from(transaction);
   }
 
   @Operation(summary = "Delete transaction", description = "Delete transaction by id")
@@ -157,6 +171,7 @@ public class TransactionController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteTransaction(@PathVariable("id") Long id) {
     log.info("Received delete transaction request id: {}", id);
+
     transactionService.deleteTransaction(id);
   }
 
@@ -168,11 +183,16 @@ public class TransactionController {
             content =
                 @Content(
                     mediaType = "application/json",
-                    array = @ArraySchema(schema = @Schema(implementation = Transaction.class)))),
+                    array =
+                        @ArraySchema(
+                            schema = @Schema(implementation = TransactionResponse.class)))),
       })
   @PostMapping(path = "/search", consumes = "application/json", produces = "application/json")
-  public List<Transaction> searchTransactions(@RequestBody @Valid TransactionFilter filter) {
+  public List<TransactionResponse> searchTransactions(
+      @RequestBody @Valid TransactionFilter filter) {
     log.info("Received search request filter: {}", SafeLogger.toJson(filter));
-    return transactionService.search(filter);
+
+    var transactions = transactionService.search(filter);
+    return transactions.stream().map(TransactionResponse::from).toList();
   }
 }
