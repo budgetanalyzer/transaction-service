@@ -11,80 +11,39 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.validation.constraints.NotNull;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-
 import com.bleurubin.core.domain.SoftDeletableEntity;
 
 /** Transaction entity representing a financial transaction. */
 @Entity
-@Schema(description = "Transaction entity representing a financial transaction")
 public class Transaction extends SoftDeletableEntity {
 
   /** Unique identifier for the transaction. */
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @Schema(
-      description = "Unique identifier for the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "1")
   private Long id;
 
   /** Identifier for the account associated with the transaction. */
-  @Schema(
-      description = "Identifier for the account associated with the transaction",
-      requiredMode = Schema.RequiredMode.NOT_REQUIRED,
-      example = "checking-3223")
   private String accountId;
 
   /** Name of the bank where the transaction occurred. */
-  @NotNull
-  @Schema(
-      description = "Name of the bank where the transaction occurred",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "Capital One")
-  private String bankName;
+  @NotNull private String bankName;
 
   /** Date of the transaction. */
-  @NotNull
-  @Schema(
-      description = "Date of the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "2025-10-14")
-  private LocalDate date;
+  @NotNull private LocalDate date;
 
   /** ISO currency code for the transaction. */
-  @NotNull
-  @Schema(
-      description = "ISO currency code for the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "USD")
-  private String currencyIsoCode;
+  @NotNull private String currencyIsoCode;
 
   /** Amount of the transaction. */
-  @NotNull
-  @Schema(
-      description = "Amount of the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "100.50")
-  private BigDecimal amount;
+  @NotNull private BigDecimal amount;
 
   /** Type of the transaction (e.g., DEBIT, CREDIT). */
   @Enumerated(EnumType.STRING)
   @NotNull
-  @Schema(
-      description = "Type of the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      allowableValues = {"CREDIT", "DEBIT"},
-      example = "DEBIT")
   private TransactionType type;
 
   /** Description of the transaction. */
-  @NotNull
-  @Schema(
-      description = "Description of the transaction",
-      requiredMode = Schema.RequiredMode.REQUIRED,
-      example = "Grocery shopping")
-  private String description;
+  @NotNull private String description;
 
   public Long getId() {
     return id;
