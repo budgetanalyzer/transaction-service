@@ -147,7 +147,7 @@ class CsvTransactionMapper {
     }
 
     try {
-      var cleaned = rawAmount.replaceAll(",", "");
+      var cleaned = rawAmount.replaceAll("[^0-9.]", "");
       return new BigDecimal(cleaned);
     } catch (Exception e) {
       throw new BusinessException(
