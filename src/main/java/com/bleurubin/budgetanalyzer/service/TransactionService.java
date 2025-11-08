@@ -2,11 +2,29 @@ package com.bleurubin.budgetanalyzer.service;
 
 import java.util.List;
 
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
+import com.bleurubin.budgetanalyzer.repository.TransactionRepository;
+import com.bleurubin.budgetanalyzer.repository.spec.TransactionSpecifications;
+import com.bleurubin.service.exception.ResourceNotFoundException;
 
 /** Service for managing financial transactions. */
-public interface TransactionService {
+@Service
+public class TransactionService {
+
+  private final TransactionRepository transactionRepository;
+
+  /**
+   * Constructs a new TransactionService.
+   *
+   * @param transactionRepository the transaction repository
+   */
+  public TransactionService(TransactionRepository transactionRepository) {
+    this.transactionRepository = transactionRepository;
+  }
 
   /**
    * Creates a new transaction.
@@ -14,7 +32,10 @@ public interface TransactionService {
    * @param transaction the transaction to create
    * @return the created transaction
    */
-  Transaction createTransaction(Transaction transaction);
+  @Transactional
+  public Transaction createTransaction(Transaction transaction) {
+    return transactionRepository.save(transaction);
+  }
 
   /**
    * Creates multiple transactions in batch.
@@ -22,7 +43,10 @@ public interface TransactionService {
    * @param transactions the list of transactions to create
    * @return the list of created transactions
    */
-  List<Transaction> createTransactions(List<Transaction> transactions);
+  @Transactional
+  public List<Transaction> createTransactions(List<Transaction> transactions) {
+    return transactionRepository.saveAll(transactions);
+  }
 
   /**
    * Retrieves a transaction by its ID.
@@ -30,7 +54,11 @@ public interface TransactionService {
    * @param id the transaction ID
    * @return the transaction
    */
-  Transaction getTransaction(Long id);
+  public Transaction getTransaction(Long id) {
+    return transactionRepository
+        .findByIdActive(id)
+        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
+  }
 
   /**
    * Updates an existing transaction.
@@ -39,14 +67,23 @@ public interface TransactionService {
    * @param transaction the updated transaction data
    * @return the updated transaction
    */
-  Transaction updateTransaction(Long id, Transaction transaction);
+  @Transactional
+  public Transaction updateTransaction(Long id, Transaction transaction) {
+    return null;
+  }
 
   /**
    * Soft-deletes a transaction by marking it as deleted.
    *
    * @param id the transaction ID
    */
-  void deleteTransaction(Long id);
+  @Transactional
+  public void deleteTransaction(Long id) {
+    var transaction = getTransaction(id);
+    transaction.markDeleted();
+
+    transactionRepository.save(transaction);
+  }
 
   /**
    * Searches for transactions matching the filter criteria.
@@ -54,5 +91,7 @@ public interface TransactionService {
    * @param filter the search filter criteria
    * @return the list of matching transactions
    */
-  List<Transaction> search(TransactionFilter filter);
+  public List<Transaction> search(TransactionFilter filter) {
+    return transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+  }
 }

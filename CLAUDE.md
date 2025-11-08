@@ -19,7 +19,7 @@ The Budget Analyzer API is a production-grade Spring Boot microservice responsib
 
 The service follows a clean, layered architecture with clear separation of concerns:
 
-- **api/**: REST controllers and API-specific request DTOs only
+- **api/**: REST controllers and API-specific request/response DTOs only
 - **domain/**: JPA entities representing business domain
 - **service/**: Business logic interfaces
 - **service/impl/**: Service implementations and internal mappers
@@ -29,14 +29,15 @@ The service follows a clean, layered architecture with clear separation of conce
 
 **Package Dependency Rules:**
 ```
-api → service → repository
-api → domain
-service → domain
+api → service (NEVER repository)
 service → repository
+service → domain
 repository → domain
 ```
 
-API classes should NEVER be imported by service layer.
+**Critical Boundaries:**
+- API classes should NEVER be imported by service layer
+- **Controllers should NEVER import repositories** - all repository access must go through services
 
 ## Architectural Principles
 
@@ -61,52 +62,92 @@ This enables service reusability across multiple contexts:
 - Message queue consumers (future)
 - Internal service-to-service calls
 
+**CRITICAL RULE**: Controllers NEVER import repositories. All repository access is encapsulated in the service layer.
+
 **Controller Responsibilities:**
 - Handle HTTP concerns (status codes, headers)
-- Retrieve entities by ID from repositories
 - Map API DTOs to/from domain entities
-- Delegate business logic to services
+- Delegate ALL business operations to services (including entity retrieval by ID)
+- Handle controller-level exceptions (ResourceNotFoundException, InvalidRequestException)
 
 **Service Responsibilities:**
 - Execute business logic
 - Perform business validation
 - Manage transactions
 - Coordinate between repositories
+- Retrieve entities by ID from repositories
 - Publish domain events
 
 **Example Pattern:**
 ```java
 @RestController
-@RequestMapping("/transactions")
+@RequestMapping("/v1/transactions")
 public class TransactionController {
 
-  @Autowired private TransactionRepository transactionRepository;
   @Autowired private TransactionService transactionService;
 
   @DeleteMapping("/{id}")
   public ResponseEntity<Void> delete(@PathVariable Long id) {
-    // 1. Retrieve entity
-    var transaction = transactionRepository.findByIdActive(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
-
-    // 2. Delegate to service
+    // Service handles entity retrieval and deletion
     transactionService.deleteTransaction(id);
-
-    // 3. Return response
     return ResponseEntity.noContent().build();
+  }
+
+  @GetMapping("/{id}")
+  public TransactionResponse getById(@PathVariable Long id) {
+    // Service handles entity retrieval and throws ResourceNotFoundException if not found
+    var transaction = transactionService.getById(id);
+    return TransactionResponse.from(transaction);
+  }
+}
+```
+
+**Service Interface:**
+```java
+public interface TransactionService {
+  Transaction getById(Long id);
+  Transaction getByIdActive(Long id);  // Excludes soft-deleted
+  void deleteTransaction(Long id);
+  // ... other methods
+}
+```
+
+**Service Implementation:**
+```java
+@Service
+public class TransactionServiceImpl implements TransactionService {
+
+  @Autowired private TransactionRepository transactionRepository;
+
+  public Transaction getById(Long id) {
+    return transactionRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + id));
+  }
+
+  public Transaction getByIdActive(Long id) {
+    return transactionRepository.findByIdActive(id)
+        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + id));
+  }
+
+  @Transactional
+  public void deleteTransaction(Long id) {
+    var transaction = getByIdActive(id);  // Reuse retrieval method
+    transaction.setDeleted(true);
+    transactionRepository.save(transaction);
   }
 }
 ```
 
 **Controllers ONLY:**
-- Use `repository.findById(id)` or `repository.findByIdActive(id)` for entity resolution
-- Throw `ResourceNotFoundException` when entity not found
-- Throw `InvalidRequestException` for malformed requests
+- Map API DTOs to/from domain entities
+- Delegate to service methods
+- Throw `InvalidRequestException` for malformed requests (automatically via Bean Validation)
 
 **Controllers NEVER:**
-- Perform complex repository queries
-- Execute business logic or validation
-- Import service-level exceptions beyond ResourceNotFoundException
+- Import or use repositories directly
+- Perform complex business logic or validation
+- Access the database
+- Import service-level exceptions beyond ResourceNotFoundException (thrown by services)
 
 ### 3. Persistence Layer: Pure JPA
 
@@ -1051,9 +1092,9 @@ Build completed with Checkstyle warnings that I cannot resolve:
 
 ### Architecture Conventions
 
-- Controllers: Thin, HTTP-focused, delegate to services
-- Services: Business logic, validation, transactions
-- Repositories: Data access only
+- Controllers: Thin, HTTP-focused, delegate to services, NEVER import repositories
+- Services: Business logic, validation, transactions, entity retrieval by ID
+- Repositories: Data access only, ONLY imported by services
 - Domain entities: Pure JPA, no business logic
 - API DTOs: In `api/request` and `api/response` packages only, never used by services
 

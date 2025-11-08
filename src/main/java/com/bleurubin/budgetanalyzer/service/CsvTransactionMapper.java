@@ -1,4 +1,4 @@
-package com.bleurubin.budgetanalyzer.service.impl;
+package com.bleurubin.budgetanalyzer.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,16 +16,18 @@ import org.slf4j.LoggerFactory;
 import com.bleurubin.budgetanalyzer.config.CsvConfig;
 import com.bleurubin.budgetanalyzer.domain.Transaction;
 import com.bleurubin.budgetanalyzer.domain.TransactionType;
-import com.bleurubin.budgetanalyzer.service.BudgetAnalyzerError;
 import com.bleurubin.core.csv.CsvRow;
 import com.bleurubin.core.logging.SafeLogger;
 import com.bleurubin.service.exception.BusinessException;
 
-// package private class- this is just an implementation detail and shouldn't be
-// used outside of the service.impl package
-// class needs to track filecontext for better error messages (file/linenumber/value/error)
-// philosophy is to throw error messages as close to parsing errors as possible to get exact
-// error/linenumber info
+/**
+ * Mapper for converting CSV rows to Transaction domain entities.
+ *
+ * <p>Package-private class - implementation detail that shouldn't be used outside of the service
+ * package. Tracks file context for better error messages (file/line number/value/error). Philosophy
+ * is to throw error messages as close to parsing errors as possible to get exact error/line number
+ * info.
+ */
 class CsvTransactionMapper {
 
   private static final Logger log = LoggerFactory.getLogger(CsvTransactionMapper.class);
@@ -255,7 +257,7 @@ class CsvTransactionMapper {
     return s == null || s.isBlank();
   }
 
-  // Helper class to track filename and line number during import for error messages
+  /** Helper class to track filename and line number during import for error messages. */
   private record CsvFileContext(String fileName, String format, CsvRow csvRow) {
     int lineNumber() {
       return csvRow.lineNumber();
