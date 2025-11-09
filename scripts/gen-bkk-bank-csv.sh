@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Script to generate BKK Bank CSV files with random transactions
-# Usage: ./gen-bkk-bank-csv.sh START_DATE END_DATE
+# Usage: ./gen-bkk-bank-csv.sh [--clean] START_DATE END_DATE
 # Date format: YYYY-MM-DD
 
 readonly SCRIPT_NAME=$(basename "$0")
@@ -48,16 +48,18 @@ readonly CHANNELS=(
 
 usage() {
     cat << EOF
-Usage: $SCRIPT_NAME START_DATE END_DATE
+Usage: $SCRIPT_NAME [--clean] START_DATE END_DATE
 
 Generate a BKK Bank CSV file with random transactions.
 
 Arguments:
+    --clean       Optional flag to use clean amounts (1, 10, 100, or 1000) for easier currency conversion
     START_DATE    Start date in YYYY-MM-DD format
     END_DATE      End date in YYYY-MM-DD format
 
-Example:
+Examples:
     $SCRIPT_NAME 2024-01-01 2024-12-31
+    $SCRIPT_NAME --clean 2024-01-01 2024-12-31
 
 EOF
     exit 1
@@ -89,6 +91,13 @@ random_amount() {
     local max="$2"
     # Generate random amount with 2 decimal places
     echo "$(awk -v min="$min" -v max="$max" 'BEGIN{srand(); printf "%.2f\n", min + rand() * (max - min)}')"
+}
+
+random_clean_amount() {
+    # Return one of: 1, 10, 100, or 1000 randomly
+    local amounts=(1 10 100 1000)
+    local idx=$((RANDOM % ${#amounts[@]}))
+    echo "${amounts[$idx]}.00"
 }
 
 format_amount() {
@@ -124,6 +133,7 @@ get_random_channel() {
 generate_transactions() {
     local start_epoch="$1"
     local end_epoch="$2"
+    local use_clean="$3"
     local date_range=$((end_epoch - start_epoch))
     local num_days=$((date_range / 86400))
     
@@ -158,7 +168,10 @@ generate_transactions() {
         
         # Generate appropriate amounts based on transaction type
         local amount
-        if [[ "$transaction_type" == "debit" ]]; then
+        if [[ "$use_clean" == "true" ]]; then
+            # Clean amounts: 1, 10, 100, or 1000
+            amount=$(random_clean_amount)
+        elif [[ "$transaction_type" == "debit" ]]; then
             # Debits: 10 - 5000
             amount=$(random_amount 10 5000)
         else
@@ -197,11 +210,18 @@ generate_transactions() {
 }
 
 main() {
+    # Parse optional --clean flag
+    local use_clean="false"
+    if [[ $# -ge 1 && "$1" == "--clean" ]]; then
+        use_clean="true"
+        shift
+    fi
+
     # Validate arguments
     if [[ $# -ne 2 ]]; then
         usage
     fi
-    
+
     local start_date="$1"
     local end_date="$2"
     
@@ -219,17 +239,25 @@ main() {
     fi
     
     # Generate output filename
-    local output_file="bkk-bank-${start_date}-to-${end_date}.csv"
-    
+    local suffix=""
+    if [[ "$use_clean" == "true" ]]; then
+        suffix="-clean"
+    fi
+    local output_file="bkk-bank-${start_date}-to-${end_date}${suffix}.csv"
+
     # Generate CSV
-    echo "Generating transactions from $start_date to $end_date..."
-    
+    local clean_msg=""
+    if [[ "$use_clean" == "true" ]]; then
+        clean_msg=" (with clean amounts)"
+    fi
+    echo "Generating transactions from $start_date to $end_date${clean_msg}..."
+
     {
         # Header row
         echo ",Date,Description,Debit,Credit,Balance,Channel,"
-        
+
         # Generate and output transactions
-        generate_transactions "$start_epoch" "$end_epoch"
+        generate_transactions "$start_epoch" "$end_epoch" "$use_clean"
     } > "$output_file"
     
     local num_transactions=$(($(wc -l < "$output_file") - 1))

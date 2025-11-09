@@ -78,7 +78,7 @@ budget-analyzer:
       description-header: "Particulars"
     truist:
       bank-name: "Truist"
-      default-currency-iso-code: "USD"
+      default-currency-iso-code: "CAD"
       credit-header: "Amount"
       date-header: "Transaction Date"
       date-format: "MM/dd/uuuu"
