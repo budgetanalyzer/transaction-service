@@ -82,7 +82,10 @@ class CsvTransactionMapper {
     rv.setAccountId(accountId);
     rv.setBankName(csvConfig.bankName());
     rv.setDescription(getRequiredValue(fileContext, csvConfig.descriptionHeader()));
-    rv.setDate(parseDate(csvConfig, fileContext));
+
+    var date = parseDate(csvConfig, fileContext);
+    validateDateNotBeforeYear2000(date, fileContext);
+    rv.setDate(date);
 
     // if we need to support multiple currencies for a given bank we can pass
     // it through with accountId. just use the default for now
@@ -157,6 +160,28 @@ class CsvTransactionMapper {
               "Invalid amount value '%s' at line %d in file '%s'",
               rawAmount, fileContext.lineNumber(), fileContext.fileName()),
           BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+    }
+  }
+
+  /**
+   * Validates that the transaction date is not prior to the year 2000.
+   *
+   * <p>Transactions before 2000 are not supported due to EUR exchange rate data limitations (only
+   * available from 1999) and ambiguity in 2-digit year date formats.
+   *
+   * @param date The parsed transaction date
+   * @param fileContext CSV file context for error reporting
+   * @throws BusinessException if the date is before January 1, 2000
+   */
+  private void validateDateNotBeforeYear2000(LocalDate date, CsvFileContext fileContext) {
+    if (date.getYear() < 2000) {
+      throw new BusinessException(
+          String.format(
+              "Transaction date '%s' at line %d in file '%s' is prior to year 2000. "
+                  + "Transactions before 2000 are not supported due to EUR exchange rate "
+                  + "limitations and 2-digit year format ambiguity.",
+              date, fileContext.lineNumber(), fileContext.fileName()),
+          BudgetAnalyzerError.TRANSACTION_DATE_TOO_OLD.name());
     }
   }
 

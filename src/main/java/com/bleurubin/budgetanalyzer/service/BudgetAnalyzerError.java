@@ -11,5 +11,10 @@ public enum BudgetAnalyzerError {
               + "mapping in application.yml")
   CSV_FORMAT_NOT_SUPPORTED,
   @Schema(description = "Error encountered parsing csv file")
-  CSV_PARSING_ERROR
+  CSV_PARSING_ERROR,
+  @Schema(
+      description =
+          "Transaction date is prior to year 2000. Transactions before 2000 are not supported due"
+              + " to EUR exchange rate limitations and 2-digit year format ambiguity.")
+  TRANSACTION_DATE_TOO_OLD
 }
