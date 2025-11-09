@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Script to generate Capital One CSV files with random transactions
-# Usage: ./gen-capital-one-csv.sh START_DATE END_DATE
+# Usage: ./gen-capital-one-csv.sh [--clean] START_DATE END_DATE
 # Date format: YYYY-MM-DD
 
 readonly SCRIPT_NAME=$(basename "$0")
@@ -47,16 +47,18 @@ readonly CREDIT_DESCRIPTIONS=(
 
 usage() {
     cat << EOF
-Usage: $SCRIPT_NAME START_DATE END_DATE
+Usage: $SCRIPT_NAME [--clean] START_DATE END_DATE
 
 Generate a Capital One CSV file with random transactions.
 
 Arguments:
+    --clean       Optional flag to use clean amounts (1, 10, 100, or 1000) for easier currency conversion
     START_DATE    Start date in YYYY-MM-DD format
     END_DATE      End date in YYYY-MM-DD format
 
-Example:
+Examples:
     $SCRIPT_NAME 2000-05-02 2020-01-01
+    $SCRIPT_NAME --clean 2000-05-02 2020-01-01
 
 EOF
     exit 1
@@ -89,6 +91,13 @@ random_amount() {
     echo "$(awk -v min=$min -v max=$max 'BEGIN{srand(); printf "%.2f\n", min + rand() * (max - min)}')"
 }
 
+random_clean_amount() {
+    # Return one of: 1, 10, 100, or 1000 randomly
+    local amounts=(1 10 100 1000)
+    local idx=$((RANDOM % ${#amounts[@]}))
+    echo "${amounts[$idx]}.00"
+}
+
 random_balance() {
     # Generate a random balance between 100 and 10000
     echo "$(awk 'BEGIN{srand(); printf "%.2f\n", 100 + rand() * 9900}')"
@@ -108,6 +117,7 @@ get_random_description() {
 generate_transactions() {
     local start_epoch="$1"
     local end_epoch="$2"
+    local use_clean="$3"
     local date_range=$((end_epoch - start_epoch))
     local num_days=$((date_range / 86400))
     
@@ -135,7 +145,13 @@ generate_transactions() {
         fi
         
         local description=$(get_random_description "$transaction_type")
-        local amount=$(random_amount)
+        local amount
+        if [[ "$use_clean" == "true" ]]; then
+            # Clean amounts: 1, 10, 100, or 1000
+            amount=$(random_clean_amount)
+        else
+            amount=$(random_amount)
+        fi
         local balance=$(random_balance)
         
         # Store as CSV line with epoch for sorting
@@ -147,11 +163,18 @@ generate_transactions() {
 }
 
 main() {
+    # Parse optional --clean flag
+    local use_clean="false"
+    if [[ $# -ge 1 && "$1" == "--clean" ]]; then
+        use_clean="true"
+        shift
+    fi
+
     # Validate arguments
     if [[ $# -ne 2 ]]; then
         usage
     fi
-    
+
     local start_date="$1"
     local end_date="$2"
     
@@ -169,17 +192,25 @@ main() {
     fi
     
     # Generate output filename
-    local output_file="capital-one-${start_date}-to-${end_date}.csv"
-    
+    local suffix=""
+    if [[ "$use_clean" == "true" ]]; then
+        suffix="-clean"
+    fi
+    local output_file="capital-one-${start_date}-to-${end_date}${suffix}.csv"
+
     # Generate CSV
-    echo "Generating transactions from $start_date to $end_date..."
-    
+    local clean_msg=""
+    if [[ "$use_clean" == "true" ]]; then
+        clean_msg=" (with clean amounts)"
+    fi
+    echo "Generating transactions from $start_date to $end_date${clean_msg}..."
+
     {
         # Header row
         echo "Account Number,Transaction Description,Transaction Date,Transaction Type,Transaction Amount,Balance"
-        
+
         # Generate and output transactions
-        generate_transactions "$start_epoch" "$end_epoch"
+        generate_transactions "$start_epoch" "$end_epoch" "$use_clean"
     } > "$output_file"
     
     local num_transactions=$(($(wc -l < "$output_file") - 2))
