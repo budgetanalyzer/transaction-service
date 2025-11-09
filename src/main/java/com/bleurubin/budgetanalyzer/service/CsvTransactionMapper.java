@@ -85,6 +85,7 @@ class CsvTransactionMapper {
 
     var date = parseDate(csvConfig, fileContext);
     validateDateNotBeforeYear2000(date, fileContext);
+    validateDateNotTooFarInFuture(date, fileContext);
     rv.setDate(date);
 
     // if we need to support multiple currencies for a given bank we can pass
@@ -182,6 +183,30 @@ class CsvTransactionMapper {
                   + "limitations and 2-digit year format ambiguity.",
               date, fileContext.lineNumber(), fileContext.fileName()),
           BudgetAnalyzerError.TRANSACTION_DATE_TOO_OLD.name());
+    }
+  }
+
+  /**
+   * Validates that the transaction date is not more than 1 day in the future.
+   *
+   * <p>Allows 1 day padding to account for timezone differences, but rejects dates further in the
+   * future to prevent data entry errors.
+   *
+   * @param date The parsed transaction date
+   * @param fileContext CSV file context for error reporting
+   * @throws BusinessException if the date is more than 1 day in the future
+   */
+  private void validateDateNotTooFarInFuture(LocalDate date, CsvFileContext fileContext) {
+    var today = LocalDate.now();
+    var maxAllowedDate = today.plusDays(1);
+
+    if (date.isAfter(maxAllowedDate)) {
+      throw new BusinessException(
+          String.format(
+              "Transaction date '%s' at line %d in file '%s' is more than 1 day in the future. "
+                  + "Future-dated transactions are not allowed to prevent data entry errors.",
+              date, fileContext.lineNumber(), fileContext.fileName()),
+          BudgetAnalyzerError.TRANSACTION_DATE_TOO_FAR_IN_FUTURE.name());
     }
   }
 
