@@ -77,15 +77,48 @@ public class TransactionController {
                     schema = @Schema(implementation = ApiErrorResponse.class),
                     examples = {
                       @ExampleObject(
+                          name = "CSV Format Not Supported",
+                          summary = "Invalid format parameter",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "CSV format: fake-bank not supported",
+                        "code": "CSV_FORMAT_NOT_SUPPORTED"
+                      }
+                      """),
+                      @ExampleObject(
                           name = "CSV Parsing Error",
                           summary = "Missing required column",
                           value =
                               """
-                    {
-                      "type": "APPLICATION_ERROR",
-                      "message": "Missing value for required column 'Transaction Description' at line 1 in file 'bkk-bank-2025.csv'",
-                      "code": "CSV_PARSING_ERROR"
-                    }
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Missing value for required column 'Transaction Description' at line 1 in file 'bkk-bank-2025.csv'",
+                        "code": "CSV_PARSING_ERROR"
+                      }
+                      """),
+                      @ExampleObject(
+                          name = "Transaction Date Too Old",
+                          summary = "Date before year 2000",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Transaction date 1999-12-31 is prior to year 2000",
+                        "code": "TRANSACTION_DATE_TOO_OLD"
+                      }
+                      """),
+                      @ExampleObject(
+                          name = "Transaction Too Far In Future",
+                          summary = "Date more than 1 day in the future",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Transaction date '2030-01-01' at line 3 in file 'capital-one-2030.csv' is more than 1 day in the future. Future-dated transactions are not allowed to prevent data entry errors.",
+                        "code": "TRANSACTION_DATE_TOO_FAR_IN_FUTURE"
+                      }
                       """)
                     }))
       })
