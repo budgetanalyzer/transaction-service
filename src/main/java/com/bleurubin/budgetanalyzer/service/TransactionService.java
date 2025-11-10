@@ -61,15 +61,29 @@ public class TransactionService {
   }
 
   /**
-   * Updates an existing transaction.
+   * Updates mutable fields of an existing transaction.
+   *
+   * <p>Only updates fields that are non-null in the provided transaction object. Immutable fields
+   * (date, amount, type, currencyIsoCode, bankName) cannot be updated.
    *
    * @param id the transaction ID
-   * @param transaction the updated transaction data
+   * @param description the new description (null to keep existing)
+   * @param accountId the new account ID (null to keep existing)
    * @return the updated transaction
    */
   @Transactional
-  public Transaction updateTransaction(Long id, Transaction transaction) {
-    return null;
+  public Transaction updateTransaction(Long id, String description, String accountId) {
+    var existingTransaction = getTransaction(id);
+
+    if (description != null) {
+      existingTransaction.setDescription(description);
+    }
+
+    if (accountId != null) {
+      existingTransaction.setAccountId(accountId);
+    }
+
+    return transactionRepository.save(existingTransaction);
   }
 
   /**

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
 import org.slf4j.Logger;
@@ -11,8 +12,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -30,6 +33,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.bleurubin.budgetanalyzer.api.request.TransactionFilter;
+import com.bleurubin.budgetanalyzer.api.request.TransactionUpdateRequest;
 import com.bleurubin.budgetanalyzer.api.response.TransactionResponse;
 import com.bleurubin.budgetanalyzer.service.TransactionImportService;
 import com.bleurubin.budgetanalyzer.service.TransactionService;
@@ -193,6 +197,51 @@ public class TransactionController {
 
     var transaction = transactionService.getTransaction(id);
     return TransactionResponse.from(transaction);
+  }
+
+  @Operation(
+      summary = "Update transaction",
+      description =
+          "Updates mutable fields (description and accountId) of a transaction. "
+              + "All other fields are immutable to preserve financial data integrity.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = TransactionResponse.class))),
+        @ApiResponse(
+            responseCode = "404",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Transaction Not Found",
+                            summary = "Transaction does not exist or is deleted",
+                            value =
+                                """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Transaction not found with id: 999"
+                      }
+                      """)))
+      })
+  @PatchMapping(path = "/{id}", consumes = "application/json", produces = "application/json")
+  public TransactionResponse updateTransaction(
+      @PathVariable("id") Long id, @Valid @RequestBody TransactionUpdateRequest request) {
+    log.info(
+        "Received update transaction request id: {} description: {} accountId: {}",
+        id,
+        request.description(),
+        request.accountId());
+
+    var updated =
+        transactionService.updateTransaction(id, request.description(), request.accountId());
+    return TransactionResponse.from(updated);
   }
 
   @Operation(summary = "Delete transaction", description = "Delete transaction by id")
