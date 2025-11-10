@@ -93,7 +93,6 @@ budget-analyzer:
       description-header: "Description"
       type-header: "Transaction Type"
 
-bleurubin:
   service:
     http-logging:
       enabled: true
