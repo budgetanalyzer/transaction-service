@@ -6,7 +6,7 @@ server:
 logging:
   level:
     root: WARN
-    com.bleurubin: TRACE
+    org.budgetanalyzer: TRACE
 
 spring:
   application:

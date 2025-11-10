@@ -6,7 +6,7 @@ plugins {
     id("com.diffplug.spotless") version "8.0.0"
 }
 
-group = "com.bleurubin"
+group = "org.budgetanalyzer"
 version = "0.0.1-SNAPSHOT"
 
 java {
@@ -30,7 +30,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
 
-    implementation("com.bleurubin:service-common:0.0.1-SNAPSHOT")
+    implementation("org.budgetanalyzer:service-common:0.0.1-SNAPSHOT")
 
     runtimeOnly("org.postgresql:postgresql")
 
@@ -44,7 +44,7 @@ spotless {
         googleJavaFormat("1.17.0") // optional: specify version
         trimTrailingWhitespace()
         endWithNewline()
-        importOrder("java", "javax", "jakarta", "org", "com", "", "com.bleurubin")
+        importOrder("java", "javax", "jakarta", "org", "com", "", "org.budgetanalyzer")
         removeUnusedImports()
     }
 }
