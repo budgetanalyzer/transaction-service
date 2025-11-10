@@ -15,20 +15,20 @@ import com.bleurubin.service.config.BaseOpenApiConfig;
 @OpenAPIDefinition(
     info =
         @Info(
-            title = "Budget Analyzer Service",
+            title = "Transaction Service",
             version = "1.0",
-            description = "API documentation for Budget Analyzer Service resources",
+            description = "API documentation for Transaction Service resources",
             contact = @Contact(name = "Bleu Rubin", email = "support@bleurubin.com"),
             license = @License(name = "MIT", url = "https://opensource.org/licenses/MIT")),
     servers = {
       @Server(url = "http://localhost:8080/api", description = "Local environment (via gateway)"),
       @Server(
-          url = "http://localhost:8082/budget-analyzer-api",
+          url = "http://localhost:8082/transaction-service",
           description = "Local environment (direct)"),
       @Server(url = "https://api.bleurubin.com", description = "Production environment")
     },
     externalDocs =
         @ExternalDocumentation(
             description = "Find more info here",
-            url = "https://github.com/bleurubin/budget-analyzer-api"))
+            url = "https://github.com/budget-analyzer/transaction-service"))
 public class OpenApiConfig extends BaseOpenApiConfig {}

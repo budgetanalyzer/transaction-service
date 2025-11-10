@@ -1,2 +1,2 @@
-# budget-analyzer-api
+# transaction-service
 Tool for analyzing financial data

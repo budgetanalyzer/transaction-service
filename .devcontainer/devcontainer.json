@@ -1,8 +1,8 @@
 {
-  "name": "budget-analyzer-api",
-  "dockerComposeFile": "../../budget-analyzer/claude-code-sandbox/docker-compose.yml",
+  "name": "transaction-service",
+  "dockerComposeFile": "../../orchestration/claude-code-sandbox/docker-compose.yml",
   "service": "claude-dev",
-  "workspaceFolder": "/workspace/budget-analyzer-api",
+  "workspaceFolder": "/workspace/transaction-service",
   "shutdownAction": "none",
   
   "customizations": {
