@@ -1,0 +1,576 @@
+openapi: 3.1.0
+info:
+  title: Transaction Service
+  description: API documentation for Transaction Service resources
+  contact:
+    name: Bleu Rubin
+    email: support@bleurubin.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  version: "1.0"
+externalDocs:
+  description: Find more info here
+  url: https://github.com/budget-analyzer/transaction-service
+servers:
+- url: http://localhost:8080/api
+  description: Local environment (via gateway)
+- url: http://localhost:8082/transaction-service
+  description: Local environment (direct)
+- url: https://api.bleurubin.com
+  description: Production environment
+tags:
+- name: Admin - Transactions
+  description: Admin operations for transactions
+- name: Transactions
+  description: Import and manipulate transactions
+paths:
+  /v1/transactions/import:
+    post:
+      tags:
+      - Transactions
+      summary: Upload CSV file(s) containing transactions
+      description: Imports transactions from one or more CSV files for a given account
+        and format.
+      operationId: importTransactions
+      parameters:
+      - name: format
+        in: query
+        description: CSV format type
+        required: true
+        schema:
+          type: string
+        example: capital-one
+      - name: accountId
+        in: query
+        description: Account ID to associate transactions with
+        required: false
+        schema:
+          type: string
+        example: checking-12345
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  description: CSV file(s) to upload
+                  items:
+                    type: string
+                    format: binary
+              required:
+              - files
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransactionResponse"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              examples:
+                CSV Format Not Supported:
+                  summary: Invalid format parameter
+                  description: CSV Format Not Supported
+                  value:
+                    type: APPLICATION_ERROR
+                    message: "CSV format: fake-bank not supported"
+                    code: CSV_FORMAT_NOT_SUPPORTED
+                CSV Parsing Error:
+                  summary: Missing required column
+                  description: CSV Parsing Error
+                  value:
+                    type: APPLICATION_ERROR
+                    message: Missing value for required column 'Transaction Description'
+                      at line 1 in file 'bkk-bank-2025.csv'
+                    code: CSV_PARSING_ERROR
+                Transaction Date Too Old:
+                  summary: Date before year 2000
+                  description: Transaction Date Too Old
+                  value:
+                    type: APPLICATION_ERROR
+                    message: Transaction date 1999-12-31 is prior to year 2000
+                    code: TRANSACTION_DATE_TOO_OLD
+                Transaction Too Far In Future:
+                  summary: Date more than 1 day in the future
+                  description: Transaction Too Far In Future
+                  value:
+                    type: APPLICATION_ERROR
+                    message: Transaction date '2030-01-01' at line 3 in file 'capital-one-2030.csv'
+                      is more than 1 day in the future. Future-dated transactions
+                      are not allowed to prevent data entry errors.
+                    code: TRANSACTION_DATE_TOO_FAR_IN_FUTURE
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INVALID_REQUEST
+                message: Bad Request
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+  /v1/admin/transactions/search:
+    post:
+      tags:
+      - Admin - Transactions
+      summary: Search transactions
+      description: Paginated search over transactions
+      operationId: searchTransactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionFilter"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransactionResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INVALID_REQUEST
+                message: Bad Request
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+  /v1/transactions/{id}:
+    get:
+      tags:
+      - Transactions
+      summary: Get transaction
+      description: Get transaction by id
+      operationId: getTransaction
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: NOT_FOUND
+                message: Not Found
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+    delete:
+      tags:
+      - Transactions
+      summary: Delete transaction
+      description: Delete transaction by id
+      operationId: deleteTransaction
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: NOT_FOUND
+                message: Not Found
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+    patch:
+      tags:
+      - Transactions
+      summary: Update transaction
+      description: Updates mutable fields (description and accountId) of a transaction.
+        All other fields are immutable to preserve financial data integrity.
+      operationId: updateTransaction
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: NOT_FOUND
+                message: Not Found
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INVALID_REQUEST
+                message: Bad Request
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+  /v1/transactions:
+    get:
+      tags:
+      - Transactions
+      summary: Get transactions
+      description: Get all transactions
+      operationId: getTransactions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransactionResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
+components:
+  schemas:
+    TransactionResponse:
+      type: object
+      description: Transaction response representing a financial transaction
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the transaction
+          example: 1
+        accountId:
+          type: string
+          description: Identifier for the account associated with the transaction
+          example: checking-3223
+        bankName:
+          type: string
+          description: Name of the bank where the transaction occurred
+          example: Capital One
+        date:
+          type: string
+          format: date
+          description: Date of the transaction
+          example: 2025-10-14
+        currencyIsoCode:
+          type: string
+          description: ISO currency code for the transaction
+          example: USD
+        amount:
+          type: number
+          description: Amount of the transaction
+          example: 100.5
+        type:
+          type: string
+          description: Type of the transaction
+          enum:
+          - CREDIT
+          - DEBIT
+          example: DEBIT
+        description:
+          type: string
+          description: Description of the transaction
+          example: Grocery shopping
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the transaction was created
+          example: 2025-10-14T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the transaction was last updated
+          example: 2025-10-14T10:30:00Z
+      required:
+      - amount
+      - bankName
+      - createdAt
+      - currencyIsoCode
+      - date
+      - description
+      - id
+      - type
+      - updatedAt
+    ApiErrorResponse:
+      description: Standard API error response format
+      properties:
+        type:
+          type: string
+          description: Error type categorization for API responses
+          enum:
+          - INVALID_REQUEST
+          - VALIDATION_ERROR
+          - NOT_FOUND
+          - APPLICATION_ERROR
+          - SERVICE_UNAVAILABLE
+          - INTERNAL_ERROR
+          example: APPLICATION_ERROR
+        message:
+          type: string
+          description: Human-readable message describing the error
+          example: "CSV format: fake-bank not supported"
+        code:
+          type: string
+          description: Machine-readable error code for specific application errors
+            (required for APPLICATION_ERROR type)
+          example: CSV_PARSING_ERROR
+        fieldErrors:
+          type: array
+          description: List of field-level validation errors (populated for VALIDATION_ERROR
+            type)
+          items:
+            $ref: "#/components/schemas/FieldError"
+      required:
+      - message
+      - type
+    FieldError:
+      description: Field-level validation error details
+      properties:
+        field:
+          type: string
+          description: Field that triggered the error
+          example: email
+        message:
+          type: string
+          description: Error message
+          example: must be a valid email address
+        rejectedValue:
+          type: object
+          description: Value that caused the error
+          example: invalid@email
+      required:
+      - field
+      - message
+      - rejectedValue
+    TransactionFilter:
+      type: object
+      description: Filter for querying transactions by various fields
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the transaction
+          example: 1
+        accountId:
+          type: string
+          description: Identifier for the account associated with the transaction
+          example: checking-3223
+        bankName:
+          type: string
+          description: Name of the bank where the transaction occurred
+          example: Capital One
+        dateFrom:
+          type: string
+          format: date
+          description: Start date for transaction date range
+          example: 2025-10-01
+        dateTo:
+          type: string
+          format: date
+          description: End date for transaction date range
+          example: 2025-10-14
+        currencyIsoCode:
+          type: string
+          description: ISO currency code for the transaction
+          example: USD
+        minAmount:
+          type: number
+          description: Minimum transaction amount
+          example: 10.0
+        maxAmount:
+          type: number
+          description: Maximum transaction amount
+          example: 500.0
+        type:
+          type: string
+          description: Type of the transaction
+          enum:
+          - CREDIT
+          - DEBIT
+          example: DEBIT
+        description:
+          type: string
+          description: Text to match in the transaction description
+          example: Grocery
+        createdAfter:
+          type: string
+          format: date-time
+          description: Start of creation timestamp range
+          example: 2025-10-14T00:00:00Z
+        createdBefore:
+          type: string
+          format: date-time
+          description: End of creation timestamp range
+          example: 2025-10-15T00:00:00Z
+        updatedAfter:
+          type: string
+          format: date-time
+          description: Start of last update timestamp range
+          example: 2025-10-14T00:00:00Z
+        updatedBefore:
+          type: string
+          format: date-time
+          description: End of last update timestamp range
+          example: 2025-10-15T00:00:00Z
+    TransactionUpdateRequest:
+      type: object
+      description: Request to update a transaction's mutable fields
+      properties:
+        description:
+          type: string
+          description: Updated description for the transaction
+          example: Whole Foods - groceries for dinner party
+          maxLength: 500
+          minLength: 0
+        accountId:
+          type: string
+          description: Updated account ID to associate with the transaction
+          example: checking-12345
+          maxLength: 100
+          minLength: 0
