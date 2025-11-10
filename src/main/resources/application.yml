@@ -1,6 +1,6 @@
 server:
   servlet:
-    context-path: /budget-analyzer-api
+    context-path: /transaction-service
   port: 8082
 
 logging:
@@ -10,7 +10,7 @@ logging:
 
 spring:
   application:
-    name: budget-analyzer-api
+    name: transaction-service
 
   servlet:
     multipart:
@@ -42,6 +42,7 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: true
 
+# TODO: is this budget-analyzer.transaction-service?
 budget-analyzer:
 
   # ==================================================================
