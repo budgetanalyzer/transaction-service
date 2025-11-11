@@ -5,6 +5,6 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(BudgetAnalyzerProperties.class)
+@EnableConfigurationProperties(TransactionServiceProperties.class)
 @ComponentScan({"org.budgetanalyzer.core.csv"})
-public class BudgetAnalyzerConfig {}
+public class TransactionServiceConfig {}

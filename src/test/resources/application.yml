@@ -26,12 +26,13 @@ spring:
 
 # Minimal CSV config for test context - tests should mock/stub as needed
 budget-analyzer:
-  csv-config-map:
-    test-bank:
-      bank-name: "Test Bank"
-      default-currency-iso-code: "USD"
-      credit-header: "Credit"
-      debit-header: "Debit"
-      date-header: "Date"
-      date-format: "MM/dd/uuuu"
-      description-header: "Description"
+  transaction-service:
+    csv-config-map:
+      test-bank:
+        bank-name: "Test Bank"
+        default-currency-iso-code: "USD"
+        credit-header: "Credit"
+        debit-header: "Debit"
+        date-header: "Date"
+        date-format: "MM/dd/uuuu"
+        description-header: "Description"

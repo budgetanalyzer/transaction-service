@@ -12,7 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.budgetanalyzer.core.csv.CsvData;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.config.BudgetAnalyzerProperties;
+import org.budgetanalyzer.transaction.config.TransactionServiceProperties;
 import org.budgetanalyzer.transaction.domain.Transaction;
 
 /** Service for importing transactions from CSV files. */
@@ -33,7 +33,7 @@ public class TransactionImportService {
    * @param transactionService the transaction service for persisting transactions
    */
   public TransactionImportService(
-      BudgetAnalyzerProperties appProperties,
+      TransactionServiceProperties appProperties,
       CsvParser csvParser,
       TransactionService transactionService) {
     this.csvParser = csvParser;

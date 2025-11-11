@@ -10,17 +10,17 @@ import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.service.http.HttpLoggingProperties;
 
 @Component
-public class BudgetAnalyzerStartupConfig {
+public class TransactionServiceStartupConfig {
 
-  private static final Logger log = LoggerFactory.getLogger(BudgetAnalyzerStartupConfig.class);
+  private static final Logger log = LoggerFactory.getLogger(TransactionServiceStartupConfig.class);
 
-  private final BudgetAnalyzerProperties budgetAnalyzerProperties;
+  private final TransactionServiceProperties transactionServiceProperties;
   private final HttpLoggingProperties httpLoggingProperties;
 
-  public BudgetAnalyzerStartupConfig(
-      BudgetAnalyzerProperties budgetAnalyzerProperties,
+  public TransactionServiceStartupConfig(
+      TransactionServiceProperties transactionServiceProperties,
       HttpLoggingProperties httpLoggingProperties) {
-    this.budgetAnalyzerProperties = budgetAnalyzerProperties;
+    this.transactionServiceProperties = transactionServiceProperties;
     this.httpLoggingProperties = httpLoggingProperties;
   }
 
@@ -30,7 +30,8 @@ public class BudgetAnalyzerStartupConfig {
   }
 
   private void logConfiguration() {
-    log.info("Budget Analyzer API Configuration:\n{}", SafeLogger.toJson(budgetAnalyzerProperties));
+    log.info(
+        "Transaction Service Configuration:\n{}", SafeLogger.toJson(transactionServiceProperties));
     log.info("Http Logging Configuration:\n{}", SafeLogger.toJson(httpLoggingProperties));
   }
 }
