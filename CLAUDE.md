@@ -98,10 +98,10 @@ See [@src/main/resources/application.yml](src/main/resources/application.yml) fo
 grep -r "search" src/main/java/*/api/ | grep "@GetMapping"
 
 # View JPA specifications
-cat src/main/java/org/budgetanalyzer/budgetanalyzer/repository/spec/TransactionSpecifications.java
+cat src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java
 ```
 
-See [@src/main/java/org/budgetanalyzer/budgetanalyzer/repository/spec/TransactionSpecifications.java](src/main/java/org/budgetanalyzer/budgetanalyzer/repository/spec/TransactionSpecifications.java)
+See [@src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
 
 ### Soft Delete Pattern
 
