@@ -119,45 +119,33 @@ grep -r "findByIdActive\|findAllActive" src/main/java/*/repository/
 
 ### Domain Model
 
-**Transaction Entity:**
+**Key Concept:**
+- **Transaction**: Financial transaction with multi-account, multi-currency support, and soft-delete pattern
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| id | Long | Yes | Primary key |
-| accountId | String | No | Multi-account support |
-| bankName | String | Yes | Bank name from CSV config |
-| date | LocalDate | Yes | Transaction date |
-| currencyIsoCode | String | Yes | ISO 4217 currency code |
-| amount | BigDecimal | Yes | Transaction amount |
-| type | TransactionType | Yes | CREDIT or DEBIT |
-| description | String | Yes | Transaction description |
-| createdAt | Instant | Inherited | Audit timestamp |
-| updatedAt | Instant | Inherited | Audit timestamp |
-| deleted | Boolean | Inherited | Soft-delete flag |
+**Discovery:**
+```bash
+# View entity
+cat src/main/java/org/budgetanalyzer/transaction/domain/Transaction.java
 
-See [@src/main/java/org/budgetanalyzer/budgetanalyzer/domain/Transaction.java](src/main/java/org/budgetanalyzer/budgetanalyzer/domain/Transaction.java)
+# Find all enums
+find src/main/java -name "*.java" -path "*/domain/*" -exec grep -l "^enum " {} \;
+```
 
 ### Package Structure
 
-```
-org.budgetanalyzer.budgetanalyzer/
-├── api/                  # REST controllers and API DTOs
-│   ├── request/         # Request DTOs
-│   └── response/        # Response DTOs
-├── domain/              # JPA entities
-├── service/             # Business logic interfaces
-│   └── impl/           # Service implementations
-├── repository/          # Data access layer
-│   └── spec/           # JPA Specifications for search
-└── config/             # Spring configuration
-```
+**Standard Spring Boot layered architecture** - See [@service-common/CLAUDE.md](../service-common/CLAUDE.md)
 
-**Package Dependency Rules:**
-```
-api → service (NEVER repository)
-service → repository
-service → domain
-repository → domain
+**Service-specific packages:**
+- `repository/spec/` - JPA Specifications for advanced search
+- `service/impl/` - Includes CSV mapping logic (`CsvTransactionMapper`)
+
+**Discovery:**
+```bash
+# View structure
+tree src/main/java/org/budgetanalyzer/transaction -L 2
+
+# Or without tree
+find src/main/java/org/budgetanalyzer/transaction -type d | sort
 ```
 
 ## API Documentation
@@ -244,101 +232,17 @@ cd ../transaction-service
 ./gradlew clean build
 ```
 
-## Testing Strategy
-
-**Current State:**
-- Minimal test coverage - primary opportunity for improvement
-- Basic context loading test only
-- No controller, service, or repository tests
-- No CSV import integration tests
-
-**Test Framework:**
-- JUnit 5 (Jupiter)
-- H2 in-memory database for testing
-- Spring Boot Test (`@SpringBootTest`, `@DataJpaTest`, `@WebMvcTest`)
-
-**Priority Testing Needs:**
-1. CSV import integration tests with sample files
-2. Transaction search with complex filter combinations
-3. Service layer business logic tests
-4. Soft-delete behavior verification
-5. Error handling and validation scenarios
+## Testing
 
 See [@service-common/docs/testing-patterns.md](../service-common/docs/testing-patterns.md) for testing conventions.
 
-## Future Enhancements
+**Current state**: Minimal coverage, priority areas: CSV import, search filters, soft-delete behavior
 
-### High Priority
-- [ ] **Flyway database migrations** - Currently using JPA `ddl-auto: none`
-- [ ] **Comprehensive test coverage** - Service, repository, controller, CSV import tests
-- [ ] **Pagination for list/search endpoints** - Currently returns all results
-- [ ] **Transaction update endpoint** - Only create/delete currently supported
+## Notes for Claude Code
 
-### Medium Priority
-- [ ] **Duplicate transaction detection** - Prevent re-importing same transactions
-- [ ] **Redis caching for search results** - Cache frequently queried searches
-- [ ] **MapStruct for DTO mapping** - Replace manual mapping
-- [ ] **Transaction categorization** - Manual or automatic category assignment
-- [ ] **CSV export capability** - Export transactions to CSV
+**General guidance**: See [@service-common/CLAUDE.md](../service-common/CLAUDE.md) for code quality standards and build commands.
 
-### Low Priority
-- [ ] **Prometheus metrics** - Custom business metrics for imports, searches
-- [ ] **Distributed tracing** - Zipkin/Jaeger integration
-- [ ] **Event publishing** - Kafka/RabbitMQ for transaction CRUD events
-- [ ] **GraphQL endpoint** - Alternative to REST API
-
-See [@service-common/docs/advanced-patterns.md](../service-common/docs/advanced-patterns.md) for guidance on implementing:
-- Flyway migrations
-- Redis caching
-- Event-driven messaging
-
-## AI Assistant Guidelines
-
-When working on this service:
-
-### Critical Rules
-
-1. **NEVER implement changes without explicit permission** - Always present a plan and wait for approval
-2. **Distinguish between statements and requests** - "I did X" is informational, not a request
-3. **Questions deserve answers first** - Provide information before implementing
-4. **Wait for explicit action language** - Only implement when user says "do it", "implement", etc.
-5. **Limit file access** - Stay within transaction-service directory
-
-### Code Quality
-
-- **Production-quality only** - No shortcuts or workarounds
-- **Follow service layer architecture** - Services accept/return entities, not API DTOs
-- **Pure JPA only** - No Hibernate-specific imports
-- **Controllers NEVER import repositories** - All database access via services
-- **Always run before committing:**
-  1. `./gradlew clean spotlessApply`
-  2. `./gradlew clean build`
-
-### Checkstyle Warnings
-
-- **Read build output carefully** - Check for warnings even if build succeeds
-- **Fix all Checkstyle warnings** - Treat as errors
-- **Common issues**: Missing Javadoc periods, wildcard imports, line length
-- **If unable to fix**: Document warning details and notify user
-
-### Architecture
-
-- **Controllers**: Thin, HTTP-focused, delegate to services
-- **Services**: Business logic, validation, transactions, entity retrieval
-- **Repositories**: Data access only, used by services only
-- **Domain entities**: Pure JPA, no business logic
-- **API DTOs**: In `api/request` and `api/response` only
-
-### CSV Import Feature
-
-- **Configuration-driven**: Most banks added via YAML, no code changes
-- **Test with real CSV files**: Always validate with bank export samples
-- **Error handling**: Provide line numbers and filenames in error messages
-- **Transaction boundaries**: Entire import succeeds or rolls back
-
-### Documentation
-
-- **Update CLAUDE.md** when architecture changes
-- **Add JavaDoc** with proper punctuation (period at end of first sentence)
-- **Document complex CSV mappings** in comments
-- **Keep OpenAPI annotations current**
+**Service-specific reminders**:
+- CSV import is configuration-driven (YAML) - most banks need no code changes
+- Always test CSV imports with real bank export samples
+- JPA Specifications enable dynamic search queries - see `repository/spec/`
