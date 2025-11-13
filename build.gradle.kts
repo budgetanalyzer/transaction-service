@@ -1,5 +1,11 @@
 import org.springframework.boot.gradle.tasks.run.BootRun
 
+val jvmArgsList = listOf(
+    "--add-opens=java.base/java.nio=ALL-UNNAMED",
+    "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    "--enable-native-access=ALL-UNNAMED"
+)
+
 plugins {
     java
     checkstyle
@@ -60,21 +66,12 @@ tasks.named("check") {
 }
 
 tasks.withType<BootRun> {
-    jvmArgs = listOf(
-        "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-        "--enable-native-access=ALL-UNNAMED"
-    )
+    jvmArgs = jvmArgsList
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
-
-    jvmArgs = listOf(
-        "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-        "--enable-native-access=ALL-UNNAMED"
-    )
+    jvmArgs = jvmArgsList
 }
 
 tasks.withType<Javadoc> {
