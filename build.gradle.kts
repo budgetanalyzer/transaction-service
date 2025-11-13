@@ -1,3 +1,5 @@
+import org.springframework.boot.gradle.tasks.run.BootRun
+
 plugins {
     java
     checkstyle
@@ -57,7 +59,7 @@ tasks.named("check") {
     dependsOn("spotlessCheck")
 }
 
-tasks.withType<org.springframework.boot.gradle.tasks.run.BootRun> {
+tasks.withType<BootRun> {
     jvmArgs = listOf(
         "--add-opens=java.base/java.nio=ALL-UNNAMED",
         "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
