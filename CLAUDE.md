@@ -16,10 +16,10 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 **This service follows standard Budget Analyzer Spring Boot conventions.** Uses layered architecture (Controller → Service → Repository) with dependency injection, declarative transactions, and JPA for data access.
 
 **When to consult service-common documentation:**
-- **Implementing new features** → Read [service-common/CLAUDE.md](https://github.com/budget-analyzer/service-common/blob/main/CLAUDE.md) for architecture patterns
-- **Handling errors** → See [error-handling.md](https://github.com/budget-analyzer/service-common/blob/main/docs/error-handling.md) for exception hierarchy
-- **Writing tests** → See [testing-patterns.md](https://github.com/budget-analyzer/service-common/blob/main/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
-- **Code quality issues** → See [code-quality-standards.md](https://github.com/budget-analyzer/service-common/blob/main/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
+- **Implementing new features** → Read [service-common/CLAUDE.md](../service-common/CLAUDE.md) for architecture patterns
+- **Handling errors** → See [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
+- **Writing tests** → See [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
+- **Code quality issues** → See [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
 
 **Quick reference:**
 - Naming: `*Controller`, `*Service`, `*ServiceImpl`, `*Repository`
@@ -244,7 +244,7 @@ cd ../transaction-service
 **Standard testing approach:** JUnit 5 with TestContainers for integration tests, MockMvc for controller tests, Mockito for unit tests.
 
 **When to consult testing documentation:**
-- **Writing new tests** → Read [testing-patterns.md](https://github.com/budget-analyzer/service-common/blob/main/docs/testing-patterns.md)
+- **Writing new tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md)
 - **Debugging test failures** → See testing-patterns.md for container lifecycle, test data setup
 
 **Quick reference:**
@@ -262,4 +262,16 @@ cd ../transaction-service
 - Always test CSV imports with real bank export samples
 - JPA Specifications enable dynamic search queries - see `repository/spec/`
 - Use soft-delete pattern - never hard delete transactions
-- For code quality standards and build commands, see [service-common/CLAUDE.md](https://github.com/budget-analyzer/service-common/blob/main/CLAUDE.md)
+- For code quality standards and build commands, see [service-common/CLAUDE.md](../service-common/CLAUDE.md)
+
+---
+
+## External Links (GitHub Web Viewing)
+
+*The relative paths in this document are optimized for Claude Code. When viewing on GitHub, use these links to access other repositories:*
+
+- [Service-Common Repository](https://github.com/budget-analyzer/service-common)
+- [Service-Common CLAUDE.md](https://github.com/budget-analyzer/service-common/blob/main/CLAUDE.md)
+- [Error Handling Documentation](https://github.com/budget-analyzer/service-common/blob/main/docs/error-handling.md)
+- [Testing Patterns Documentation](https://github.com/budget-analyzer/service-common/blob/main/docs/testing-patterns.md)
+- [Code Quality Standards](https://github.com/budget-analyzer/service-common/blob/main/docs/code-quality-standards.md)
