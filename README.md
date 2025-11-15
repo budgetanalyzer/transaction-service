@@ -42,8 +42,11 @@ The Transaction Service is responsible for:
 ### Prerequisites
 
 - JDK 24
-- PostgreSQL database
-- Gradle (wrapper included)
+- Docker and Docker Compose (for infrastructure)
+
+**Local development setup**: See [getting-started.md](https://github.com/budget-analyzer/orchestration/blob/main/docs/development/getting-started.md)
+
+**Database configuration**: See [database-setup.md](https://github.com/budget-analyzer/orchestration/blob/main/docs/development/database-setup.md)
 
 ### Running Locally
 
@@ -55,23 +58,20 @@ The Transaction Service is responsible for:
 ./gradlew bootRun
 ```
 
-The service will start on the default port (8082) and connect to PostgreSQL.
+The service runs on port 8082 for development/debugging.
 
-### Configuration
+### API Access
 
-Configure via `application.properties` or environment variables:
+**Production/User access** (through gateway):
+- Transactions API: `http://localhost:8080/api/v1/transactions`
+- Unified API Documentation: `http://localhost:8080/api/docs`
+- OpenAPI JSON: `http://localhost:8080/api/docs/openapi.json`
+- OpenAPI YAML: `http://localhost:8080/api/docs/openapi.yaml`
 
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/budget_analyzer
-spring.datasource.username=budget_analyzer
-spring.datasource.password=budget_analyzer
-```
-
-### API Documentation
-
-Once running, access the OpenAPI documentation at:
+**Development access** (direct to service):
 - Swagger UI: `http://localhost:8082/swagger-ui.html`
 - OpenAPI Spec: `http://localhost:8082/v3/api-docs`
+- Health Check: `http://localhost:8082/actuator/health`
 
 ## Development
 
