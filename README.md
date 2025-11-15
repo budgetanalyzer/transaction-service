@@ -130,7 +130,7 @@ See the [orchestration repository](https://github.com/budget-analyzer/orchestrat
 
 ## License
 
-Apache License 2.0
+MIT
 
 ## Contributing
 
