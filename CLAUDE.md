@@ -34,55 +34,28 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 
 **The most sophisticated feature of this service** - Configuration-driven CSV parsing for multiple banks.
 
-**Key Capabilities:**
-- Multi-bank support via YAML configuration
-- Flexible column mapping (different headers per bank)
-- Dual amount patterns:
-  - Single amount + type column (Capital One)
-  - Separate credit/debit columns (Bangkok Bank)
-- Multi-file import in single request
-- Transactional imports with automatic rollback on errors
-- Detailed error reporting with line numbers and filenames
+**Pattern**: YAML-based format configuration eliminates code changes when adding new banks. Supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank).
 
-**Currently Supported Banks:**
-- Capital One (USD)
-- Bangkok Bank (THB) - Two statement format variants
-- Truist (USD)
+**When to consult documentation:**
+- **Adding new bank formats** → Read [CSV Import Guide](docs/csv-import.md) for configuration examples and step-by-step instructions
+- **Troubleshooting import errors** → See [Troubleshooting section](docs/csv-import.md#troubleshooting) for common issues
+- **Understanding amount patterns** → Review [Amount Column Patterns](docs/csv-import.md#amount-column-patterns)
+
+**Quick reference:**
+- Currently supported: Capital One, Bangkok Bank (2 formats), Truist
+- Configuration: `application.yml` under `budget-analyzer.csv-config-map`
+- Endpoint: `POST /v1/transactions/import`
+- Multi-file support with transactional rollback
+- No code changes needed for new banks
 
 **Discovery:**
 ```bash
-# View all configured CSV formats
+# View configured formats
 cat src/main/resources/application.yml | grep -A 10 "csv-config-map"
 
-# Find CSV import endpoint
-grep -r "import" src/main/java/*/api/ | grep "@PostMapping"
-
-# View CSV mapper logic
+# Find CSV mapper
 cat src/main/java/org/budgetanalyzer/budgetanalyzer/service/impl/CsvTransactionMapper.java
 ```
-
-**Configuration Example:**
-```yaml
-budget-analyzer:
-  csv-config-map:
-    capital-one:
-      bank-name: "Capital One"
-      default-currency-iso-code: "USD"
-      credit-header: "Transaction Amount"
-      debit-header: "Transaction Amount"
-      date-header: "Transaction Date"
-      date-format: "MM/dd/uu"
-      description-header: "Transaction Description"
-      type-header: "Transaction Type"
-```
-
-**Adding New Banks:**
-1. Add configuration to `application.yml` (see pattern above)
-2. Restart service - no code changes needed
-3. Test import with sample CSV using format key from config
-4. Validate parsed transactions in database
-
-See [@src/main/resources/application.yml](src/main/resources/application.yml) for complete configuration examples.
 
 ### Advanced Transaction Search
 
@@ -104,7 +77,7 @@ grep -r "search" src/main/java/*/api/ | grep "@GetMapping"
 cat src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java
 ```
 
-See [@src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
+See [TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
 
 ### Soft Delete Pattern
 
