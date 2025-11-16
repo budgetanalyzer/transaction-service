@@ -295,4 +295,4 @@ docker exec postgres psql -U budget_analyzer -d budget_analyzer \
 - **Domain Model:** [domain-model.md](domain-model.md)
 - **Flyway Docs:** https://flywaydb.org/documentation/
 - **PostgreSQL Docs:** https://www.postgresql.org/docs/
-- **Common Patterns:** [@service-common/docs/advanced-patterns.md](https://github.com/budget-analyzer/service-common/blob/main/docs/advanced-patterns.md#flyway-migrations)
+- **Common Patterns:** [@service-common/docs/advanced-patterns.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/advanced-patterns.md#flyway-migrations)

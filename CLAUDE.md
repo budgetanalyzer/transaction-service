@@ -243,8 +243,8 @@ cd ../transaction-service
 
 *The relative paths in this document are optimized for Claude Code. When viewing on GitHub, use these links to access other repositories:*
 
-- [Service-Common Repository](https://github.com/budget-analyzer/service-common)
-- [Service-Common CLAUDE.md](https://github.com/budget-analyzer/service-common/blob/main/CLAUDE.md)
-- [Error Handling Documentation](https://github.com/budget-analyzer/service-common/blob/main/docs/error-handling.md)
-- [Testing Patterns Documentation](https://github.com/budget-analyzer/service-common/blob/main/docs/testing-patterns.md)
-- [Code Quality Standards](https://github.com/budget-analyzer/service-common/blob/main/docs/code-quality-standards.md)
+- [Service-Common Repository](https://github.com/budgetanalyzer/service-common)
+- [Service-Common CLAUDE.md](https://github.com/budgetanalyzer/service-common/blob/main/CLAUDE.md)
+- [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
+- [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
+- [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)

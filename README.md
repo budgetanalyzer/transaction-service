@@ -44,9 +44,9 @@ The Transaction Service is responsible for:
 - JDK 24
 - Docker and Docker Compose (for infrastructure)
 
-**Local development setup**: See [getting-started.md](https://github.com/budget-analyzer/orchestration/blob/main/docs/development/getting-started.md)
+**Local development setup**: See [getting-started.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/getting-started.md)
 
-**Database configuration**: See [database-setup.md](https://github.com/budget-analyzer/orchestration/blob/main/docs/development/database-setup.md)
+**Database configuration**: See [database-setup.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/database-setup.md)
 
 ### Running Locally
 
@@ -119,14 +119,14 @@ This service integrates with:
 - **PostgreSQL** for data persistence
 - **Service Common** for shared utilities
 
-See the [orchestration repository](https://github.com/budget-analyzer/orchestration) for full system setup.
+See the [orchestration repository](https://github.com/budgetanalyzer/orchestration) for full system setup.
 
 ## Related Repositories
 
-- **Orchestration**: https://github.com/budget-analyzer/orchestration
-- **Service Common**: https://github.com/budget-analyzer/service-common
-- **Currency Service**: https://github.com/budget-analyzer/currency-service
-- **Web Frontend**: https://github.com/budget-analyzer/budget-analyzer-web
+- **Orchestration**: https://github.com/budgetanalyzer/orchestration
+- **Service Common**: https://github.com/budgetanalyzer/service-common
+- **Currency Service**: https://github.com/budgetanalyzer/currency-service
+- **Web Frontend**: https://github.com/budgetanalyzer/budget-analyzer-web
 
 ## License
 

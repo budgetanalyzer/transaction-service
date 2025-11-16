@@ -218,7 +218,7 @@ Response: Category (201 Created)
 - `500 Internal Server Error` - Server error
 
 **Error Response Format:**
-See: [@service-common/docs/error-handling.md](https://github.com/budget-analyzer/service-common/blob/main/docs/error-handling.md)
+See: [@service-common/docs/error-handling.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
 
 ## Authentication & Authorization
 
@@ -305,4 +305,4 @@ cat src/main/java/*/config/OpenApiConfig.java
 - **Swagger UI:** http://localhost:8082/swagger-ui.html (when service running)
 - **OpenAPI Spec:** http://localhost:8082/v3/api-docs
 - **Domain Model:** [../domain-model.md](../domain-model.md)
-- **Error Handling:** [@service-common/docs/error-handling.md](https://github.com/budget-analyzer/service-common/blob/main/docs/error-handling.md)
+- **Error Handling:** [@service-common/docs/error-handling.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)

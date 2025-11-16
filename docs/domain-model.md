@@ -159,10 +159,10 @@ cat src/main/resources/db/migration/V*.sql
 See: [database-schema.md](database-schema.md) for complete schema details.
 
 **JPA Strategy:** Pure JPA (Jakarta Persistence API), no Hibernate-specific features
-- See: [@service-common/docs/spring-boot-conventions.md](https://github.com/budget-analyzer/service-common/blob/main/docs/spring-boot-conventions.md#persistence-layer-pure-jpa)
+- See: [@service-common/docs/spring-boot-conventions.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/spring-boot-conventions.md#persistence-layer-pure-jpa)
 
 ## References
 
-- **Spring Boot Patterns:** [@service-common/docs/spring-boot-conventions.md](https://github.com/budget-analyzer/service-common/blob/main/docs/spring-boot-conventions.md)
+- **Spring Boot Patterns:** [@service-common/docs/spring-boot-conventions.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/spring-boot-conventions.md)
 - **Database Schema:** [database-schema.md](database-schema.md)
 - **API Spec:** [api/README.md](api/README.md)
