@@ -63,7 +63,9 @@ public class TransactionImportService {
 
         log.info("Importing csv file format: {} for file: {}", format, file.getOriginalFilename());
 
-        var csvData = csvParser.parseCsvFile(file, format);
+        var csvData =
+            csvParser.parseCsvInputStream(
+                file.getInputStream(), file.getOriginalFilename(), format);
         var transactions = createTransactions(accountId, csvData);
 
         importedTransactions.addAll(transactions);

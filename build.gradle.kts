@@ -23,16 +23,13 @@ repositories {
 }
 
 dependencies {
-    implementation(libs.spring.boot.starter.actuator)
-    implementation(libs.spring.boot.starter.web)
-    implementation(libs.springdoc.openapi)
-    implementation(libs.spring.boot.starter.data.jdbc)
-    implementation(libs.spring.boot.starter.data.jpa)
+    // Service-web provides: web, data-jpa, springdoc, jackson, slf4j, opencsv, actuator
+    implementation(libs.service.web)
+
+    // Service-specific dependencies
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
-
-    implementation(libs.service.common)
 
     runtimeOnly(libs.postgresql)
 

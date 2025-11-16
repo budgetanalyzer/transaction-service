@@ -5,7 +5,6 @@ dependencyManagement = "1.1.7"
 spotless = "8.0.0"
 checkstyle = "12.0.1"
 googleJavaFormat = "1.32.0"
-springdoc = "2.8.13"
 junitPlatform = "1.12.2"
 serviceCommon = "0.0.1-SNAPSHOT"
 
@@ -17,14 +16,8 @@ spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 [libraries]
 # Spring Boot starters (versions managed by Spring Boot BOM)
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
-spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
-spring-boot-starter-data-jdbc = { module = "org.springframework.boot:spring-boot-starter-data-jdbc" }
-spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
-
-# Third-party libraries with explicit versions
-springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 
 # Flyway
 flyway-core = { module = "org.flywaydb:flyway-core" }
@@ -34,7 +27,8 @@ flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql
 postgresql = { module = "org.postgresql:postgresql" }
 
 # Budget Analyzer modules
-service-common = { module = "org.budgetanalyzer:service-common", version.ref = "serviceCommon" }
+service-core = { module = "org.budgetanalyzer:service-core", version.ref = "serviceCommon" }
+service-web = { module = "org.budgetanalyzer:service-web", version.ref = "serviceCommon" }
 
 # Test dependencies
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
