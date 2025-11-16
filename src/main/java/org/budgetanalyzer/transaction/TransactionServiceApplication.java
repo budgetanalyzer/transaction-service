@@ -4,9 +4,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class BudgetAnalyzerApplication {
+public class TransactionServiceApplication {
 
   public static void main(String[] args) {
-    SpringApplication.run(BudgetAnalyzerApplication.class, args);
+    SpringApplication.run(TransactionServiceApplication.class, args);
   }
 }
