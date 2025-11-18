@@ -22,8 +22,8 @@ class TransactionServiceApplicationTests {
     @Bean
     @Primary
     public JwtDecoder jwtDecoder() {
-      JwtDecoder mockDecoder = mock(JwtDecoder.class);
-      Jwt mockJwt =
+      var mockDecoder = mock(JwtDecoder.class);
+      var mockJwt =
           Jwt.withTokenValue("test-token")
               .header("alg", "RS256")
               .header("typ", "JWT")
@@ -34,6 +34,7 @@ class TransactionServiceApplicationTests {
               .issuedAt(Instant.now())
               .expiresAt(Instant.now().plusSeconds(3600))
               .build();
+
       when(mockDecoder.decode(anyString())).thenReturn(mockJwt);
       return mockDecoder;
     }
