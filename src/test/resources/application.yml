@@ -1,4 +1,7 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true
+
   datasource:
     url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa
@@ -23,6 +26,15 @@ spring:
     scheduling:
       shutdown:
         await-termination: false
+
+  # OAuth2 Resource Server configuration for tests
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://test-issuer.example.com/
+          audiences:
+            - https://test-api.example.com
 
 # Minimal CSV config for test context - tests should mock/stub as needed
 budgetanalyzer:
