@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -37,6 +38,7 @@ import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
+import org.budgetanalyzer.transaction.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
@@ -56,6 +58,7 @@ public class TransactionController {
     this.transactionService = transactionService;
   }
 
+  @PreAuthorize("isAuthenticated()")
   @Operation(
       summary = "Upload CSV file(s) containing transactions",
       description =
@@ -156,6 +159,7 @@ public class TransactionController {
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
+  @PreAuthorize("isAuthenticated()")
   @Operation(summary = "Get transactions", description = "Get all transactions")
   @ApiResponses(
       value = {
@@ -170,7 +174,13 @@ public class TransactionController {
       })
   @GetMapping(path = "", produces = "application/json")
   public List<TransactionResponse> getTransactions() {
-    log.info("Received get transactions request");
+    // Log authenticated user information (for future data-level authorization)
+    var userId = SecurityContextUtil.getCurrentUserId();
+    var userEmail = SecurityContextUtil.getCurrentUserEmail();
+    log.info(
+        "Received get transactions request - User ID: {}, Email: {}",
+        userId.orElse("anonymous"),
+        userEmail.orElse("N/A"));
 
     var transactions =
         transactionService.search(
@@ -181,6 +191,7 @@ public class TransactionController {
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
+  @PreAuthorize("isAuthenticated()")
   @Operation(summary = "Get transaction", description = "Get transaction by id")
   @ApiResponses(
       value = {
@@ -199,6 +210,7 @@ public class TransactionController {
     return TransactionResponse.from(transaction);
   }
 
+  @PreAuthorize("isAuthenticated()")
   @Operation(
       summary = "Update transaction",
       description =
@@ -244,6 +256,7 @@ public class TransactionController {
     return TransactionResponse.from(updated);
   }
 
+  @PreAuthorize("isAuthenticated()")
   @Operation(summary = "Delete transaction", description = "Delete transaction by id")
   @ApiResponses(value = {@ApiResponse(responseCode = "204")})
   @DeleteMapping(path = "/{id}")
