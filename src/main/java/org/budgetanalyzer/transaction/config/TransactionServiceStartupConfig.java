@@ -7,7 +7,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
-import org.budgetanalyzer.service.http.HttpLoggingProperties;
+import org.budgetanalyzer.service.config.HttpLoggingProperties;
 
 @Component
 public class TransactionServiceStartupConfig {
