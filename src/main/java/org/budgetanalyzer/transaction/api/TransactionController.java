@@ -264,6 +264,8 @@ public class TransactionController {
   public void deleteTransaction(@PathVariable("id") Long id) {
     log.info("Received delete transaction request id: {}", id);
 
-    transactionService.deleteTransaction(id);
+    var deletedBy = SecurityContextUtil.getCurrentUserId()
+        .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
+    transactionService.deleteTransaction(id, deletedBy);
   }
 }

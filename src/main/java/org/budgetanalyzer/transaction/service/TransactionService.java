@@ -90,11 +90,12 @@ public class TransactionService {
    * Soft-deletes a transaction by marking it as deleted.
    *
    * @param id the transaction ID
+   * @param deletedBy the user ID of who is performing the deletion
    */
   @Transactional
-  public void deleteTransaction(Long id) {
+  public void deleteTransaction(Long id, String deletedBy) {
     var transaction = getTransaction(id);
-    transaction.markDeleted();
+    transaction.markDeleted(deletedBy);
 
     transactionRepository.save(transaction);
   }
