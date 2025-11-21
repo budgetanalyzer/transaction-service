@@ -64,9 +64,9 @@ The service runs on port 8082 for development/debugging.
 
 **Production/User access** (through gateway):
 - Transactions API: `http://localhost:8080/api/v1/transactions`
-- Unified API Documentation: `http://localhost:8080/api/docs`
-- OpenAPI JSON: `http://localhost:8080/api/docs/openapi.json`
-- OpenAPI YAML: `http://localhost:8080/api/docs/openapi.yaml`
+- Unified API Documentation: `https://api.budgetanalyzer.localhost/api/docs`
+- OpenAPI JSON: `https://api.budgetanalyzer.localhost/api/docs/openapi.json`
+- OpenAPI YAML: `https://api.budgetanalyzer.localhost/api/docs/openapi.yaml`
 
 **Development access** (direct to service):
 - Swagger UI: `http://localhost:8082/swagger-ui.html`

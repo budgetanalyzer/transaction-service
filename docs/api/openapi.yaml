@@ -4,7 +4,7 @@ info:
   description: API documentation for Transaction Service resources
   contact:
     name: Bleu Rubin
-    email: support@bleurubin.com
+    email: budgetanalyzer@proton.me
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -17,7 +17,7 @@ servers:
   description: Local environment (via gateway)
 - url: http://localhost:8082/transaction-service
   description: Local environment (direct)
-- url: https://api.bleurubin.com
+- url: https://api.budgetanalyzer.org
   description: Production environment
 tags:
 - name: Admin - Transactions
@@ -450,6 +450,8 @@ components:
           - APPLICATION_ERROR
           - SERVICE_UNAVAILABLE
           - INTERNAL_ERROR
+          - UNAUTHORIZED
+          - PERMISSION_DENIED
           example: APPLICATION_ERROR
         message:
           type: string
