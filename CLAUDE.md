@@ -11,6 +11,19 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - Advanced transaction search with dynamic filtering
 - Multi-account and multi-currency transaction support
 
+## Repository Scope
+
+**Boundary**: This repository only.
+
+**Allowed**:
+- Read `../service-common/` and `../orchestration/docs/`
+- All operations within this repository
+
+**Forbidden**:
+- Writing outside this repository
+
+Cross-service changes: coordinate through orchestration or service-common.
+
 ## Spring Boot Patterns
 
 **This service follows standard Budget Analyzer Spring Boot conventions.** Uses layered architecture (Controller → Service → Repository) with dependency injection, declarative transactions, and JPA for data access.
