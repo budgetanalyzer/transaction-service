@@ -8,6 +8,8 @@ googleJavaFormat = "1.32.0"
 springdoc = "2.8.13"
 junitPlatform = "1.12.2"
 serviceCommon = "0.0.1-SNAPSHOT"
+testcontainers = "1.20.4"
+jacoco = "0.8.13"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
@@ -40,3 +42,7 @@ service-web = { module = "org.budgetanalyzer:service-web", version.ref = "servic
 # Test dependencies
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 h2 = { module = "com.h2database:h2" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-core = { module = "org.testcontainers:testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }

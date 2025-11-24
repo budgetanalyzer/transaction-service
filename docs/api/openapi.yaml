@@ -137,6 +137,64 @@ paths:
               example:
                 type: SERVICE_UNAVAILABLE
                 message: Service Unavailable
+  /v1/transactions/bulk-delete:
+    post:
+      tags:
+      - Transactions
+      summary: Bulk delete transactions
+      description: Soft-deletes multiple transactions in a single operation. Returns
+        the count of successfully deleted transactions and any IDs that were not found
+        or already deleted.
+      operationId: bulkDeleteTransactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteRequest"
+        required: true
+      responses:
+        "200":
+          description: Some transactions not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkDeleteResponse"
+              examples:
+                Partial success:
+                  summary: Some IDs not found
+                  description: Partial success
+                  value:
+                    deletedCount: 2
+                    notFoundIds:
+                    - 999
+                    - 1000
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INVALID_REQUEST
+                message: Bad Request
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: INTERNAL_ERROR
+                message: Internal Server Error
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+              example:
+                type: SERVICE_UNAVAILABLE
+                message: Service Unavailable
   /v1/admin/transactions/search:
     post:
       tags:
@@ -490,6 +548,41 @@ components:
       - field
       - message
       - rejectedValue
+    BulkDeleteRequest:
+      type: object
+      description: Request to bulk delete multiple transactions
+      properties:
+        ids:
+          type: array
+          description: List of transaction IDs to delete
+          example:
+          - 1
+          - 2
+          - 3
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+      required:
+      - ids
+    BulkDeleteResponse:
+      type: object
+      description: Response from bulk delete operation
+      properties:
+        deletedCount:
+          type: integer
+          format: int32
+          description: Number of transactions successfully deleted
+          example: 5
+        notFoundIds:
+          type: array
+          description: List of transaction IDs that were not found or already deleted
+          example:
+          - 999
+          - 1000
+          items:
+            type: integer
+            format: int64
     TransactionFilter:
       type: object
       description: Filter for querying transactions by various fields

@@ -36,8 +36,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
+import org.budgetanalyzer.transaction.api.response.BulkDeleteResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
@@ -268,5 +270,76 @@ public class TransactionController {
         SecurityContextUtil.getCurrentUserId()
             .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
     transactionService.deleteTransaction(id, deletedBy);
+  }
+
+  @PreAuthorize("isAuthenticated()")
+  @Operation(
+      summary = "Bulk delete transactions",
+      description =
+          "Soft-deletes multiple transactions in a single operation. Returns the count of "
+              + "successfully deleted transactions and any IDs that were not found or already "
+              + "deleted.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkDeleteResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Successful bulk delete",
+                            summary = "All transactions deleted",
+                            value =
+                                """
+                      {
+                        "deletedCount": 3,
+                        "notFoundIds": []
+                      }
+                      """)),
+            description = "Bulk delete operation completed"),
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkDeleteResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Partial success",
+                            summary = "Some IDs not found",
+                            value =
+                                """
+                      {
+                        "deletedCount": 2,
+                        "notFoundIds": [999, 1000]
+                      }
+                      """)),
+            description = "Some transactions not found"),
+        @ApiResponse(
+            responseCode = "400",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)),
+            description = "Invalid request (empty ID list)")
+      })
+  @PostMapping(path = "/bulk-delete", consumes = "application/json", produces = "application/json")
+  public BulkDeleteResponse bulkDeleteTransactions(@Valid @RequestBody BulkDeleteRequest request) {
+    log.info("Received bulk delete request for {} transaction IDs", request.ids().size());
+
+    var deletedBy =
+        SecurityContextUtil.getCurrentUserId()
+            .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
+
+    var result = transactionService.bulkDeleteTransactions(request.ids(), deletedBy);
+
+    log.info(
+        "Bulk delete completed: {} deleted, {} not found",
+        result.deletedCount(),
+        result.notFoundIds().size());
+
+    return new BulkDeleteResponse(result.deletedCount(), result.notFoundIds());
   }
 }

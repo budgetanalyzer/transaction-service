@@ -3,6 +3,7 @@ import org.springframework.boot.gradle.tasks.run.BootRun
 plugins {
     java
     checkstyle
+    jacoco
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.spotless)
@@ -40,7 +41,12 @@ dependencies {
     runtimeOnly(libs.postgresql)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation("org.springframework.security:spring-security-test")
     testImplementation(libs.h2)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.core)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
@@ -57,10 +63,6 @@ spotless {
 checkstyle {
     toolVersion = libs.versions.checkstyle.get()
     config = resources.text.fromUri("https://raw.githubusercontent.com/budgetanalyzer/checkstyle-config/main/checkstyle.xml")
-}
-
-tasks.named("check") {
-    dependsOn("spotlessCheck")
 }
 
 val jvmArgsList = listOf(
@@ -84,4 +86,21 @@ tasks.withType<Javadoc> {
             addStringOption("Xdoclint:none", "-quiet")
         }
     }
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+tasks.named("check") {
+    dependsOn("spotlessCheck")
 }

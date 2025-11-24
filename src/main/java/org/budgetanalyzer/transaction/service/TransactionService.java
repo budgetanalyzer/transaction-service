@@ -101,6 +101,50 @@ public class TransactionService {
   }
 
   /**
+   * Bulk soft-deletes multiple transactions by marking them as deleted.
+   *
+   * <p>This method processes all provided IDs and attempts to soft-delete each transaction. Unlike
+   * single delete, this method does not throw an exception for non-existent IDs. Instead, it
+   * returns a result object containing both the count of successfully deleted transactions and a
+   * list of IDs that were not found.
+   *
+   * <p>All deletions occur within a single transaction. If any error occurs during processing
+   * (other than "not found"), all changes will be rolled back.
+   *
+   * @param ids the list of transaction IDs to delete
+   * @param deletedBy the user ID of who is performing the deletion
+   * @return a BulkDeleteResult containing the count of deleted items and list of not found IDs
+   */
+  @Transactional
+  public BulkDeleteResult bulkDeleteTransactions(List<Long> ids, String deletedBy) {
+    var notFoundIds = new java.util.ArrayList<Long>();
+    var deletedCount = 0;
+
+    for (Long id : ids) {
+      var transactionOpt = transactionRepository.findByIdActive(id);
+
+      if (transactionOpt.isEmpty()) {
+        notFoundIds.add(id);
+      } else {
+        var transaction = transactionOpt.get();
+        transaction.markDeleted(deletedBy);
+        transactionRepository.save(transaction);
+        deletedCount++;
+      }
+    }
+
+    return new BulkDeleteResult(deletedCount, notFoundIds);
+  }
+
+  /**
+   * Result object for bulk delete operations.
+   *
+   * @param deletedCount the number of transactions successfully deleted
+   * @param notFoundIds the list of IDs that were not found or already deleted
+   */
+  public record BulkDeleteResult(int deletedCount, List<Long> notFoundIds) {}
+
+  /**
    * Searches for transactions matching the filter criteria.
    *
    * @param filter the search filter criteria
