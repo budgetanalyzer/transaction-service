@@ -267,3 +267,11 @@ cd ../transaction-service
 - [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
 - [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
 - [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)
+
+### Web Search Year Awareness
+
+Claude's training data may default to an outdated year. When using WebSearch for best practices or current information:
+
+1. Check `<env>Today's date</env>` for the actual current year
+2. Include that year in searches (e.g., "Spring Boot best practices 2025" not 2024)
+3. This ensures results reflect current standards, not outdated patterns
