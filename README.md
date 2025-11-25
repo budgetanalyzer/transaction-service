@@ -2,9 +2,7 @@
 
 [![Build](https://github.com/budgetanalyzer/transaction-service/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/transaction-service/actions/workflows/build.yml)
 
-> **⚠️ Work in Progress**: This project is under active development. Features and documentation are subject to change.
-
-Spring Boot microservice for managing financial transactions in Budget Analyzer - a personal finance management application.
+Spring Boot microservice for managing financial transactions in Budget Analyzer - a reference architecture for microservices.
 
 ## Overview
 
