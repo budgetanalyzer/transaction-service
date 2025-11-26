@@ -1,5 +1,29 @@
 # Transaction Service - Budget and Transaction Management
 
+## Tree Position
+
+**Archetype**: service
+**Scope**: budgetanalyzer ecosystem
+**Role**: Manages financial transactions and CSV imports
+
+### Relationships
+- **Consumes**: service-common (patterns)
+- **Coordinated by**: orchestration
+- **Peers with**: Discover via `ls /workspace/*-service`
+- **Observed by**: architecture-conversations
+
+### Permissions
+- **Read**: `../service-common/`, `../orchestration/docs/`
+- **Write**: This repository only
+
+### Discovery
+```bash
+# My peers
+ls -d /workspace/*-service
+# My platform
+ls ../service-common/
+```
+
 ## Service Purpose
 
 Manages financial transactions and CSV imports for the Budget Analyzer application.
@@ -10,19 +34,6 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - Multi-bank CSV file import with configurable formats
 - Advanced transaction search with dynamic filtering
 - Multi-account and multi-currency transaction support
-
-## Repository Scope
-
-**Boundary**: This repository only.
-
-**Allowed**:
-- Read `../service-common/` and `../orchestration/docs/`
-- All operations within this repository
-
-**Forbidden**:
-- Writing outside this repository
-
-Cross-service changes: coordinate through orchestration or service-common.
 
 ## Spring Boot Patterns
 
@@ -275,3 +286,7 @@ Claude's training data may default to an outdated year. When using WebSearch for
 1. Check `<env>Today's date</env>` for the actual current year
 2. Include that year in searches (e.g., "Spring Boot best practices 2025" not 2024)
 3. This ensures results reflect current standards, not outdated patterns
+
+## Conversation Capture
+
+When the user asks to save this conversation, write it to `/workspace/architecture-conversations/conversations/` following the format in INDEX.md.
