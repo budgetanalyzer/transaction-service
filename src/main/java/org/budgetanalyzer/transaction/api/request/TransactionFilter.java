@@ -18,9 +18,7 @@ public record TransactionFilter(
             description = "Identifier for the account associated with the transaction",
             example = "checking-3223")
         String accountId,
-    @Schema(
-            description = "Name of the bank where the transaction occurred",
-            example = "USD Bank")
+    @Schema(description = "Name of the bank where the transaction occurred", example = "USD Bank")
         String bankName,
     @Schema(description = "Start date for transaction date range", example = "2025-10-01")
         LocalDate dateFrom,
