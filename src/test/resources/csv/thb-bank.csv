@@ -1,0 +1,4 @@
+,Date,Description,Debit,Credit,Balance,Channel,
+" ","15 Jan 2025 10:30","Transfer Out","1,500.00",,"50,000.00","ATM",
+" ","16 Jan 2025 14:15","Salary Deposit",,"85,000.00","135,000.00","INT",
+" ","20 Jan 2025 09:00","Utility Payment","2,500.00",,"132,500.00","Mobile",

@@ -1,0 +1,4 @@
+Account Number,Transaction Description,Transaction Date,Transaction Type,Transaction Amount,Balance
+1234,Grocery Store,01/15/25,Debit,52.34,1947.66
+1234,Payroll Deposit,01/16/25,Credit,2500.00,4447.66
+1234,Electric Bill,01/20/25,Debit,125.00,4322.66

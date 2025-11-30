@@ -1,0 +1,115 @@
+server:
+  servlet:
+    context-path: /transaction-service
+  port: 8082
+
+logging:
+  level:
+    root: WARN
+    org.budgetanalyzer: TRACE
+
+spring:
+  application:
+    name: transaction-service
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  jackson:
+    default-property-inclusion: non_null  # Exclude null fields from JSON
+    serialization:
+      indent-output: true                 # Pretty print JSON
+      write-dates-as-timestamps: false    # Use ISO-8601 format for dates
+    date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/budget_analyzer
+    username: budget_analyzer
+    password: budget_analyzer
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Flyway manages schema, JPA validates it matches entities
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Auth0 issuer URI (abstracted through NGINX /auth/.well-known/openid-configuration)
+          # In production, this will point to NGINX gateway
+          # In development, can point directly to Auth0 or through NGINX
+          issuer-uri: ${AUTH0_ISSUER_URI:https://dev-gcz1r8453xzz0317.us.auth0.com/}
+          # JWT audience validation - ensures token was issued for our API
+          audiences:
+            - ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
+
+budgetanalyzer:
+  transaction-service:
+
+    # ==================================================================
+    #  I wasn't sure if this was bank-config-map or csv-config-map;
+    #  Capital One has different formats for different accounts,
+    #  Bangkok Bank can support accounts with different currencies.
+    #
+    #  Banks can always change formats for future versions, so this
+    #  configuration represents the configuration for a specific
+    #  csv version from a specific bank.  If a bank changes the version,
+    #  create an entry like capital-one-v2 and make the changes.
+    #
+    #  In the future this could be stored and configured in the db.
+    # ==================================================================
+    csv-config-map:
+      usd-bank:
+        bank-name: "USD Bank"
+        default-currency-iso-code: "USD"
+        credit-header: "Transaction Amount"
+        debit-header: "Transaction Amount"
+        date-header: "Transaction Date"
+        date-format: "MM/dd/uu"
+        description-header: "Transaction Description"
+        type-header: "Transaction Type"
+      thb-bank:
+        bank-name: "THB Bank"
+        default-currency-iso-code: "THB"
+        credit-header: "Credit"
+        date-header: "Date"
+        date-format: "d MMM uuuu HH:mm"
+        debit-header:  "Debit"
+        description-header: "Description"
+      eur-bank:
+        bank-name: "EUR Bank"
+        default-currency-iso-code: "EUR"
+        credit-header: "Deposit"
+        date-header: "Date"
+        date-format: "dd/MM/yy"
+        debit-header: "Withdrawal"
+        description-header: "Particulars"
+      cad-bank:
+        bank-name: "CAD Bank"
+        default-currency-iso-code: "CAD"
+        credit-header: "Amount"
+        date-header: "Transaction Date"
+        date-format: "MM/dd/uuuu"
+        debit-header: "Amount"
+        description-header: "Description"
+        type-header: "Transaction Type"
+
+  service:
+    http-logging:
+      enabled: true
+      log-level: DEBUG
+      include-request-body: true
+      include-response-body: true
+      max-body-size: 10000
+      # Default exclude-patterns: /actuator/**, /swagger-ui/**, /v3/api-docs/**
