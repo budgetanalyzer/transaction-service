@@ -1,15 +1,5 @@
 # Transaction Service - Budget and Transaction Management
 
-## Honest Discourse
-
-Do not over-validate ideas. The user wants honest pushback, not agreement.
-
-- If something seems wrong, say so directly
-- Distinguish "novel" from "obvious in retrospect"
-- Push back on vague claims — ask for concrete constraints
-- Don't say "great question" or "that's a really interesting point"
-- Skip the preamble and caveats — just answer
-
 ## Tree Position
 
 **Archetype**: service
@@ -277,6 +267,16 @@ cd ../transaction-service
 - JPA Specifications enable dynamic search queries - see `repository/spec/`
 - Use soft-delete pattern - never hard delete transactions
 - For code quality standards and build commands, see [service-common/AGENTS.md](../service-common/AGENTS.md)
+
+## Honest Discourse
+
+Do not over-validate ideas. The user wants honest pushback, not agreement.
+
+- If something seems wrong, say so directly
+- Distinguish "novel" from "obvious in retrospect"
+- Push back on vague claims — ask for concrete constraints
+- Don't say "great question" or "that's a really interesting point"
+- Skip the preamble and caveats — just answer
 
 ---
 
