@@ -7,9 +7,7 @@ The CSV Import system provides configuration-driven parsing for multiple bank st
 ## Supported Banks
 
 Currently configured banks:
-- **Capital One** (USD) - Single amount column with type indicator (CSV + PDF)
-- **Bangkok Bank** (THB) - Two statement format variants with separate credit/debit columns
-- **Truist** (USD) - Single amount column with type indicator
+- **Bangkok Bank** (THB) - Statement format
 
 ## Configuration Structure
 
@@ -88,24 +86,6 @@ Used by: Bangkok Bank
 
 See `V7__add_statement_format.sql` for all seeded formats. Here are sample CSVs:
 
-### Capital One
-
-**Sample CSV:**
-```csv
-Transaction Date,Transaction Description,Transaction Type,Transaction Amount
-11/15/24,Coffee Shop,Debit,4.50
-11/14/24,Paycheck,Credit,2500.00
-```
-
-### Bangkok Bank (bkk-bank format)
-
-**Sample CSV:**
-```csv
-Date,Description,Debit,Credit
-15 Nov 2024 09:30,Coffee Shop,150.00,
-14 Nov 2024 14:00,Transfer,,5000.00
-```
-
 ### Bangkok Bank (bkk-bank-statement format)
 
 **Sample CSV:**
@@ -113,15 +93,6 @@ Date,Description,Debit,Credit
 Date,Particulars,Withdrawal,Deposit
 15/11/24,Coffee Shop,150.00,
 14/11/24,Transfer,,5000.00
-```
-
-### Truist
-
-**Sample CSV:**
-```csv
-Transaction Date,Description,Transaction Type,Amount
-11/15/2024,Coffee Shop,Debit,4.50
-11/04/2024,Paycheck,Credit,2500.00
 ```
 
 ## Date Format Patterns

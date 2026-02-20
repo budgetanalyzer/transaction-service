@@ -66,7 +66,7 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - **Understanding amount patterns** → Read [Amount Column Patterns](docs/csv-import.md#amount-column-patterns)
 
 **Quick reference:**
-- Currently supported: Capital One (CSV + PDF), Bangkok Bank (2 CSV formats), Truist
+- Currently supported: Capital One (PDF), Bangkok Bank (CSV format)
 - Configuration: `statement_format` table (see `StatementFormatService`)
 - API: `GET /v1/statement-formats` to list formats, `POST` to create new formats
 - Endpoint: `POST /v1/transactions/import`
