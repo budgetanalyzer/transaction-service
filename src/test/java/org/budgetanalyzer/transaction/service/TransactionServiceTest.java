@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
+import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
@@ -296,6 +298,245 @@ class TransactionServiceTest {
     assertThat(result.notFoundIds()).containsExactly(2L);
 
     verify(transactionRepository, times(1)).save(any(Transaction.class));
+  }
+
+  // ==================== batchImport ====================
+
+  @Test
+  void batchImport_noDuplicates_createsAllTransactions() {
+    // Given: two valid transactions with no existing duplicates
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Transaction 1",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            "account-123");
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 16),
+            "Transaction 2",
+            BigDecimal.valueOf(200.00),
+            TransactionType.CREDIT,
+            null,
+            "Test Bank",
+            "USD",
+            "account-123");
+
+    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              for (int i = 0; i < transactions.size(); i++) {
+                transactions.get(i).setId((long) (i + 1));
+              }
+              return transactions;
+            });
+
+    // When: batch import is called
+    var result = transactionService.batchImport(List.of(dto1, dto2));
+
+    // Then: both transactions are created
+    assertThat(result.createdTransactions()).hasSize(2);
+    assertThat(result.duplicatesSkipped()).isEqualTo(0);
+    verify(transactionRepository, times(1)).saveAll(any());
+  }
+
+  @Test
+  void batchImport_withExistingDuplicates_skipsMatchingTransactions() {
+    // Given: one transaction already exists in database
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Existing Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 16),
+            "New Transaction",
+            BigDecimal.valueOf(200.00),
+            TransactionType.CREDIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    // Simulate that dto1's key already exists
+    var existingKey = "2024-01-15|100.00|Existing Transaction";
+    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of(existingKey));
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              for (int i = 0; i < transactions.size(); i++) {
+                transactions.get(i).setId((long) (i + 1));
+              }
+              return transactions;
+            });
+
+    // When: batch import is called
+    var result = transactionService.batchImport(List.of(dto1, dto2));
+
+    // Then: only new transaction is created, duplicate is skipped
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.createdTransactions().get(0).getDescription()).isEqualTo("New Transaction");
+  }
+
+  @Test
+  void batchImport_withIntraBatchDuplicates_skipsSecondOccurrence() {
+    // Given: two identical transactions in the same batch
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Same Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Same Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              for (int i = 0; i < transactions.size(); i++) {
+                transactions.get(i).setId((long) (i + 1));
+              }
+              return transactions;
+            });
+
+    // When: batch import is called
+    var result = transactionService.batchImport(List.of(dto1, dto2));
+
+    // Then: only first transaction is created, second is skipped as intra-batch duplicate
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+  }
+
+  @Test
+  void batchImport_emptyList_returnsEmptyResult() {
+    // Given: empty list
+    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any())).thenReturn(List.of());
+
+    // When: batch import is called with empty list
+    var result = transactionService.batchImport(List.of());
+
+    // Then: returns empty result
+    assertThat(result.createdTransactions()).isEmpty();
+    assertThat(result.duplicatesSkipped()).isEqualTo(0);
+  }
+
+  @Test
+  void batchImport_dateBeforeYear2000_throwsBatchValidationException() {
+    // Given: transaction with date before year 2000
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(1999, 12, 31),
+            "Old Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    // When/Then: batch import throws BatchValidationException
+    assertThatThrownBy(() -> transactionService.batchImport(List.of(dto)))
+        .isInstanceOf(BatchValidationException.class)
+        .satisfies(
+            ex -> {
+              var bve = (BatchValidationException) ex;
+              assertThat(bve.getFieldErrors()).hasSize(1);
+              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
+              assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
+              assertThat(bve.getFieldErrors().get(0).getMessage()).contains("before year 2000");
+            });
+  }
+
+  @Test
+  void batchImport_dateTooFarInFuture_throwsBatchValidationException() {
+    // Given: transaction with date more than 1 day in the future
+    var dto =
+        new PreviewTransaction(
+            LocalDate.now().plusDays(5),
+            "Future Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    // When/Then: batch import throws BatchValidationException
+    assertThatThrownBy(() -> transactionService.batchImport(List.of(dto)))
+        .isInstanceOf(BatchValidationException.class)
+        .satisfies(
+            ex -> {
+              var bve = (BatchValidationException) ex;
+              assertThat(bve.getFieldErrors()).hasSize(1);
+              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
+              assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
+              assertThat(bve.getFieldErrors().get(0).getMessage()).contains("in the future");
+            });
+  }
+
+  @Test
+  void batchImport_multipleValidationErrors_aggregatesAllErrors() {
+    // Given: batch with multiple validation failures
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(1999, 1, 1),
+            "Old Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.now().plusDays(10),
+            "Future Transaction",
+            BigDecimal.valueOf(200.00),
+            TransactionType.CREDIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    // When/Then: batch import throws with all errors aggregated
+    assertThatThrownBy(() -> transactionService.batchImport(List.of(dto1, dto2)))
+        .isInstanceOf(BatchValidationException.class)
+        .satisfies(
+            ex -> {
+              var bve = (BatchValidationException) ex;
+              assertThat(bve.getFieldErrors()).hasSize(2);
+              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
+              assertThat(bve.getFieldErrors().get(1).getIndex()).isEqualTo(1);
+            });
   }
 
   // ==================== Helper Methods ====================

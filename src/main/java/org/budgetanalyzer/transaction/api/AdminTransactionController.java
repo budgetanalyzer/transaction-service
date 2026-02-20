@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,6 +51,7 @@ public class AdminTransactionController {
                         @ArraySchema(
                             schema = @Schema(implementation = TransactionResponse.class)))),
       })
+  @PreAuthorize("isAuthenticated()")
   @PostMapping(path = "/search", consumes = "application/json", produces = "application/json")
   public List<TransactionResponse> searchTransactions(
       @RequestBody @Valid TransactionFilter filter) {

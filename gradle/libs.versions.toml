@@ -8,8 +8,9 @@ googleJavaFormat = "1.32.0"
 springdoc = "2.8.13"
 junitPlatform = "1.12.2"
 serviceCommon = "0.0.1-SNAPSHOT"
-testcontainers = "1.20.4"
+testcontainers = "1.21.4"
 jacoco = "0.8.13"
+pdfbox = "3.0.3"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
@@ -38,6 +39,9 @@ postgresql = { module = "org.postgresql:postgresql" }
 # Budget Analyzer modules
 service-core = { module = "org.budgetanalyzer:service-core", version.ref = "serviceCommon" }
 service-web = { module = "org.budgetanalyzer:service-web", version.ref = "serviceCommon" }
+
+# PDF processing
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 
 # Test dependencies
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }

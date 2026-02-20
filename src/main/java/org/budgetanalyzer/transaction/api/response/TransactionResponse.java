@@ -10,7 +10,7 @@ import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 
 /**
- * Response DTO for transaction data.
+ * Response for transaction data.
  *
  * <p>This record represents the API response format for transaction information, excluding internal
  * soft-delete fields (deleted, deletedAt) which should not be exposed to API consumers.
@@ -30,7 +30,7 @@ public record TransactionResponse(
     @Schema(
             description = "Name of the bank where the transaction occurred",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "USD Bank")
+            example = "Capital One")
         String bankName,
     @Schema(
             description = "Date of the transaction",

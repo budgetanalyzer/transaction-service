@@ -14,13 +14,9 @@ public class TransactionServiceStartupConfig {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionServiceStartupConfig.class);
 
-  private final TransactionServiceProperties transactionServiceProperties;
   private final HttpLoggingProperties httpLoggingProperties;
 
-  public TransactionServiceStartupConfig(
-      TransactionServiceProperties transactionServiceProperties,
-      HttpLoggingProperties httpLoggingProperties) {
-    this.transactionServiceProperties = transactionServiceProperties;
+  public TransactionServiceStartupConfig(HttpLoggingProperties httpLoggingProperties) {
     this.httpLoggingProperties = httpLoggingProperties;
   }
 
@@ -30,8 +26,6 @@ public class TransactionServiceStartupConfig {
   }
 
   private void logConfiguration() {
-    log.info(
-        "Transaction Service Configuration:\n{}", SafeLogger.toJson(transactionServiceProperties));
     log.info("Http Logging Configuration:\n{}", SafeLogger.toJson(httpLoggingProperties));
   }
 }

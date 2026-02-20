@@ -18,7 +18,7 @@ import org.budgetanalyzer.service.config.BaseOpenApiConfig;
             title = "Transaction Service",
             version = "1.0",
             description = "API documentation for Transaction Service resources",
-            contact = @Contact(name = "Bleu Rubin", email = "contact@budgetanalyzer.org"),
+            contact = @Contact(name = "Budget Analyzer Team", email = "contact@budgetanalyzer.org"),
             license = @License(name = "MIT", url = "https://opensource.org/licenses/MIT")),
     servers = {
       @Server(url = "http://localhost:8080/api", description = "Local environment (via gateway)"),

@@ -7,29 +7,42 @@ The CSV Import system provides configuration-driven parsing for multiple bank st
 ## Supported Banks
 
 Currently configured banks:
-- **Capital One** (USD) - Single amount column with type indicator
+- **Capital One** (USD) - Single amount column with type indicator (CSV + PDF)
 - **Bangkok Bank** (THB) - Two statement format variants with separate credit/debit columns
 - **Truist** (USD) - Single amount column with type indicator
 
 ## Configuration Structure
 
-All CSV formats are defined in `src/main/resources/application.yml` under the `budget-analyzer.csv-config-map` property.
+Statement formats are stored in the `statement_format` database table and managed via the Statement Format API.
 
-### Configuration Format
+### Database Schema
 
-```yaml
-budget-analyzer:
-  csv-config-map:
-    {format-key}:
-      bank-name: "Display name of the bank"
-      default-currency-iso-code: "ISO 4217 currency code"
-      credit-header: "Column header for credit amounts"
-      debit-header: "Column header for debit amounts"
-      date-header: "Column header for transaction date"
-      date-format: "Java DateTimeFormatter pattern"
-      description-header: "Column header for description"
-      type-header: "Column header for transaction type (optional)"
+```sql
+CREATE TABLE statement_format (
+    id BIGSERIAL PRIMARY KEY,
+    format_key VARCHAR(50) NOT NULL UNIQUE,  -- e.g., "capital-one"
+    format_type VARCHAR(10) NOT NULL,        -- CSV, PDF, XLSX
+    bank_name VARCHAR(100) NOT NULL,
+    default_currency_iso_code VARCHAR(3) NOT NULL,
+    -- CSV-specific fields (null for PDF/XLSX)
+    date_header VARCHAR(50),
+    date_format VARCHAR(50),
+    description_header VARCHAR(50),
+    credit_header VARCHAR(50),
+    debit_header VARCHAR(50),
+    type_header VARCHAR(50),
+    category_header VARCHAR(50),
+    enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
 ```
+
+### Statement Format API
+
+- `GET /v1/statement-formats` - List all formats
+- `GET /v1/statement-formats/{formatKey}` - Get specific format
+- `POST /v1/statement-formats` - Create new format
+- `PUT /v1/statement-formats/{formatKey}` - Update format
+- `DELETE /v1/statement-formats/{formatKey}` - Disable format (soft delete)
 
 ### Amount Column Patterns
 
@@ -39,17 +52,14 @@ The system supports two patterns for representing transaction amounts:
 
 Used by: Capital One, Truist
 
-```yaml
-capital-one:
-  bank-name: "Capital One"
-  default-currency-iso-code: "USD"
-  credit-header: "Transaction Amount"    # Same column for both
-  debit-header: "Transaction Amount"     # Same column for both
-  date-header: "Transaction Date"
-  date-format: "MM/dd/uu"
-  description-header: "Transaction Description"
-  type-header: "Transaction Type"        # "Credit" or "Debit"
-```
+| Field | Value |
+|-------|-------|
+| credit_header | "Transaction Amount" |
+| debit_header | "Transaction Amount" |
+| date_header | "Transaction Date" |
+| date_format | "MM/dd/uu" |
+| description_header | "Transaction Description" |
+| type_header | "Transaction Type" |
 
 **How it works:**
 - Single column contains the amount (always positive)
@@ -60,17 +70,14 @@ capital-one:
 
 Used by: Bangkok Bank
 
-```yaml
-bangkok-bank-statement-1:
-  bank-name: "Bangkok Bank"
-  default-currency-iso-code: "THB"
-  credit-header: "เครดิต"                # Thai for "Credit"
-  debit-header: "เดบิต"                  # Thai for "Debit"
-  date-header: "วันที่"                  # Thai for "Date"
-  date-format: "dd/MM/uuuu"
-  description-header: "รายละเอียด"        # Thai for "Description"
-  # No type-header - credit/debit implicit from column
-```
+| Field | Value |
+|-------|-------|
+| credit_header | "Credit" or "เครดิต" |
+| debit_header | "Debit" or "เดบิต" |
+| date_header | "Date" or "วันที่" |
+| date_format | "dd/MM/uuuu" |
+| description_header | "Description" or "รายละเอียด" |
+| type_header | null (not used) |
 
 **How it works:**
 - Two columns: one for credits, one for debits
@@ -79,19 +86,9 @@ bangkok-bank-statement-1:
 
 ## Complete Configuration Examples
 
-### Capital One
+See `V7__add_statement_format.sql` for all seeded formats. Here are sample CSVs:
 
-```yaml
-capital-one:
-  bank-name: "Capital One"
-  default-currency-iso-code: "USD"
-  credit-header: "Transaction Amount"
-  debit-header: "Transaction Amount"
-  date-header: "Transaction Date"
-  date-format: "MM/dd/uu"
-  description-header: "Transaction Description"
-  type-header: "Transaction Type"
-```
+### Capital One
 
 **Sample CSV:**
 ```csv
@@ -100,65 +97,31 @@ Transaction Date,Transaction Description,Transaction Type,Transaction Amount
 11/14/24,Paycheck,Credit,2500.00
 ```
 
-### Bangkok Bank (Statement Format 1)
-
-```yaml
-bangkok-bank-statement-1:
-  bank-name: "Bangkok Bank"
-  default-currency-iso-code: "THB"
-  credit-header: "เครดิต"
-  debit-header: "เดบิต"
-  date-header: "วันที่"
-  date-format: "dd/MM/uuuu"
-  description-header: "รายละเอียด"
-```
+### Bangkok Bank (bkk-bank format)
 
 **Sample CSV:**
 ```csv
-วันที่,รายละเอียด,เดบิต,เครดิต
-15/11/2024,ร้านกาแฟ,150.00,
-14/11/2024,โอนเงิน,,5000.00
+Date,Description,Debit,Credit
+15 Nov 2024 09:30,Coffee Shop,150.00,
+14 Nov 2024 14:00,Transfer,,5000.00
 ```
 
-### Bangkok Bank (Statement Format 2)
-
-```yaml
-bangkok-bank-statement-2:
-  bank-name: "Bangkok Bank"
-  default-currency-iso-code: "THB"
-  credit-header: "Credit"
-  debit-header: "Withdrawal"
-  date-header: "Date"
-  date-format: "dd/MM/uuuu"
-  description-header: "Description"
-```
+### Bangkok Bank (bkk-bank-statement format)
 
 **Sample CSV:**
 ```csv
-Date,Description,Withdrawal,Credit
-15/11/2024,Coffee Shop,150.00,
-14/11/2024,Transfer,,5000.00
+Date,Particulars,Withdrawal,Deposit
+15/11/24,Coffee Shop,150.00,
+14/11/24,Transfer,,5000.00
 ```
 
 ### Truist
 
-```yaml
-truist:
-  bank-name: "Truist"
-  default-currency-iso-code: "USD"
-  credit-header: "Amount"
-  debit-header: "Amount"
-  date-header: "Date"
-  date-format: "M/d/uu"
-  description-header: "Description"
-  type-header: "Type"
-```
-
 **Sample CSV:**
 ```csv
-Date,Description,Type,Amount
-11/15/24,Coffee Shop,Debit,4.50
-11/4/24,Paycheck,Credit,2500.00
+Transaction Date,Description,Transaction Type,Amount
+11/15/2024,Coffee Shop,Debit,4.50
+11/04/2024,Paycheck,Credit,2500.00
 ```
 
 ## Date Format Patterns
@@ -184,39 +147,41 @@ Get a real CSV export from the bank. Review:
 - Amount representation (single column or separate credit/debit)
 - Transaction type indicator (if present)
 
-### Step 2: Add Configuration
+### Step 2: Create Format via API
 
-Edit `src/main/resources/application.yml`:
+Use the Statement Format API to create the new format:
 
-```yaml
-budget-analyzer:
-  csv-config-map:
-    # Existing configs...
-
-    new-bank-format:
-      bank-name: "New Bank Name"
-      default-currency-iso-code: "USD"  # or appropriate currency
-      credit-header: "Exact Credit Column Header"
-      debit-header: "Exact Debit Column Header"
-      date-header: "Exact Date Column Header"
-      date-format: "MM/dd/uu"  # Match actual format
-      description-header: "Exact Description Column Header"
-      type-header: "Exact Type Column Header"  # Optional - omit if using separate columns
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats \
+  -H "Content-Type: application/json" \
+  -d '{
+    "formatKey": "new-bank-format",
+    "formatType": "CSV",
+    "bankName": "New Bank Name",
+    "defaultCurrencyIsoCode": "USD",
+    "dateHeader": "Exact Date Column Header",
+    "dateFormat": "MM/dd/uu",
+    "descriptionHeader": "Exact Description Column Header",
+    "creditHeader": "Exact Credit Column Header",
+    "debitHeader": "Exact Debit Column Header",
+    "typeHeader": "Exact Type Column Header"
+  }'
 ```
 
 **Important:**
-- Format key (`new-bank-format`) must be unique and URL-safe
+- `formatKey` must be unique and URL-safe
 - All headers must match CSV exactly (case-sensitive)
 - Date format must match CSV date representation
 - Use same column for both credit/debit headers if bank uses single amount column
+- Omit `typeHeader` if using separate credit/debit columns
 
-### Step 3: Restart Service
+### Step 3: Verify Format Created
 
 ```bash
-./gradlew bootRun
+curl http://localhost:8082/v1/statement-formats/new-bank-format
 ```
 
-Configuration changes require restart (no code changes needed).
+No restart required - formats are loaded from database.
 
 ### Step 4: Test Import
 
@@ -313,40 +278,44 @@ Error messages include:
 
 ### Key Classes
 
-- `CsvTransactionMapper` - Converts CSV rows to Transaction entities
+- `StatementFormat` - Entity representing a statement format configuration
+- `StatementFormatService` - CRUD operations for statement formats
+- `StatementExtractorRegistry` - Registry of extractors by format key
+- `CsvStatementExtractor` - Extracts transactions from CSV files
 - `TransactionController.importTransactions()` - API endpoint
-- `TransactionService.importTransactions()` - Business logic
-- CSV config loaded from `application.yml` via `@ConfigurationProperties`
+- `TransactionImportService` - Business logic for imports
 
 ### Discovery Commands
 
 ```bash
-# View CSV mapper implementation
-cat src/main/java/org/budgetanalyzer/transaction/service/impl/CsvTransactionMapper.java
+# View statement format entity
+cat src/main/java/org/budgetanalyzer/transaction/domain/StatementFormat.java
+
+# View format service
+cat src/main/java/org/budgetanalyzer/transaction/service/StatementFormatService.java
+
+# View seeded formats
+cat src/main/resources/db/migration/V7__add_statement_format.sql
 
 # Find import endpoint
-grep -r "import" src/main/java/*/api/ | grep "@PostMapping"
-
-# View current configurations
-cat src/main/resources/application.yml | grep -A 10 "csv-config-map"
+grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 ```
 
 ## Troubleshooting
 
 ### "Unknown CSV format: xyz"
 
-**Cause:** Format key not found in configuration.
+**Cause:** Format key not found in database.
 
-**Solution:** Check format key in `application.yml`. Must match exactly.
+**Solution:** List formats via `GET /v1/statement-formats` and verify the format key exists.
 
 ### "Invalid date format at line X"
 
-**Cause:** Date format in CSV doesn't match `date-format` pattern.
+**Cause:** Date format in CSV doesn't match `dateFormat` pattern.
 
 **Solution:**
 1. Check actual date format in CSV
-2. Update `date-format` in configuration
-3. Restart service
+2. Update format via `PUT /v1/statement-formats/{formatKey}`
 
 ### "Missing required header: Amount"
 
@@ -354,8 +323,7 @@ cat src/main/resources/application.yml | grep -A 10 "csv-config-map"
 
 **Solution:**
 1. Check exact header names in CSV (case-sensitive)
-2. Update configuration to match
-3. Restart service
+2. Update format via `PUT /v1/statement-formats/{formatKey}`
 
 ### "Duplicate transactions detected"
 

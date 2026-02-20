@@ -6,9 +6,12 @@ import java.time.LocalDate;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.validation.constraints.NotNull;
 
 import org.budgetanalyzer.core.domain.SoftDeletableEntity;
@@ -44,6 +47,11 @@ public class Transaction extends SoftDeletableEntity {
 
   /** Description of the transaction. */
   @NotNull private String description;
+
+  /** The file import this transaction came from (nullable for manually created transactions). */
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "file_import_id")
+  private FileImport fileImport;
 
   public Long getId() {
     return id;
@@ -107,5 +115,13 @@ public class Transaction extends SoftDeletableEntity {
 
   public void setDescription(String description) {
     this.description = description;
+  }
+
+  public FileImport getFileImport() {
+    return fileImport;
+  }
+
+  public void setFileImport(FileImport fileImport) {
+    this.fileImport = fileImport;
   }
 }
