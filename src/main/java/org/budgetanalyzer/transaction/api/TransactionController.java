@@ -2,7 +2,6 @@ package org.budgetanalyzer.transaction.api;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -34,12 +33,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
-import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
+import org.budgetanalyzer.transaction.api.response.BatchImportResponse;
 import org.budgetanalyzer.transaction.api.response.BulkDeleteResponse;
+import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
@@ -62,9 +63,11 @@ public class TransactionController {
 
   @PreAuthorize("isAuthenticated()")
   @Operation(
-      summary = "Upload CSV file(s) containing transactions",
+      summary = "Preview transactions from a file before import",
       description =
-          "Imports transactions from one or more CSV files for a given account and format.")
+          "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
+              + "before batch import. No data is persisted. The format parameter is required and "
+              + "determines which parser to use. The response includes any parsing warnings.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -72,9 +75,7 @@ public class TransactionController {
             content =
                 @Content(
                     mediaType = "application/json",
-                    array =
-                        @ArraySchema(
-                            schema = @Schema(implementation = TransactionResponse.class)))),
+                    schema = @Schema(implementation = PreviewResponse.class))),
         @ApiResponse(
             responseCode = "422",
             content =
@@ -83,82 +84,113 @@ public class TransactionController {
                     schema = @Schema(implementation = ApiErrorResponse.class),
                     examples = {
                       @ExampleObject(
-                          name = "CSV Format Not Supported",
+                          name = "Format Not Supported",
                           summary = "Invalid format parameter",
                           value =
                               """
                       {
                         "type": "APPLICATION_ERROR",
-                        "message": "CSV format: fake-bank not supported",
-                        "code": "CSV_FORMAT_NOT_SUPPORTED"
+                        "message": "Format not supported: fake-bank",
+                        "code": "FORMAT_NOT_SUPPORTED"
                       }
                       """),
                       @ExampleObject(
-                          name = "CSV Parsing Error",
+                          name = "Parsing Error",
                           summary = "Missing required column",
                           value =
                               """
                       {
                         "type": "APPLICATION_ERROR",
-                        "message": "Missing value for required column 'Transaction Description' at line 1 in file 'thb-bank-2025.csv'",
+                        "message": "Missing value for required column 'Description' at line 1",
                         "code": "CSV_PARSING_ERROR"
-                      }
-                      """),
-                      @ExampleObject(
-                          name = "Transaction Date Too Old",
-                          summary = "Date before year 2000",
-                          value =
-                              """
-                      {
-                        "type": "APPLICATION_ERROR",
-                        "message": "Transaction date 1999-12-31 is prior to year 2000",
-                        "code": "TRANSACTION_DATE_TOO_OLD"
-                      }
-                      """),
-                      @ExampleObject(
-                          name = "Transaction Too Far In Future",
-                          summary = "Date more than 1 day in the future",
-                          value =
-                              """
-                      {
-                        "type": "APPLICATION_ERROR",
-                        "message": "Transaction date '2030-01-01' at line 3 in file 'usd-bank-2030.csv' is more than 1 day in the future. Future-dated transactions are not allowed to prevent data entry errors.",
-                        "code": "TRANSACTION_DATE_TOO_FAR_IN_FUTURE"
                       }
                       """)
                     }))
       })
-  @PostMapping(path = "/import", consumes = "multipart/form-data", produces = "application/json")
-  public List<TransactionResponse> importTransactions(
-      @Parameter(description = "CSV format type", example = "usd-bank")
+  @PostMapping(path = "/preview", consumes = "multipart/form-data", produces = "application/json")
+  public PreviewResponse previewTransactions(
+      @Parameter(
+              description =
+                  "Format key (e.g., 'capital-one-yearly' for PDF, 'capital-one' for CSV). "
+                      + "Use GET /v1/statement-formats to list available formats.",
+              required = true,
+              example = "capital-one-yearly")
           @NotNull
-          @RequestParam("format")
+          @RequestParam(name = "format")
           String format,
       @Parameter(
-              description = "Account ID to associate transactions with",
+              description = "Account ID to pre-fill for all transactions",
               example = "checking-12345")
           @RequestParam(name = "accountId", required = false)
           Optional<String> accountId,
-      @Parameter(description = "CSV file(s) to upload", required = true)
+      @Parameter(description = "CSV or PDF file to preview", required = true)
           @NotNull
-          @RequestParam("files")
-          List<MultipartFile> files) {
+          @RequestParam("file")
+          MultipartFile file) {
     log.info(
-        "Received importTransactions request format: {} accountId: {} fileCount: {} fileNames: {}",
+        "Received preview request format: {} accountId: {} fileName: {}",
         format,
         accountId.orElse(null),
-        files.size(),
-        files.stream().map(MultipartFile::getOriginalFilename).collect(Collectors.joining(", ")));
+        file.getOriginalFilename());
 
-    if (files.isEmpty()) {
-      log.warn("No files provided");
-      throw new InvalidRequestException("No files provided");
-    }
+    return transactionImportService.previewFile(format, accountId.orElse(null), file);
+  }
 
-    var transactions =
-        transactionImportService.importCsvFiles(format, accountId.orElse(null), files);
+  @PreAuthorize("isAuthenticated()")
+  @Operation(
+      summary = "Import a batch of transactions",
+      description =
+          "Imports transactions from a batch request (typically from the preview endpoint after "
+              + "user edits). Validates all transactions upfront and rejects the entire batch if "
+              + "any fail. Duplicates (matching date + amount + description) are skipped.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "201",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BatchImportResponse.class))),
+        @ApiResponse(
+            responseCode = "400",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class),
+                    examples = {
+                      @ExampleObject(
+                          name = "Validation Failed",
+                          summary = "One or more transactions failed validation",
+                          value =
+                              """
+                      {
+                        "type": "VALIDATION_ERROR",
+                        "message": "Validation failed for 2 field(s)",
+                        "fieldErrors": [
+                          { "field": "transactions[44].amount", "message": "must not be null" },
+                          { "field": "transactions[89].date", "message": "must not be null" }
+                        ]
+                      }
+                      """)
+                    }))
+      })
+  @PostMapping(path = "/batch", consumes = "application/json", produces = "application/json")
+  @ResponseStatus(HttpStatus.CREATED)
+  public BatchImportResponse batchImportTransactions(
+      @Valid @RequestBody BatchImportRequest request) {
+    log.info("Received batch import request with {} transactions", request.transactions().size());
 
-    return transactions.stream().map(TransactionResponse::from).toList();
+    var result = transactionService.batchImport(request.transactions());
+
+    log.info(
+        "Batch import completed: {} created, {} duplicates skipped",
+        result.createdTransactions().size(),
+        result.duplicatesSkipped());
+
+    return new BatchImportResponse(
+        result.createdTransactions().size(),
+        result.duplicatesSkipped(),
+        result.createdTransactions().stream().map(TransactionResponse::from).toList());
   }
 
   @PreAuthorize("isAuthenticated()")

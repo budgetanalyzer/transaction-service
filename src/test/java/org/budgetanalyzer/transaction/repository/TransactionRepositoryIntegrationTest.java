@@ -200,4 +200,17 @@ class TransactionRepositoryIntegrationTest {
     transaction.setDescription(description);
     return transaction;
   }
+
+  private Transaction createTransactionWithDetails(
+      LocalDate date, BigDecimal amount, String description, String accountId) {
+    var transaction = new Transaction();
+    transaction.setAccountId(accountId);
+    transaction.setBankName("Test Bank");
+    transaction.setDate(date);
+    transaction.setCurrencyIsoCode("USD");
+    transaction.setAmount(amount);
+    transaction.setType(TransactionType.DEBIT);
+    transaction.setDescription(description);
+    return transaction;
+  }
 }

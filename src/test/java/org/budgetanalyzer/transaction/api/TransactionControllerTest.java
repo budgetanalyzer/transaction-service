@@ -4,12 +4,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -19,7 +21,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -27,11 +28,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
+import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
+import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
@@ -89,12 +94,9 @@ class TransactionControllerTest {
     verify(transactionService, times(1)).getTransaction(9999L);
   }
 
-  @Test
-  @Disabled("Security context testing - will be updated with user spaces implementation")
-  void getTransaction_unauthenticated_returns401() throws Exception {
-    // When/Then: GET without authentication returns 401
-    mockMvc.perform(get("/v1/transactions/1")).andExpect(status().isUnauthorized());
-  }
+  // Note: Testing 401 for unauthenticated requests requires security filters enabled.
+  // This test class uses @AutoConfigureMockMvc(addFilters = false) for controller-level testing.
+  // Authentication behavior is tested via integration tests with full security configuration.
 
   // ==================== GET /v1/transactions ====================
 
@@ -193,18 +195,20 @@ class TransactionControllerTest {
   // ==================== DELETE /v1/transactions/{id} ====================
 
   @Test
-  @Disabled("Security context testing - will be updated with user spaces implementation")
-  @WithMockUser(username = "auth0|test-user-123")
+  @WithMockUser
   void deleteTransaction_existingId_returns204() throws Exception {
     // When/Then: DELETE returns 204 No Content
-    mockMvc.perform(delete("/v1/transactions/1")).andExpect(status().isNoContent());
+    mockMvc
+        .perform(
+            delete("/v1/transactions/1")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123"))
+        .andExpect(status().isNoContent());
 
     verify(transactionService, times(1)).deleteTransaction(eq(1L), eq("auth0|test-user-123"));
   }
 
   @Test
-  @Disabled("Security context testing - will be updated with user spaces implementation")
-  @WithMockUser(username = "auth0|test-user-123")
+  @WithMockUser
   void deleteTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
     doThrow(new ResourceNotFoundException("Transaction not found with id: 9999"))
@@ -213,7 +217,9 @@ class TransactionControllerTest {
 
     // When/Then: DELETE returns 404
     mockMvc
-        .perform(delete("/v1/transactions/9999"))
+        .perform(
+            delete("/v1/transactions/9999")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.type").value("NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
@@ -224,8 +230,7 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/bulk-delete ====================
 
   @Test
-  @Disabled("Security context testing - will be updated with user spaces implementation")
-  @WithMockUser(username = "auth0|test-user-123")
+  @WithMockUser
   void bulkDeleteTransactions_allFound_returns200WithDeletedCount() throws Exception {
     // Given: all transactions exist
     var result = new TransactionService.BulkDeleteResult(3, List.of());
@@ -242,6 +247,7 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -253,8 +259,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  @Disabled("Security context testing - will be updated with user spaces implementation")
-  @WithMockUser(username = "auth0|test-user-123")
+  @WithMockUser
   void bulkDeleteTransactions_someNotFound_returns200WithPartialSuccess() throws Exception {
     // Given: some transactions don't exist
     var result = new TransactionService.BulkDeleteResult(2, List.of(9999L, 8888L));
@@ -271,6 +276,7 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -304,6 +310,212 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
   }
 
+  // ==================== POST /v1/transactions/preview ====================
+
+  @Test
+  @WithMockUser
+  void previewTransactions_csvFile_returns200WithPreviewResponse() throws Exception {
+    // Given: a CSV file to preview
+    var previewDto =
+        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
+    var previewResponse =
+        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
+            "transactions.csv", "capital-one", List.of(previewDto), List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one"), isNull(), any(MultipartFile.class)))
+        .thenReturn(previewResponse);
+
+    var csvFile =
+        new MockMultipartFile(
+            "file",
+            "transactions.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+
+    // When/Then: POST returns 200 with preview response
+    mockMvc
+        .perform(multipart("/v1/transactions/preview").file(csvFile).param("format", "capital-one"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.sourceFile").value("transactions.csv"))
+        .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
+        .andExpect(jsonPath("$.transactions.length()").value(1))
+        .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
+        .andExpect(jsonPath("$.warnings").isEmpty());
+
+    verify(transactionImportService, times(1))
+        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class));
+  }
+
+  @Test
+  @WithMockUser
+  void previewTransactions_withAccountId_passesAccountIdToService() throws Exception {
+    // Given: preview request with accountId
+    var previewDto =
+        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
+    var previewResponse =
+        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
+            "transactions.csv", "capital-one", List.of(previewDto), List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one"), eq("checking-123"), any(MultipartFile.class)))
+        .thenReturn(previewResponse);
+
+    var csvFile =
+        new MockMultipartFile(
+            "file",
+            "transactions.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+
+    // When/Then: POST includes accountId
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile)
+                .param("format", "capital-one")
+                .param("accountId", "checking-123"))
+        .andExpect(status().isOk());
+
+    verify(transactionImportService, times(1))
+        .previewFile(eq("capital-one"), eq("checking-123"), any(MultipartFile.class));
+  }
+
+  @Test
+  @WithMockUser
+  void previewTransactions_pdfFile_returns200WithExplicitFormat() throws Exception {
+    // Given: a PDF file to preview with explicit format
+    var previewDto =
+        createPreviewDto(LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
+    var previewResponse =
+        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
+            "statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one-yearly"), isNull(), any(MultipartFile.class)))
+        .thenReturn(previewResponse);
+
+    var pdfFile =
+        new MockMultipartFile(
+            "file",
+            "statement.pdf",
+            "application/pdf",
+            new byte[] {0x25, 0x50, 0x44, 0x46}); // PDF magic bytes
+
+    // When/Then: POST with format returns 200
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(pdfFile)
+                .param("format", "capital-one-yearly"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.sourceFile").value("statement.pdf"))
+        .andExpect(jsonPath("$.detectedFormat").value("capital-one-yearly"))
+        .andExpect(jsonPath("$.transactions.length()").value(1));
+
+    verify(transactionImportService, times(1))
+        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class));
+  }
+
+  // ==================== POST /v1/transactions/batch ====================
+
+  @Test
+  @WithMockUser
+  void batchImport_validTransactions_returns201WithCreatedTransactions() throws Exception {
+    // Given: valid batch import request
+    var createdTransactions =
+        List.of(
+            createTransaction(1L, "Transaction 1", BigDecimal.valueOf(10.00)),
+            createTransaction(2L, "Transaction 2", BigDecimal.valueOf(20.00)));
+    var result = new TransactionService.BatchImportResult(createdTransactions, 0);
+    when(transactionService.batchImport(anyList())).thenReturn(result);
+
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "date": "2024-01-15",
+              "description": "Transaction 1",
+              "amount": 10.00,
+              "type": "DEBIT",
+              "bankName": "Test Bank",
+              "currencyIsoCode": "USD"
+            },
+            {
+              "date": "2024-01-16",
+              "description": "Transaction 2",
+              "amount": 20.00,
+              "type": "DEBIT",
+              "bankName": "Test Bank",
+              "currencyIsoCode": "USD"
+            }
+          ]
+        }
+        """;
+
+    // When/Then: POST returns 201 with created transactions
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.created").value(2))
+        .andExpect(jsonPath("$.duplicatesSkipped").value(0))
+        .andExpect(jsonPath("$.transactions.length()").value(2));
+
+    verify(transactionService, times(1)).batchImport(anyList());
+  }
+
+  @Test
+  @WithMockUser
+  void batchImport_validationFailure_returns400WithFieldErrors() throws Exception {
+    // Given: request with missing required fields (null amount, null date)
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "description": "Transaction 1",
+              "type": "DEBIT",
+              "bankName": "Test Bank",
+              "currencyIsoCode": "USD"
+            }
+          ]
+        }
+        """;
+
+    // When/Then: POST returns 400 with validation errors (Jakarta Bean Validation)
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.fieldErrors").isArray())
+        .andExpect(jsonPath("$.fieldErrors.length()").value(2));
+  }
+
+  @Test
+  @WithMockUser
+  void batchImport_emptyTransactionsList_returns400() throws Exception {
+    // Given: empty transactions list
+    var requestBody =
+        """
+        {
+          "transactions": []
+        }
+        """;
+
+    // When/Then: POST returns 400 with validation error
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(Long id, String description, BigDecimal amount) {
@@ -321,5 +533,32 @@ class TransactionControllerTest {
     // and don't have public setters - they're set automatically by the framework
 
     return transaction;
+  }
+
+  private Transaction createTransactionWithDetails(
+      Long id, LocalDate date, BigDecimal amount, String description, String accountId) {
+    var transaction = new Transaction();
+    transaction.setId(id);
+    transaction.setAccountId(accountId);
+    transaction.setBankName("Test Bank");
+    transaction.setDate(date);
+    transaction.setCurrencyIsoCode("USD");
+    transaction.setAmount(amount);
+    transaction.setType(TransactionType.DEBIT);
+    transaction.setDescription(description);
+    return transaction;
+  }
+
+  private PreviewTransaction createPreviewDto(
+      LocalDate date, String description, BigDecimal amount) {
+    return new PreviewTransaction(
+        date,
+        description,
+        amount,
+        TransactionType.DEBIT,
+        null, // category
+        "Test Bank",
+        "USD",
+        null); // accountId
   }
 }

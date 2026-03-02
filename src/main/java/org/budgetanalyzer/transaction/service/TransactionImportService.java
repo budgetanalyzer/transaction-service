@@ -1,98 +1,111 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import org.budgetanalyzer.core.csv.CsvData;
-import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.config.TransactionServiceProperties;
-import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.api.response.PreviewResponse;
+import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
+import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
-/** Service for importing transactions from CSV files. */
+/**
+ * Service for importing transactions from statement files (CSV, PDF, etc.).
+ *
+ * <p>Uses the StatementExtractorRegistry to find the appropriate extractor based on the format key.
+ * All file types are handled through the unified StatementExtractor interface.
+ */
 @Service
 public class TransactionImportService {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionImportService.class);
 
-  private final CsvParser csvParser;
-  private final TransactionService transactionService;
-  private final CsvTransactionMapper transactionMapper;
+  private final StatementExtractorRegistry extractorRegistry;
 
   /**
    * Constructs a new TransactionImportService.
    *
-   * @param transactionServiceProperties the application properties containing CSV configuration
-   * @param csvParser the CSV parser utility
-   * @param transactionService the transaction service for persisting transactions
+   * @param extractorRegistry the registry for looking up statement extractors
    */
-  public TransactionImportService(
-      TransactionServiceProperties transactionServiceProperties,
-      CsvParser csvParser,
-      TransactionService transactionService) {
-    this.csvParser = csvParser;
-    this.transactionService = transactionService;
-    this.transactionMapper = new CsvTransactionMapper(transactionServiceProperties.csvConfigMap());
+  public TransactionImportService(StatementExtractorRegistry extractorRegistry) {
+    this.extractorRegistry = extractorRegistry;
   }
 
   /**
-   * Imports transactions from CSV files for a specified bank format.
+   * Previews transactions from any supported file type (PDF or CSV).
    *
-   * @param format the CSV format key matching configuration in application.yml
-   * @param accountId optional account identifier to associate with imported transactions
-   * @param files the list of CSV files to import
-   * @return the list of imported transactions
+   * <p>The format parameter is required and determines which extractor to use. The extractor is
+   * looked up from the StatementExtractorRegistry, which manages both static (PDF) and dynamic
+   * (CSV) extractors.
+   *
+   * @param format the format key (e.g., "capital-one-yearly" for PDF, "capital-one" for CSV)
+   * @param accountId optional account identifier to pre-fill for all transactions
+   * @param file the file to preview (PDF or CSV)
+   * @return PreviewResponse containing extracted transactions
+   * @throws BusinessException if the format is not supported or parsing fails
    */
-  @Transactional
-  public List<Transaction> importCsvFiles(
-      String format, String accountId, List<MultipartFile> files) {
+  public PreviewResponse previewFile(String format, String accountId, MultipartFile file) {
+    var extractor =
+        extractorRegistry
+            .findByFormat(format)
+            .orElseThrow(
+                () ->
+                    new BusinessException(
+                        "Format not supported: " + format,
+                        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name()));
+
+    return previewWithExtractor(extractor, accountId, file);
+  }
+
+  /**
+   * Previews transactions using a specific statement extractor.
+   *
+   * @param extractor the extractor to use
+   * @param accountId optional account identifier to pre-fill for all transactions
+   * @param file the file to preview
+   * @return PreviewResponse containing extracted transactions
+   * @throws BusinessException if parsing fails
+   */
+  private PreviewResponse previewWithExtractor(
+      StatementExtractor extractor, String accountId, MultipartFile file) {
     try {
-      var importedTransactions = new ArrayList<Transaction>();
-
-      for (MultipartFile file : files) {
-        if (file.isEmpty()) {
-          log.warn("File {} is empty, skipping", file.getOriginalFilename());
-          continue;
-        }
-
-        log.info("Importing csv file format: {} for file: {}", format, file.getOriginalFilename());
-
-        var csvData =
-            csvParser.parseCsvInputStream(
-                file.getInputStream(), file.getOriginalFilename(), format);
-        var transactions = createTransactions(accountId, csvData);
-
-        importedTransactions.addAll(transactions);
+      if (file.isEmpty()) {
+        throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
       }
 
       log.info(
-          "Successfully imported {} total transactions from {} files",
-          importedTransactions.size(),
-          files.size());
+          "Previewing file with extractor '{}': {}",
+          extractor.getFormatKey(),
+          file.getOriginalFilename());
 
-      return importedTransactions;
+      var fileContent = file.getBytes();
+      var extractionResult = extractor.extract(fileContent, accountId);
+
+      log.info(
+          "Successfully previewed {} transactions from file {}",
+          extractionResult.transactions().size(),
+          file.getOriginalFilename());
+
+      return new PreviewResponse(
+          file.getOriginalFilename(),
+          extractor.getFormatKey(),
+          extractionResult.transactions(),
+          extractionResult.warnings());
     } catch (BusinessException businessException) {
       throw businessException;
+    } catch (IOException e) {
+      throw new BusinessException(
+          "Failed to read file: " + e.getMessage(),
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+          e);
     } catch (Exception e) {
       throw new BusinessException(
-          "Failed to import CSV files: " + e.getMessage(),
+          "Failed to preview file: " + e.getMessage(),
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
           e);
     }
-  }
-
-  private List<Transaction> createTransactions(String accountId, CsvData csvData) {
-    var transactions =
-        csvData.rows().stream()
-            .map(r -> transactionMapper.map(csvData.fileName(), csvData.format(), accountId, r))
-            .toList();
-
-    return transactionService.createTransactions(transactions);
   }
 }

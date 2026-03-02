@@ -36,15 +36,3 @@ spring:
           audiences:
             - https://test-api.example.com
 
-# Minimal CSV config for test context - tests should mock/stub as needed
-budgetanalyzer:
-  transaction-service:
-    csv-config-map:
-      test-bank:
-        bank-name: "Test Bank"
-        default-currency-iso-code: "USD"
-        credit-header: "Credit"
-        debit-header: "Debit"
-        date-header: "Date"
-        date-format: "MM/dd/uuuu"
-        description-header: "Description"

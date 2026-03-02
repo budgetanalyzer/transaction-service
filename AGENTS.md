@@ -40,10 +40,10 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 **This service follows standard Budget Analyzer Spring Boot conventions.** Uses layered architecture (Controller → Service → Repository) with dependency injection, declarative transactions, and JPA for data access.
 
 **When to consult service-common documentation:**
-- **Implementing new features** → Read [service-common/CLAUDE.md](../service-common/CLAUDE.md) for architecture patterns
-- **Handling errors** → See [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
-- **Writing tests** → See [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
-- **Code quality issues** → See [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
+- **Implementing new features** → Read [service-common/AGENTS.md](../service-common/AGENTS.md) for architecture patterns
+- **Handling errors** → Read [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
+- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
+- **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
 
 **Quick reference:**
 - Naming: `*Controller`, `*Service`, `*ServiceImpl`, `*Repository`
@@ -58,27 +58,28 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 
 **The most sophisticated feature of this service** - Configuration-driven CSV parsing for multiple banks.
 
-**Pattern**: YAML-based format configuration eliminates code changes when adding new banks. Supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank).
+**Pattern**: Database-driven format configuration via `statement_format` table. Supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). Also supports PDF statement extraction.
 
 **When to consult documentation:**
 - **Adding new bank formats** → Read [CSV Import Guide](docs/csv-import.md) for configuration examples and step-by-step instructions
-- **Troubleshooting import errors** → See [Troubleshooting section](docs/csv-import.md#troubleshooting) for common issues
-- **Understanding amount patterns** → Review [Amount Column Patterns](docs/csv-import.md#amount-column-patterns)
+- **Troubleshooting import errors** → Read [Troubleshooting section](docs/csv-import.md#troubleshooting) for common issues
+- **Understanding amount patterns** → Read [Amount Column Patterns](docs/csv-import.md#amount-column-patterns)
 
 **Quick reference:**
-- Currently supported: Capital One, Bangkok Bank (2 formats), Truist
-- Configuration: `application.yml` under `budget-analyzer.csv-config-map`
+- Currently supported: Capital One (PDF), Bangkok Bank (CSV format)
+- Configuration: `statement_format` table (see `StatementFormatService`)
+- API: `GET /v1/statement-formats` to list formats, `POST` to create new formats
 - Endpoint: `POST /v1/transactions/import`
 - Multi-file support with transactional rollback
-- No code changes needed for new banks
+- No code changes needed for new CSV banks
 
 **Discovery:**
 ```bash
-# View configured formats
-cat src/main/resources/application.yml | grep -A 10 "csv-config-map"
+# View statement format entity
+cat src/main/java/org/budgetanalyzer/transaction/domain/StatementFormat.java
 
-# Find CSV mapper
-cat src/main/java/org/budgetanalyzer/budgetanalyzer/service/impl/CsvTransactionMapper.java
+# View format service
+cat src/main/java/org/budgetanalyzer/transaction/service/StatementFormatService.java
 ```
 
 ### Advanced Transaction Search
@@ -198,8 +199,8 @@ docker compose up
 # Find all REST endpoints
 grep -r "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" src/main/java/*/api/
 
-# View CSV configuration
-cat src/main/resources/application.yml | grep -A 20 "csv-config-map"
+# View statement format migration (seed data)
+cat src/main/resources/db/migration/V7__add_statement_format.sql
 
 # Check service dependencies
 ./gradlew dependencies | grep "org.budgetanalyzer"
@@ -265,7 +266,17 @@ cd ../transaction-service
 - Always test CSV imports with real bank export samples
 - JPA Specifications enable dynamic search queries - see `repository/spec/`
 - Use soft-delete pattern - never hard delete transactions
-- For code quality standards and build commands, see [service-common/CLAUDE.md](../service-common/CLAUDE.md)
+- For code quality standards and build commands, see [service-common/AGENTS.md](../service-common/AGENTS.md)
+
+## Honest Discourse
+
+Do not over-validate ideas. The user wants honest pushback, not agreement.
+
+- If something seems wrong, say so directly
+- Distinguish "novel" from "obvious in retrospect"
+- Push back on vague claims — ask for concrete constraints
+- Don't say "great question" or "that's a really interesting point"
+- Skip the preamble and caveats — just answer
 
 ---
 
@@ -274,21 +285,8 @@ cd ../transaction-service
 *The relative paths in this document are optimized for Claude Code. When viewing on GitHub, use these links to access other repositories:*
 
 - [Service-Common Repository](https://github.com/budgetanalyzer/service-common)
-- [Service-Common CLAUDE.md](https://github.com/budgetanalyzer/service-common/blob/main/CLAUDE.md)
+- [Service-Common AGENTS.md](https://github.com/budgetanalyzer/service-common/blob/main/AGENTS.md)
 - [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
 - [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
 - [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)
 
-## Web Search Protocol
-
-BEFORE any WebSearch tool call:
-1. Read `Today's date` from `<env>` block
-2. Extract the current year
-3. Use current year in queries about "latest", "best", "current" topics
-4. NEVER use previous years unless explicitly searching historical content
-
-FAILURE MODE: Training data defaults to 2023/2024. Override with `<env>` year.
-
-## Conversation Capture
-
-When the user asks to save this conversation, write it to `/workspace/architecture-conversations/conversations/` following the format in INDEX.md.
