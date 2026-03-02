@@ -9,7 +9,6 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.junit.jupiter.api.Test;
 
 /**
  * Generates anonymized PDF test fixtures for Capital One statement extractors.
@@ -27,7 +26,6 @@ class TestFixtureGenerator {
   private static final float LEFT_MARGIN = 50f;
   private static final float TOP_START = 750f;
 
-  @Test
   void generateAllFixtures() throws Exception {
     Files.createDirectories(FIXTURES_DIR);
     generateCreditMonthlyFixture();
