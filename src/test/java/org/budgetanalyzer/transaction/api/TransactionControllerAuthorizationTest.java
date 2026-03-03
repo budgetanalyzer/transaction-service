@@ -213,11 +213,11 @@ class TransactionControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Admin bypasses @PreAuthorize ====================
+  // ==================== Admin with full permissions (production JWT shape) ====================
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_readEndpoint_returns200() throws Exception {
+  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
+  void admin_readEndpoint_returns200() throws Exception {
     mockMvc
         .perform(
             get("/v1/transactions")
@@ -226,8 +226,8 @@ class TransactionControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_writeEndpoint_returns201() throws Exception {
+  @WithMockUser(authorities = {"transactions:write", "ROLE_ADMIN"})
+  void admin_writeEndpoint_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
@@ -254,18 +254,7 @@ class TransactionControllerAuthorizationTest {
 
   @Test
   @WithMockUser(authorities = {"transactions:delete", "ROLE_ADMIN"})
-  void adminUser_deleteEndpoint_returns204() throws Exception {
-    mockMvc
-        .perform(
-            delete("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
-        .andExpect(status().isNoContent());
-  }
-
-  @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_deleteEndpoint_returns204() throws Exception {
+  void admin_deleteEndpoint_returns204() throws Exception {
     mockMvc
         .perform(
             delete("/v1/transactions/1")
@@ -312,7 +301,7 @@ class TransactionControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
+  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
   void getById_admin_anyTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
     Mockito.when(transactionService.getTransaction(eq(1L), anyString(), eq(true)))

@@ -61,7 +61,7 @@ public class TransactionController {
     this.transactionService = transactionService;
   }
 
-  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(
       summary = "Preview transactions from a file before import",
       description =
@@ -136,7 +136,7 @@ public class TransactionController {
     return transactionImportService.previewFile(format, accountId.orElse(null), file);
   }
 
-  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:write')")
   @Operation(
       summary = "Import a batch of transactions",
       description =
@@ -189,7 +189,7 @@ public class TransactionController {
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
   }
 
-  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transactions", description = "Get all transactions")
   @ApiResponses(
       value = {
@@ -213,7 +213,7 @@ public class TransactionController {
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
-  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transaction", description = "Get transaction by id")
   @ApiResponses(
       value = {
@@ -234,7 +234,7 @@ public class TransactionController {
     return TransactionResponse.from(transaction);
   }
 
-  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:write')")
   @Operation(
       summary = "Update transaction",
       description =
@@ -283,7 +283,7 @@ public class TransactionController {
     return TransactionResponse.from(updated);
   }
 
-  @PreAuthorize("hasAuthority('transactions:delete') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:delete')")
   @Operation(summary = "Delete transaction", description = "Delete transaction by id")
   @ApiResponses(value = {@ApiResponse(responseCode = "204")})
   @DeleteMapping(path = "/{id}")
@@ -296,7 +296,7 @@ public class TransactionController {
     transactionService.deleteTransaction(id, userId, isAdmin);
   }
 
-  @PreAuthorize("hasAuthority('transactions:delete') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:delete')")
   @Operation(
       summary = "Bulk delete transactions",
       description =

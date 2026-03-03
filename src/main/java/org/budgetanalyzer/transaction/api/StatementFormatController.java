@@ -52,7 +52,7 @@ public class StatementFormatController {
     this.statementFormatService = statementFormatService;
   }
 
-  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(
       summary = "List all statement formats",
       description = "Returns all configured statement formats (both enabled and disabled).")
@@ -76,7 +76,7 @@ public class StatementFormatController {
         .toList();
   }
 
-  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(
       summary = "Get statement format details",
       description = "Returns details of a specific statement format by its format key.")

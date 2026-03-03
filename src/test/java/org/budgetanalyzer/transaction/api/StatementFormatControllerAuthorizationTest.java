@@ -118,11 +118,11 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Admin bypasses read @PreAuthorize ====================
+  // ==================== Admin with full permissions (production JWT shape) ====================
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_readEndpoint_returns200() throws Exception {
+  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
+  void admin_readEndpoint_returns200() throws Exception {
     mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isOk());
   }
 

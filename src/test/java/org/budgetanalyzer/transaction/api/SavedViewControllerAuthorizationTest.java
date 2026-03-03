@@ -129,11 +129,11 @@ class SavedViewControllerAuthorizationTest {
         .andExpect(status().isNoContent());
   }
 
-  // ==================== Admin bypasses @PreAuthorize ====================
+  // ==================== Admin with full permissions (production JWT shape) ====================
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_readEndpoint_returns200() throws Exception {
+  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
+  void admin_readEndpoint_returns200() throws Exception {
     mockMvc
         .perform(
             get("/v1/views").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
@@ -141,8 +141,8 @@ class SavedViewControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_writeEndpoint_returns201() throws Exception {
+  @WithMockUser(authorities = {"transactions:write", "ROLE_ADMIN"})
+  void admin_writeEndpoint_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/views")
@@ -161,8 +161,8 @@ class SavedViewControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminOnly_deleteEndpoint_returns204() throws Exception {
+  @WithMockUser(authorities = {"transactions:delete", "ROLE_ADMIN"})
+  void admin_deleteEndpoint_returns204() throws Exception {
     mockMvc
         .perform(
             delete("/v1/views/" + UUID.randomUUID())
