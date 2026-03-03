@@ -47,7 +47,7 @@ class StatementFormatControllerAuthorizationTest {
   // ==================== Read permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
+  @WithMockUser(authorities = {"statementformats:read"})
   void readEndpoint_withReadPermission_returns200() throws Exception {
     mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isOk());
   }
@@ -58,11 +58,11 @@ class StatementFormatControllerAuthorizationTest {
     mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isForbidden());
   }
 
-  // ==================== Admin-only CUD ====================
+  // ==================== Write/Delete permission ====================
 
   @Test
-  @WithMockUser(roles = {"ADMIN"})
-  void adminEndpoint_withAdminRole_returns201() throws Exception {
+  @WithMockUser(authorities = {"statementformats:write"})
+  void writeEndpoint_withWritePermission_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/statement-formats")
@@ -87,7 +87,7 @@ class StatementFormatControllerAuthorizationTest {
 
   @Test
   @WithMockUser(authorities = {"transactions:read", "transactions:write", "transactions:delete"})
-  void adminEndpoint_withUserRole_returns403() throws Exception {
+  void writeEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
             post("/v1/statement-formats")
@@ -112,17 +112,19 @@ class StatementFormatControllerAuthorizationTest {
 
   @Test
   @WithMockUser(authorities = {"transactions:read", "transactions:write", "transactions:delete"})
-  void adminDeleteEndpoint_withUserRole_returns403() throws Exception {
+  void deleteEndpoint_withoutDeletePermission_returns403() throws Exception {
     mockMvc
         .perform(delete("/v1/statement-formats/capital-one").with(csrf()))
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Admin with full permissions (production JWT shape) ====================
+  // ==================== Full statement format permissions (production JWT shape)
+  // ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
-  void admin_readEndpoint_returns200() throws Exception {
+  @WithMockUser(
+      authorities = {"statementformats:read", "statementformats:write", "statementformats:delete"})
+  void readEndpoint_withFullPermissions_returns200() throws Exception {
     mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isOk());
   }
 
