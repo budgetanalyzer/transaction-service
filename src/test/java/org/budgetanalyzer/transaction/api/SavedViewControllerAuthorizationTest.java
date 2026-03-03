@@ -27,11 +27,7 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.service.SavedViewService;
 
 @WebMvcTest(SavedViewController.class)
-@Import({
-  ServletApiExceptionHandler.class,
-  SecurityExceptionHandler.class,
-  MethodSecurityTestConfig.class
-})
+@Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
 class SavedViewControllerAuthorizationTest {
 
   @Autowired private MockMvc mockMvc;

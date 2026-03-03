@@ -37,11 +37,7 @@ import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
 @WebMvcTest(TransactionController.class)
-@Import({
-  ServletApiExceptionHandler.class,
-  SecurityExceptionHandler.class,
-  MethodSecurityTestConfig.class
-})
+@Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
 class TransactionControllerAuthorizationTest {
 
   private static final String USER_ID = "usr_test123";

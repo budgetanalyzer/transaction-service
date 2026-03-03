@@ -24,11 +24,7 @@ import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 
 @WebMvcTest(StatementFormatController.class)
-@Import({
-  ServletApiExceptionHandler.class,
-  SecurityExceptionHandler.class,
-  MethodSecurityTestConfig.class
-})
+@Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
 class StatementFormatControllerAuthorizationTest {
 
   @Autowired private MockMvc mockMvc;

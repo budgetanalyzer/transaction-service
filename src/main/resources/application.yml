@@ -46,13 +46,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # Auth0 issuer URI (abstracted through NGINX /auth/.well-known/openid-configuration)
-          # In production, this will point to NGINX gateway
-          # In development, can point directly to Auth0 or through NGINX
-          issuer-uri: ${AUTH0_ISSUER_URI:https://placeholder.auth0.com/}
-          # JWT audience validation - ensures token was issued for our API
-          audiences:
-            - ${AUTH0_AUDIENCE:https://api.example.org}
+          jwk-set-uri: ${JWKS_URI:http://session-gateway:8081/.well-known/jwks.json}
 
 budgetanalyzer:
   service:

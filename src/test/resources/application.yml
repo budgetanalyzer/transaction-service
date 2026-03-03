@@ -32,7 +32,5 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://test-issuer.example.com/
-          audiences:
-            - https://test-api.example.com
+          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
 
