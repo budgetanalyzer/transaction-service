@@ -52,7 +52,7 @@ public class StatementFormatController {
     this.statementFormatService = statementFormatService;
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
   @Operation(
       summary = "List all statement formats",
       description = "Returns all configured statement formats (both enabled and disabled).")
@@ -76,7 +76,7 @@ public class StatementFormatController {
         .toList();
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
   @Operation(
       summary = "Get statement format details",
       description = "Returns details of a specific statement format by its format key.")
@@ -116,7 +116,7 @@ public class StatementFormatController {
     return StatementFormatResponse.from(statementFormatService.getByFormatKey(formatKey));
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasRole('ADMIN')")
   @Operation(
       summary = "Create a new statement format",
       description =
@@ -168,7 +168,7 @@ public class StatementFormatController {
     return StatementFormatResponse.from(statementFormatService.createFormat(request));
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasRole('ADMIN')")
   @Operation(
       summary = "Update a statement format",
       description =
@@ -201,7 +201,7 @@ public class StatementFormatController {
     return StatementFormatResponse.from(statementFormatService.updateFormat(formatKey, request));
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasRole('ADMIN')")
   @Operation(
       summary = "Disable a statement format",
       description =

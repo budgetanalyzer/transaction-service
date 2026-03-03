@@ -49,7 +49,7 @@ public class SavedViewController {
     this.savedViewService = savedViewService;
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(
       summary = "Create a saved view",
       description = "Creates a new saved view for the current user")
@@ -79,7 +79,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
   @Operation(
       summary = "List saved views",
       description = "Gets all saved views for the current user")
@@ -104,7 +104,7 @@ public class SavedViewController {
         .toList();
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
   @Operation(summary = "Get a saved view", description = "Gets a saved view by ID")
   @ApiResponses(
       value = {
@@ -131,7 +131,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(
       summary = "Update a saved view",
       description = "Updates a saved view's name or criteria")
@@ -161,7 +161,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:delete') or hasRole('ADMIN')")
   @Operation(summary = "Delete a saved view", description = "Deletes a saved view")
   @ApiResponses(
       value = {
@@ -182,7 +182,7 @@ public class SavedViewController {
     savedViewService.deleteView(id, userId);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read') or hasRole('ADMIN')")
   @Operation(
       summary = "Get view transaction IDs",
       description =
@@ -212,7 +212,7 @@ public class SavedViewController {
     return ViewMembershipResponse.from(membership);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(summary = "Pin a transaction", description = "Pins a transaction to the view")
   @ApiResponses(
       value = {
@@ -240,7 +240,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(summary = "Unpin a transaction", description = "Removes a pin from the view")
   @ApiResponses(
       value = {
@@ -268,7 +268,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(
       summary = "Exclude a transaction",
       description = "Excludes a transaction from the view")
@@ -298,7 +298,7 @@ public class SavedViewController {
     return SavedViewResponse.from(view, transactionCount);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write') or hasRole('ADMIN')")
   @Operation(
       summary = "Remove exclusion",
       description =

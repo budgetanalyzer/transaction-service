@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -25,11 +26,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,14 +46,13 @@ import org.budgetanalyzer.transaction.service.TransactionService;
 @WebMvcTest(TransactionController.class)
 @Import(ServletApiExceptionHandler.class)
 @AutoConfigureMockMvc(addFilters = false)
-@SuppressWarnings("removal")
 class TransactionControllerTest {
 
   @Autowired private MockMvc mockMvc;
 
-  @MockBean private TransactionService transactionService;
+  @MockitoBean private TransactionService transactionService;
 
-  @MockBean private TransactionImportService transactionImportService;
+  @MockitoBean private TransactionImportService transactionImportService;
 
   // ==================== GET /v1/transactions/{id} ====================
 
@@ -61,11 +61,14 @@ class TransactionControllerTest {
   void getTransaction_existingId_returns200AndTransaction() throws Exception {
     // Given: a transaction exists
     var transaction = createTransaction(1L, "Coffee Shop", BigDecimal.valueOf(4.50));
-    when(transactionService.getTransaction(1L)).thenReturn(transaction);
+    when(transactionService.getTransaction(eq(1L), anyString(), anyBoolean()))
+        .thenReturn(transaction);
 
     // When/Then: GET returns 200 with transaction
     mockMvc
-        .perform(get("/v1/transactions/1"))
+        .perform(
+            get("/v1/transactions/1")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1))
         .andExpect(jsonPath("$.description").value("Coffee Shop"))
@@ -74,24 +77,26 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.bankName").value("Test Bank"))
         .andExpect(jsonPath("$.currencyIsoCode").value("USD"));
 
-    verify(transactionService, times(1)).getTransaction(1L);
+    verify(transactionService, times(1)).getTransaction(eq(1L), anyString(), anyBoolean());
   }
 
   @Test
   @WithMockUser
   void getTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
-    when(transactionService.getTransaction(9999L))
+    when(transactionService.getTransaction(eq(9999L), anyString(), anyBoolean()))
         .thenThrow(new ResourceNotFoundException("Transaction not found with id: 9999"));
 
     // When/Then: GET returns 404
     mockMvc
-        .perform(get("/v1/transactions/9999"))
+        .perform(
+            get("/v1/transactions/9999")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.type").value("NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
 
-    verify(transactionService, times(1)).getTransaction(9999L);
+    verify(transactionService, times(1)).getTransaction(eq(9999L), anyString(), anyBoolean());
   }
 
   // Note: Testing 401 for unauthenticated requests requires security filters enabled.
@@ -110,11 +115,13 @@ class TransactionControllerTest {
             createTransaction(2L, "Gas", BigDecimal.valueOf(35.00)),
             createTransaction(3L, "Restaurant", BigDecimal.valueOf(75.00)));
 
-    when(transactionService.search(any())).thenReturn(transactions);
+    when(transactionService.search(any(), anyString(), anyBoolean())).thenReturn(transactions);
 
     // When/Then: GET returns 200 with list
     mockMvc
-        .perform(get("/v1/transactions"))
+        .perform(
+            get("/v1/transactions")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(3))
         .andExpect(jsonPath("$[0].id").value(1))
@@ -124,7 +131,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$[2].id").value(3))
         .andExpect(jsonPath("$[2].description").value("Restaurant"));
 
-    verify(transactionService, times(1)).search(any());
+    verify(transactionService, times(1)).search(any(), anyString(), anyBoolean());
   }
 
   // ==================== PATCH /v1/transactions/{id} ====================
@@ -138,7 +145,7 @@ class TransactionControllerTest {
     updatedTransaction.setAccountId("new-account-123");
 
     when(transactionService.updateTransaction(
-            eq(1L), eq("Updated Description"), eq("new-account-123")))
+            eq(1L), anyString(), anyBoolean(), eq("Updated Description"), eq("new-account-123")))
         .thenReturn(updatedTransaction);
 
     var requestBody =
@@ -153,6 +160,7 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             patch("/v1/transactions/1")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -161,14 +169,16 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.accountId").value("new-account-123"));
 
     verify(transactionService, times(1))
-        .updateTransaction(1L, "Updated Description", "new-account-123");
+        .updateTransaction(
+            eq(1L), anyString(), anyBoolean(), eq("Updated Description"), eq("new-account-123"));
   }
 
   @Test
   @WithMockUser
   void updateTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
-    when(transactionService.updateTransaction(eq(9999L), anyString(), any()))
+    when(transactionService.updateTransaction(
+            eq(9999L), anyString(), anyBoolean(), anyString(), any()))
         .thenThrow(new ResourceNotFoundException("Transaction not found with id: 9999"));
 
     var requestBody =
@@ -182,6 +192,7 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             patch("/v1/transactions/9999")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isNotFound())
@@ -189,7 +200,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
 
     verify(transactionService, times(1))
-        .updateTransaction(eq(9999L), eq("New Description"), eq(null));
+        .updateTransaction(eq(9999L), anyString(), anyBoolean(), eq("New Description"), eq(null));
   }
 
   // ==================== DELETE /v1/transactions/{id} ====================
@@ -204,7 +215,8 @@ class TransactionControllerTest {
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123"))
         .andExpect(status().isNoContent());
 
-    verify(transactionService, times(1)).deleteTransaction(eq(1L), eq("auth0|test-user-123"));
+    verify(transactionService, times(1))
+        .deleteTransaction(eq(1L), eq("auth0|test-user-123"), anyBoolean());
   }
 
   @Test
@@ -213,7 +225,7 @@ class TransactionControllerTest {
     // Given: transaction does not exist
     doThrow(new ResourceNotFoundException("Transaction not found with id: 9999"))
         .when(transactionService)
-        .deleteTransaction(eq(9999L), anyString());
+        .deleteTransaction(eq(9999L), anyString(), anyBoolean());
 
     // When/Then: DELETE returns 404
     mockMvc
@@ -224,7 +236,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.type").value("NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
 
-    verify(transactionService, times(1)).deleteTransaction(eq(9999L), anyString());
+    verify(transactionService, times(1)).deleteTransaction(eq(9999L), anyString(), anyBoolean());
   }
 
   // ==================== POST /v1/transactions/bulk-delete ====================
@@ -234,7 +246,8 @@ class TransactionControllerTest {
   void bulkDeleteTransactions_allFound_returns200WithDeletedCount() throws Exception {
     // Given: all transactions exist
     var result = new TransactionService.BulkDeleteResult(3, List.of());
-    when(transactionService.bulkDeleteTransactions(anyList(), anyString())).thenReturn(result);
+    when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
+        .thenReturn(result);
 
     var requestBody =
         """
@@ -255,7 +268,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.notFoundIds").isEmpty());
 
     verify(transactionService, times(1))
-        .bulkDeleteTransactions(List.of(1L, 2L, 3L), "auth0|test-user-123");
+        .bulkDeleteTransactions(eq(List.of(1L, 2L, 3L)), eq("auth0|test-user-123"), anyBoolean());
   }
 
   @Test
@@ -263,7 +276,8 @@ class TransactionControllerTest {
   void bulkDeleteTransactions_someNotFound_returns200WithPartialSuccess() throws Exception {
     // Given: some transactions don't exist
     var result = new TransactionService.BulkDeleteResult(2, List.of(9999L, 8888L));
-    when(transactionService.bulkDeleteTransactions(anyList(), anyString())).thenReturn(result);
+    when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
+        .thenReturn(result);
 
     var requestBody =
         """
@@ -286,7 +300,8 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.notFoundIds[1]").value(8888));
 
     verify(transactionService, times(1))
-        .bulkDeleteTransactions(List.of(1L, 2L, 9999L, 8888L), "auth0|test-user-123");
+        .bulkDeleteTransactions(
+            eq(List.of(1L, 2L, 9999L, 8888L)), eq("auth0|test-user-123"), anyBoolean());
   }
 
   @Test
@@ -425,7 +440,7 @@ class TransactionControllerTest {
             createTransaction(1L, "Transaction 1", BigDecimal.valueOf(10.00)),
             createTransaction(2L, "Transaction 2", BigDecimal.valueOf(20.00)));
     var result = new TransactionService.BatchImportResult(createdTransactions, 0);
-    when(transactionService.batchImport(anyList())).thenReturn(result);
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
 
     var requestBody =
         """
@@ -455,6 +470,7 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isCreated())
@@ -462,7 +478,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.duplicatesSkipped").value(0))
         .andExpect(jsonPath("$.transactions.length()").value(2));
 
-    verify(transactionService, times(1)).batchImport(anyList());
+    verify(transactionService, times(1)).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -528,6 +544,7 @@ class TransactionControllerTest {
     transaction.setAmount(amount);
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
 
     // Note: audit fields (createdAt, updatedAt) are managed by JPA auditing
     // and don't have public setters - they're set automatically by the framework
@@ -546,6 +563,7 @@ class TransactionControllerTest {
     transaction.setAmount(amount);
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
     return transaction;
   }
 

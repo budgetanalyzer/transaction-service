@@ -198,6 +198,7 @@ class TransactionRepositoryIntegrationTest {
     transaction.setAmount(amount);
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
     return transaction;
   }
 
@@ -211,6 +212,7 @@ class TransactionRepositoryIntegrationTest {
     transaction.setAmount(amount);
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
     return transaction;
   }
 }
