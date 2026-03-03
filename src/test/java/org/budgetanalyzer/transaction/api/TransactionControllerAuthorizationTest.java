@@ -1,12 +1,17 @@
 package org.budgetanalyzer.transaction.api;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,9 +27,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
+import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
@@ -35,6 +43,9 @@ import org.budgetanalyzer.transaction.service.TransactionService;
   MethodSecurityTestConfig.class
 })
 class TransactionControllerAuthorizationTest {
+
+  private static final String USER_ID = "usr_test123";
+  private static final String OTHER_USER_ID = "usr_other789";
 
   @Autowired private MockMvc mockMvc;
 
@@ -265,5 +276,151 @@ class TransactionControllerAuthorizationTest {
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isNoContent());
+  }
+
+  // ==================== GET /v1/transactions/{id} ownership ====================
+
+  @Test
+  @WithMockUser(authorities = {"accounts:read"})
+  void getById_withoutReadPermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/1").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"transactions:read"})
+  void getById_withReadPermission_ownTransaction_returns200() throws Exception {
+    var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
+    Mockito.when(transactionService.getTransaction(eq(1L), eq(USER_ID), eq(false)))
+        .thenReturn(transaction);
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/1").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"transactions:read"})
+  void getById_withReadPermission_otherUsersTransaction_returns404() throws Exception {
+    Mockito.when(transactionService.getTransaction(eq(1L), eq(OTHER_USER_ID), eq(false)))
+        .thenThrow(new ResourceNotFoundException("Transaction not found with id: 1"));
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/1")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @WithMockUser(roles = {"ADMIN"})
+  void getById_admin_anyTransaction_returns200() throws Exception {
+    var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
+    Mockito.when(transactionService.getTransaction(eq(1L), anyString(), eq(true)))
+        .thenReturn(transaction);
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/1")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
+        .andExpect(status().isOk());
+  }
+
+  // ==================== PATCH /v1/transactions/{id} ownership ====================
+
+  @Test
+  @WithMockUser(authorities = {"transactions:read"})
+  void updateEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            patch("/v1/transactions/1")
+                .with(csrf())
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\": \"Updated\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"transactions:write"})
+  void updateEndpoint_withWritePermission_ownTransaction_returns200() throws Exception {
+    var transaction = createTestTransaction(1L, "Updated", new BigDecimal("4.50"));
+    Mockito.when(
+            transactionService.updateTransaction(
+                eq(1L), eq(USER_ID), eq(false), eq("Updated"), Mockito.isNull()))
+        .thenReturn(transaction);
+
+    mockMvc
+        .perform(
+            patch("/v1/transactions/1")
+                .with(csrf())
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\": \"Updated\"}"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"transactions:write"})
+  void updateEndpoint_withWritePermission_otherUsersTransaction_returns404() throws Exception {
+    Mockito.when(
+            transactionService.updateTransaction(
+                eq(1L), eq(OTHER_USER_ID), eq(false), eq("Updated"), Mockito.isNull()))
+        .thenThrow(new ResourceNotFoundException("Transaction not found with id: 1"));
+
+    mockMvc
+        .perform(
+            patch("/v1/transactions/1")
+                .with(csrf())
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\": \"Updated\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  // ==================== DELETE /v1/transactions/{id} ownership ====================
+
+  @Test
+  @WithMockUser(authorities = {"transactions:delete"})
+  void deleteEndpoint_withDeletePermission_ownTransaction_returns204() throws Exception {
+    mockMvc
+        .perform(
+            delete("/v1/transactions/1")
+                .with(csrf())
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"transactions:delete"})
+  void deleteEndpoint_withDeletePermission_otherUsersTransaction_returns404() throws Exception {
+    Mockito.doThrow(new ResourceNotFoundException("Transaction not found with id: 1"))
+        .when(transactionService)
+        .deleteTransaction(eq(1L), eq(OTHER_USER_ID), eq(false));
+
+    mockMvc
+        .perform(
+            delete("/v1/transactions/1")
+                .with(csrf())
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID))
+        .andExpect(status().isNotFound());
+  }
+
+  // ==================== Test helpers ====================
+
+  private Transaction createTestTransaction(Long id, String description, BigDecimal amount) {
+    var transaction = new Transaction();
+    transaction.setId(id);
+    transaction.setDescription(description);
+    transaction.setAmount(amount);
+    transaction.setDate(LocalDate.of(2024, 1, 15));
+    transaction.setType(TransactionType.DEBIT);
+    transaction.setBankName("Test Bank");
+    transaction.setCurrencyIsoCode("USD");
+    transaction.setOwnerId(USER_ID);
+    return transaction;
   }
 }
