@@ -498,7 +498,7 @@ class TransactionServiceTest {
             "USD",
             "account-123");
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -532,7 +532,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -575,7 +575,7 @@ class TransactionServiceTest {
 
     // Simulate that dto1's key already exists
     var existingKey = "2024-01-15|100.00|Existing Transaction";
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of(existingKey));
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of(existingKey));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -619,7 +619,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -641,7 +641,7 @@ class TransactionServiceTest {
   @Test
   void batchImport_emptyList_returnsEmptyResult() {
     // Given: empty list
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any())).thenReturn(List.of());
 
     // When: batch import is called with empty list
@@ -704,6 +704,36 @@ class TransactionServiceTest {
               assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
               assertThat(bve.getFieldErrors().get(0).getMessage()).contains("in the future");
             });
+  }
+
+  @Test
+  void batchImport_duplicateDetectionIsPerOwner() {
+    // Given: a transaction
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Transaction 1",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              transactions.get(0).setId(1L);
+              return transactions;
+            });
+
+    // When: batch import is called
+    transactionService.batchImport(List.of(dto), USER_ID);
+
+    // Then: duplicate detection is called with the owner's userId
+    verify(transactionRepository).findExistingDuplicateKeys(any(), org.mockito.ArgumentMatchers.eq(USER_ID));
   }
 
   @Test
