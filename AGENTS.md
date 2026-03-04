@@ -259,7 +259,7 @@ cd ../transaction-service
 
 **Current state**: Minimal coverage, priority areas: CSV import, search filters, soft-delete behavior
 
-## Notes for Claude Code
+## NOTES FOR AI AGENTS
 
 **CRITICAL - Prerequisites First**: Before implementing any plan or feature:
 1. Check for prerequisites in documentation (e.g., "Prerequisites: service-common Enhancement")
