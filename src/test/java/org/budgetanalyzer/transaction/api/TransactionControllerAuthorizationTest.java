@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.api;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -22,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -29,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.service.security.test.JwtTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.domain.Transaction;
@@ -42,6 +45,7 @@ class TransactionControllerAuthorizationTest {
 
   private static final String USER_ID = "usr_test123";
   private static final String OTHER_USER_ID = "usr_other789";
+  private static final Jwt ADMIN_JWT = JwtTestBuilder.admin().build();
 
   @Autowired private MockMvc mockMvc;
 
@@ -216,21 +220,23 @@ class TransactionControllerAuthorizationTest {
   // ==================== Admin with full permissions (production JWT shape) ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
   void admin_readEndpoint_returns200() throws Exception {
     mockMvc
         .perform(
             get("/v1/transactions")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:write", "ROLE_ADMIN"})
   void admin_writeEndpoint_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -253,11 +259,12 @@ class TransactionControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:delete", "ROLE_ADMIN"})
   void admin_deleteEndpoint_returns204() throws Exception {
     mockMvc
         .perform(
             delete("/v1/transactions/1")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isNoContent());
@@ -301,7 +308,6 @@ class TransactionControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
   void getById_admin_anyTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
     Mockito.when(transactionService.getTransaction(eq(1L), anyString(), eq(true)))
@@ -310,6 +316,8 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             get("/v1/transactions/1")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isOk());
   }

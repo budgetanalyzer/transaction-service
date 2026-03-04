@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,11 +17,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.service.security.test.JwtTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.ViewCriteria;
@@ -29,6 +32,8 @@ import org.budgetanalyzer.transaction.service.SavedViewService;
 @WebMvcTest(SavedViewController.class)
 @Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
 class SavedViewControllerAuthorizationTest {
+
+  private static final Jwt ADMIN_JWT = JwtTestBuilder.admin().build();
 
   @Autowired private MockMvc mockMvc;
 
@@ -132,20 +137,23 @@ class SavedViewControllerAuthorizationTest {
   // ==================== Admin with full permissions (production JWT shape) ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "ROLE_ADMIN"})
   void admin_readEndpoint_returns200() throws Exception {
     mockMvc
         .perform(
-            get("/v1/views").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
+            get("/v1/views")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:write", "ROLE_ADMIN"})
   void admin_writeEndpoint_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/views")
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -161,11 +169,12 @@ class SavedViewControllerAuthorizationTest {
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:delete", "ROLE_ADMIN"})
   void admin_deleteEndpoint_returns204() throws Exception {
     mockMvc
         .perform(
             delete("/v1/views/" + UUID.randomUUID())
+                .with(
+                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isNoContent());
