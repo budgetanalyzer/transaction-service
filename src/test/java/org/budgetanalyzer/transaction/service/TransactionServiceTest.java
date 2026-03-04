@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.RETURNS_MOCKS;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -24,7 +28,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -434,9 +437,9 @@ class TransactionServiceTest {
     var capturedSpec = specCaptor.getValue();
 
     // Evaluate the captured spec against mocks to verify owner filter is composed
-    Root<Transaction> root = Mockito.mock(Root.class, Mockito.RETURNS_DEEP_STUBS);
-    CriteriaQuery<?> cq = Mockito.mock(CriteriaQuery.class);
-    CriteriaBuilder cb = Mockito.mock(CriteriaBuilder.class, Mockito.RETURNS_MOCKS);
+    Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
+    CriteriaQuery<?> cq = mock(CriteriaQuery.class);
+    CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
 
     capturedSpec.toPredicate(root, cq, cb);
 
@@ -462,9 +465,9 @@ class TransactionServiceTest {
     var capturedSpec = specCaptor.getValue();
 
     // Evaluate the captured spec against mocks to verify no owner filter
-    Root<Transaction> root = Mockito.mock(Root.class, Mockito.RETURNS_DEEP_STUBS);
-    CriteriaQuery<?> cq = Mockito.mock(CriteriaQuery.class);
-    CriteriaBuilder cb = Mockito.mock(CriteriaBuilder.class, Mockito.RETURNS_MOCKS);
+    Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
+    CriteriaQuery<?> cq = mock(CriteriaQuery.class);
+    CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
 
     capturedSpec.toPredicate(root, cq, cb);
 
@@ -498,7 +501,7 @@ class TransactionServiceTest {
             "USD",
             "account-123");
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -532,7 +535,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -575,7 +578,8 @@ class TransactionServiceTest {
 
     // Simulate that dto1's key already exists
     var existingKey = "2024-01-15|100.00|Existing Transaction";
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of(existingKey));
+    when(transactionRepository.findExistingDuplicateKeys(any(), any()))
+        .thenReturn(Set.of(existingKey));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -619,7 +623,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -641,7 +645,7 @@ class TransactionServiceTest {
   @Test
   void batchImport_emptyList_returnsEmptyResult() {
     // Given: empty list
-    when(transactionRepository.findExistingDuplicateKeys(any())).thenReturn(Set.of());
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
     when(transactionRepository.saveAll(any())).thenReturn(List.of());
 
     // When: batch import is called with empty list
@@ -704,6 +708,36 @@ class TransactionServiceTest {
               assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
               assertThat(bve.getFieldErrors().get(0).getMessage()).contains("in the future");
             });
+  }
+
+  @Test
+  void batchImport_duplicateDetectionIsPerOwner() {
+    // Given: a transaction
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Transaction 1",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              transactions.get(0).setId(1L);
+              return transactions;
+            });
+
+    // When: batch import is called
+    transactionService.batchImport(List.of(dto), USER_ID);
+
+    // Then: duplicate detection is called with the owner's userId
+    verify(transactionRepository).findExistingDuplicateKeys(any(), eq(USER_ID));
   }
 
   @Test

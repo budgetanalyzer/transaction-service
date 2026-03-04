@@ -13,13 +13,15 @@ public interface TransactionRepository
     extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction> {
 
   /**
-   * Finds all duplicate keys (date|amount|description) that exist in the database.
+   * Finds all duplicate keys (date|amount|description) that exist in the database for a specific
+   * owner.
    *
    * <p>Used for bulk duplicate detection during batch import. Returns the composite keys for any
-   * transactions that match the provided set of keys.
+   * transactions that match the provided set of keys and belong to the specified owner.
    *
    * @param keys set of composite keys in format "date|amount|description"
-   * @return set of keys that already exist in the database
+   * @param ownerId the ID of the transaction owner
+   * @return set of keys that already exist in the database for this owner
    */
   @Query(
       value =
@@ -27,8 +29,10 @@ public interface TransactionRepository
       SELECT DISTINCT CONCAT(date, '|', amount, '|', description) as duplicate_key
       FROM transaction
       WHERE deleted = false
+        AND owner_id = :ownerId
         AND CONCAT(date, '|', amount, '|', description) IN (:keys)
       """,
       nativeQuery = true)
-  Set<String> findExistingDuplicateKeys(@Param("keys") Set<String> keys);
+  Set<String> findExistingDuplicateKeys(
+      @Param("keys") Set<String> keys, @Param("ownerId") String ownerId);
 }

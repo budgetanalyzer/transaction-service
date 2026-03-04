@@ -1,5 +1,7 @@
 package org.budgetanalyzer.transaction.api;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -10,7 +12,6 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -33,8 +34,8 @@ class StatementFormatControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    Mockito.when(statementFormatService.getAllFormats()).thenReturn(List.of());
-    Mockito.when(statementFormatService.createFormat(Mockito.any())).thenReturn(createStubFormat());
+    when(statementFormatService.getAllFormats()).thenReturn(List.of());
+    when(statementFormatService.createFormat(any())).thenReturn(createStubFormat());
   }
 
   // ==================== No authentication ====================

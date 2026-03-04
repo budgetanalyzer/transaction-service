@@ -1,5 +1,8 @@
 package org.budgetanalyzer.transaction.api;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -12,7 +15,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -42,10 +44,9 @@ class SavedViewControllerAuthorizationTest {
   @BeforeEach
   void setupServiceMocks() {
     var stubView = createStubView();
-    Mockito.when(savedViewService.createView(Mockito.anyString(), Mockito.any()))
-        .thenReturn(stubView);
-    Mockito.when(savedViewService.getViewsForUser(Mockito.anyString())).thenReturn(List.of());
-    Mockito.when(savedViewService.countViewTransactions(Mockito.any())).thenReturn(0L);
+    when(savedViewService.createView(anyString(), any())).thenReturn(stubView);
+    when(savedViewService.getViewsForUser(anyString())).thenReturn(List.of());
+    when(savedViewService.countViewTransactions(any())).thenReturn(0L);
   }
 
   // ==================== No authentication ====================

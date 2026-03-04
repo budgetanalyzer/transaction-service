@@ -200,8 +200,8 @@ public class TransactionService {
    *   <li>Non-duplicate transactions are persisted atomically
    * </ul>
    *
-   * <p>Duplicate detection is global (not scoped per-owner) to prevent the same bank transaction
-   * from being imported twice by different users sharing a bank account.
+   * <p>Duplicate detection is scoped per-owner, allowing different users to import the same
+   * transactions independently.
    *
    * @param transactions the list of transaction DTOs to import
    * @param userId the ID of the user who will own the imported transactions
@@ -219,7 +219,7 @@ public class TransactionService {
     var transactionKeys =
         transactions.stream().map(this::buildDuplicateKey).collect(Collectors.toSet());
 
-    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys);
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys, userId);
     log.debug("Found {} existing duplicate keys", existingKeys.size());
 
     // Phase 3: Filter out duplicates and persist non-duplicates

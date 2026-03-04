@@ -1,7 +1,13 @@
 package org.budgetanalyzer.transaction.api;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -17,7 +23,6 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -55,21 +60,15 @@ class TransactionControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    Mockito.when(
-            transactionService.search(Mockito.any(), Mockito.anyString(), Mockito.anyBoolean()))
-        .thenReturn(List.of());
+    when(transactionService.search(any(), anyString(), anyBoolean())).thenReturn(List.of());
 
-    Mockito.when(transactionService.batchImport(Mockito.anyList(), Mockito.anyString()))
+    when(transactionService.batchImport(anyList(), anyString()))
         .thenReturn(new TransactionService.BatchImportResult(List.of(), 0));
 
-    Mockito.when(
-            transactionService.bulkDeleteTransactions(
-                Mockito.anyList(), Mockito.anyString(), Mockito.anyBoolean()))
+    when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
 
-    Mockito.when(
-            transactionImportService.previewFile(
-                Mockito.anyString(), Mockito.any(), Mockito.any(MultipartFile.class)))
+    when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
         .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));
   }
 
@@ -285,8 +284,7 @@ class TransactionControllerAuthorizationTest {
   @WithMockUser(authorities = {"transactions:read"})
   void getById_withReadPermission_ownTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
-    Mockito.when(transactionService.getTransaction(eq(1L), eq(USER_ID), eq(false)))
-        .thenReturn(transaction);
+    when(transactionService.getTransaction(eq(1L), eq(USER_ID), eq(false))).thenReturn(transaction);
 
     mockMvc
         .perform(
@@ -297,7 +295,7 @@ class TransactionControllerAuthorizationTest {
   @Test
   @WithMockUser(authorities = {"transactions:read"})
   void getById_withReadPermission_otherUsersTransaction_returns404() throws Exception {
-    Mockito.when(transactionService.getTransaction(eq(1L), eq(OTHER_USER_ID), eq(false)))
+    when(transactionService.getTransaction(eq(1L), eq(OTHER_USER_ID), eq(false)))
         .thenThrow(new ResourceNotFoundException("Transaction not found with id: 1"));
 
     mockMvc
@@ -310,8 +308,7 @@ class TransactionControllerAuthorizationTest {
   @Test
   void getById_admin_anyTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
-    Mockito.when(transactionService.getTransaction(eq(1L), anyString(), eq(true)))
-        .thenReturn(transaction);
+    when(transactionService.getTransaction(eq(1L), anyString(), eq(true))).thenReturn(transaction);
 
     mockMvc
         .perform(
@@ -341,9 +338,8 @@ class TransactionControllerAuthorizationTest {
   @WithMockUser(authorities = {"transactions:write"})
   void updateEndpoint_withWritePermission_ownTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Updated", new BigDecimal("4.50"));
-    Mockito.when(
-            transactionService.updateTransaction(
-                eq(1L), eq(USER_ID), eq(false), eq("Updated"), Mockito.isNull()))
+    when(transactionService.updateTransaction(
+            eq(1L), eq(USER_ID), eq(false), eq("Updated"), isNull()))
         .thenReturn(transaction);
 
     mockMvc
@@ -359,9 +355,8 @@ class TransactionControllerAuthorizationTest {
   @Test
   @WithMockUser(authorities = {"transactions:write"})
   void updateEndpoint_withWritePermission_otherUsersTransaction_returns404() throws Exception {
-    Mockito.when(
-            transactionService.updateTransaction(
-                eq(1L), eq(OTHER_USER_ID), eq(false), eq("Updated"), Mockito.isNull()))
+    when(transactionService.updateTransaction(
+            eq(1L), eq(OTHER_USER_ID), eq(false), eq("Updated"), isNull()))
         .thenThrow(new ResourceNotFoundException("Transaction not found with id: 1"));
 
     mockMvc
@@ -390,7 +385,7 @@ class TransactionControllerAuthorizationTest {
   @Test
   @WithMockUser(authorities = {"transactions:delete"})
   void deleteEndpoint_withDeletePermission_otherUsersTransaction_returns404() throws Exception {
-    Mockito.doThrow(new ResourceNotFoundException("Transaction not found with id: 1"))
+    doThrow(new ResourceNotFoundException("Transaction not found with id: 1"))
         .when(transactionService)
         .deleteTransaction(eq(1L), eq(OTHER_USER_ID), eq(false));
 

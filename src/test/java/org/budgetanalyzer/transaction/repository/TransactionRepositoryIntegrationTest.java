@@ -187,6 +187,58 @@ class TransactionRepositoryIntegrationTest {
         .doesNotContain("Deleted");
   }
 
+  // ==================== Duplicate Detection ====================
+
+  @Test
+  void findExistingDuplicateKeys_findsMatchingKeysForOwner() {
+    // Given: a transaction exists for user-1
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for duplicates for the same owner
+    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: the duplicate key is found
+    assertThat(existingKeys).containsExactly("2024-01-15|100.00|Coffee Shop");
+  }
+
+  @Test
+  void findExistingDuplicateKeys_doesNotFindKeysForDifferentOwner() {
+    // Given: a transaction exists for user-1
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for duplicates for a different owner
+    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "different-user");
+
+    // Then: no duplicates are found (different user can import same transaction)
+    assertThat(existingKeys).isEmpty();
+  }
+
+  @Test
+  void findExistingDuplicateKeys_excludesDeletedTransactions() {
+    // Given: a deleted transaction exists
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+    transaction.markDeleted("test-user");
+    transactionRepository.save(transaction);
+
+    // When: checking for duplicates for the same owner
+    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: no duplicates are found (deleted transactions don't count)
+    assertThat(existingKeys).isEmpty();
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(String description, BigDecimal amount) {
