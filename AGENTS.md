@@ -52,6 +52,12 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - Validation: Bean Validation (@Valid) for request DTOs, business validation in service layer
 - Dependencies: Inherit from service-common parent POM
 
+### Authorization
+
+All endpoints are protected by fine-grained JWT-based permissions. The session-gateway mints JWTs containing user roles and atomic permissions (e.g., `transactions:read`, `transactions:write`) sourced from the permission-service. Controllers enforce access via `@PreAuthorize` annotations.
+
+See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC model, role definitions, and permission details. See also the [Permission Service README](../permission-service/README.md) for an overview.
+
 ## Service-Specific Patterns
 
 ### CSV Import System
@@ -289,4 +295,9 @@ Do not over-validate ideas. The user wants honest pushback, not agreement.
 - [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
 - [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
 - [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)
+- [Session Gateway Repository](https://github.com/budgetanalyzer/session-gateway)
+- [Session Gateway AGENTS.md](https://github.com/budgetanalyzer/session-gateway/blob/main/AGENTS.md)
+- [Token Validation Service Repository](https://github.com/budgetanalyzer/token-validation-service)
+- [Permission Service Repository](https://github.com/budgetanalyzer/permission-service)
+- [Permission Service AGENTS.md](https://github.com/budgetanalyzer/permission-service/blob/main/AGENTS.md)
 
