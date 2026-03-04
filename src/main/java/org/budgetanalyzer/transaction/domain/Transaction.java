@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.domain;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -47,6 +48,10 @@ public class Transaction extends SoftDeletableEntity {
 
   /** Description of the transaction. */
   @NotNull private String description;
+
+  /** The user who owns this transaction. Used for resource-level authorization. */
+  @Column(name = "owner_id", length = 50, nullable = false)
+  private String ownerId;
 
   /** The file import this transaction came from (nullable for manually created transactions). */
   @ManyToOne(fetch = FetchType.LAZY)
@@ -115,6 +120,14 @@ public class Transaction extends SoftDeletableEntity {
 
   public void setDescription(String description) {
     this.description = description;
+  }
+
+  public String getOwnerId() {
+    return ownerId;
+  }
+
+  public void setOwnerId(String ownerId) {
+    this.ownerId = ownerId;
   }
 
   public FileImport getFileImport() {

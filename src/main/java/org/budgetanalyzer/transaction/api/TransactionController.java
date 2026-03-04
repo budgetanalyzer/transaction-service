@@ -56,12 +56,12 @@ public class TransactionController {
   private final TransactionService transactionService;
 
   public TransactionController(
-      TransactionImportService csvService, TransactionService transactionService) {
-    this.transactionImportService = csvService;
+      TransactionImportService transactionImportService, TransactionService transactionService) {
+    this.transactionImportService = transactionImportService;
     this.transactionService = transactionService;
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(
       summary = "Preview transactions from a file before import",
       description =
@@ -136,7 +136,7 @@ public class TransactionController {
     return transactionImportService.previewFile(format, accountId.orElse(null), file);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write')")
   @Operation(
       summary = "Import a batch of transactions",
       description =
@@ -180,12 +180,8 @@ public class TransactionController {
       @Valid @RequestBody BatchImportRequest request) {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
-    var result = transactionService.batchImport(request.transactions());
-
-    log.info(
-        "Batch import completed: {} created, {} duplicates skipped",
-        result.createdTransactions().size(),
-        result.duplicatesSkipped());
+    var userId = getCurrentUserId();
+    var result = transactionService.batchImport(request.transactions(), userId);
 
     return new BatchImportResponse(
         result.createdTransactions().size(),
@@ -193,7 +189,7 @@ public class TransactionController {
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transactions", description = "Get all transactions")
   @ApiResponses(
       value = {
@@ -208,24 +204,16 @@ public class TransactionController {
       })
   @GetMapping(path = "", produces = "application/json")
   public List<TransactionResponse> getTransactions() {
-    // Log authenticated user information (for future data-level authorization)
-    var userId = SecurityContextUtil.getCurrentUserId();
-    var userEmail = SecurityContextUtil.getCurrentUserEmail();
-    log.info(
-        "Received get transactions request - User ID: {}, Email: {}",
-        userId.orElse("anonymous"),
-        userEmail.orElse("N/A"));
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    log.info("Received get transactions request - User ID: {}, isAdmin: {}", userId, isAdmin);
 
-    var transactions =
-        transactionService.search(
-            new TransactionFilter(
-                null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null));
+    var transactions = transactionService.search(TransactionFilter.empty(), userId, isAdmin);
 
     return transactions.stream().map(TransactionResponse::from).toList();
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transaction", description = "Get transaction by id")
   @ApiResponses(
       value = {
@@ -240,11 +228,13 @@ public class TransactionController {
   public TransactionResponse getTransaction(@PathVariable("id") Long id) {
     log.info("Received get transaction request id: {}", id);
 
-    var transaction = transactionService.getTransaction(id);
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    var transaction = transactionService.getTransaction(id, userId, isAdmin);
     return TransactionResponse.from(transaction);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:write')")
   @Operation(
       summary = "Update transaction",
       description =
@@ -285,12 +275,15 @@ public class TransactionController {
         request.description(),
         request.accountId());
 
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
     var updated =
-        transactionService.updateTransaction(id, request.description(), request.accountId());
+        transactionService.updateTransaction(
+            id, userId, isAdmin, request.description(), request.accountId());
     return TransactionResponse.from(updated);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:delete')")
   @Operation(summary = "Delete transaction", description = "Delete transaction by id")
   @ApiResponses(value = {@ApiResponse(responseCode = "204")})
   @DeleteMapping(path = "/{id}")
@@ -298,13 +291,12 @@ public class TransactionController {
   public void deleteTransaction(@PathVariable("id") Long id) {
     log.info("Received delete transaction request id: {}", id);
 
-    var deletedBy =
-        SecurityContextUtil.getCurrentUserId()
-            .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
-    transactionService.deleteTransaction(id, deletedBy);
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    transactionService.deleteTransaction(id, userId, isAdmin);
   }
 
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('transactions:delete')")
   @Operation(
       summary = "Bulk delete transactions",
       description =
@@ -361,11 +353,10 @@ public class TransactionController {
   public BulkDeleteResponse bulkDeleteTransactions(@Valid @RequestBody BulkDeleteRequest request) {
     log.info("Received bulk delete request for {} transaction IDs", request.ids().size());
 
-    var deletedBy =
-        SecurityContextUtil.getCurrentUserId()
-            .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
 
-    var result = transactionService.bulkDeleteTransactions(request.ids(), deletedBy);
+    var result = transactionService.bulkDeleteTransactions(request.ids(), userId, isAdmin);
 
     log.info(
         "Bulk delete completed: {} deleted, {} not found",
@@ -373,5 +364,10 @@ public class TransactionController {
         result.notFoundIds().size());
 
     return new BulkDeleteResponse(result.deletedCount(), result.notFoundIds());
+  }
+
+  private String getCurrentUserId() {
+    return SecurityContextUtil.getCurrentUserId()
+        .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
   }
 }

@@ -520,6 +520,7 @@ class SavedViewServiceTest {
     transaction.setAmount(BigDecimal.valueOf(100.00));
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
     try {
       var createdAtField = transaction.getClass().getSuperclass().getDeclaredField("createdAt");
       createdAtField.setAccessible(true);

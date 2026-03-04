@@ -38,53 +38,62 @@ public class TransactionService {
   }
 
   /**
-   * Creates a new transaction.
+   * Creates a new transaction, assigning ownership to the specified user.
    *
    * @param transaction the transaction to create
+   * @param userId the ID of the user who will own this transaction
    * @return the created transaction
    */
   @Transactional
-  public Transaction createTransaction(Transaction transaction) {
+  public Transaction createTransaction(Transaction transaction, String userId) {
+    transaction.setOwnerId(userId);
     return transactionRepository.save(transaction);
   }
 
   /**
-   * Creates multiple transactions in batch.
+   * Creates multiple transactions in batch, assigning ownership to the specified user.
    *
    * @param transactions the list of transactions to create
+   * @param userId the ID of the user who will own these transactions
    * @return the list of created transactions
    */
   @Transactional
-  public List<Transaction> createTransactions(List<Transaction> transactions) {
+  public List<Transaction> createTransactions(List<Transaction> transactions, String userId) {
+    transactions.forEach(t -> t.setOwnerId(userId));
     return transactionRepository.saveAll(transactions);
   }
 
   /**
-   * Retrieves a transaction by its ID.
+   * Retrieves a transaction by its ID, enforcing ownership for non-admin users.
    *
    * @param id the transaction ID
+   * @param userId the ID of the requesting user
+   * @param isAdmin whether the requesting user has admin role
    * @return the transaction
+   * @throws ResourceNotFoundException if the transaction does not exist or the user is not the
+   *     owner
    */
-  public Transaction getTransaction(Long id) {
-    return transactionRepository
-        .findByIdActive(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
+  public Transaction getTransaction(Long id, String userId, boolean isAdmin) {
+    return getTransactionWithOwnerCheck(id, userId, isAdmin);
   }
 
   /**
-   * Updates mutable fields of an existing transaction.
+   * Updates mutable fields of an existing transaction, enforcing ownership for non-admin users.
    *
    * <p>Only updates fields that are non-null in the provided transaction object. Immutable fields
    * (date, amount, type, currencyIsoCode, bankName) cannot be updated.
    *
    * @param id the transaction ID
+   * @param userId the ID of the requesting user
+   * @param isAdmin whether the requesting user has admin role
    * @param description the new description (null to keep existing)
    * @param accountId the new account ID (null to keep existing)
    * @return the updated transaction
    */
   @Transactional
-  public Transaction updateTransaction(Long id, String description, String accountId) {
-    var existingTransaction = getTransaction(id);
+  public Transaction updateTransaction(
+      Long id, String userId, boolean isAdmin, String description, String accountId) {
+    var existingTransaction = getTransactionWithOwnerCheck(id, userId, isAdmin);
 
     if (description != null) {
       existingTransaction.setDescription(description);
@@ -98,15 +107,16 @@ public class TransactionService {
   }
 
   /**
-   * Soft-deletes a transaction by marking it as deleted.
+   * Soft-deletes a transaction by marking it as deleted, enforcing ownership for non-admin users.
    *
    * @param id the transaction ID
-   * @param deletedBy the user ID of who is performing the deletion
+   * @param userId the ID of the requesting user (also used as deletedBy)
+   * @param isAdmin whether the requesting user has admin role
    */
   @Transactional
-  public void deleteTransaction(Long id, String deletedBy) {
-    var transaction = getTransaction(id);
-    transaction.markDeleted(deletedBy);
+  public void deleteTransaction(Long id, String userId, boolean isAdmin) {
+    var transaction = getTransactionWithOwnerCheck(id, userId, isAdmin);
+    transaction.markDeleted(userId);
 
     transactionRepository.save(transaction);
   }
@@ -114,21 +124,23 @@ public class TransactionService {
   /**
    * Bulk soft-deletes multiple transactions by marking them as deleted.
    *
-   * <p>This method processes all provided IDs and attempts to soft-delete each transaction. Unlike
-   * single delete, this method does not throw an exception for non-existent IDs. Instead, it
-   * returns a result object containing both the count of successfully deleted transactions and a
-   * list of IDs that were not found.
+   * <p>This method processes all provided IDs and attempts to soft-delete each transaction. For
+   * non-admin users, transactions owned by other users are treated as not found (returning 404
+   * rather than 403 to avoid leaking resource existence). Unlike single delete, this method does
+   * not throw an exception for non-existent IDs. Instead, it returns a result object containing
+   * both the count of successfully deleted transactions and a list of IDs that were not found.
    *
    * <p>All deletions occur within a single transaction. If any error occurs during processing
    * (other than "not found"), all changes will be rolled back.
    *
    * @param ids the list of transaction IDs to delete
-   * @param deletedBy the user ID of who is performing the deletion
+   * @param userId the ID of the requesting user (also used as deletedBy)
+   * @param isAdmin whether the requesting user has admin role
    * @return a BulkDeleteResult containing the count of deleted items and list of not found IDs
    */
   @Transactional
-  public BulkDeleteResult bulkDeleteTransactions(List<Long> ids, String deletedBy) {
-    var notFoundIds = new java.util.ArrayList<Long>();
+  public BulkDeleteResult bulkDeleteTransactions(List<Long> ids, String userId, boolean isAdmin) {
+    var notFoundIds = new ArrayList<Long>();
     var deletedCount = 0;
 
     for (Long id : ids) {
@@ -138,9 +150,13 @@ public class TransactionService {
         notFoundIds.add(id);
       } else {
         var transaction = transactionOpt.get();
-        transaction.markDeleted(deletedBy);
-        transactionRepository.save(transaction);
-        deletedCount++;
+        if (!isAdmin && !transaction.getOwnerId().equals(userId)) {
+          notFoundIds.add(id);
+        } else {
+          transaction.markDeleted(userId);
+          transactionRepository.save(transaction);
+          deletedCount++;
+        }
       }
     }
 
@@ -156,17 +172,24 @@ public class TransactionService {
   public record BulkDeleteResult(int deletedCount, List<Long> notFoundIds) {}
 
   /**
-   * Searches for transactions matching the filter criteria.
+   * Searches for transactions matching the filter criteria. Non-admin users only see their own
+   * transactions.
    *
    * @param filter the search filter criteria
+   * @param userId the ID of the requesting user
+   * @param isAdmin whether the requesting user has admin role
    * @return the list of matching transactions
    */
-  public List<Transaction> search(TransactionFilter filter) {
-    return transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+  public List<Transaction> search(TransactionFilter filter, String userId, boolean isAdmin) {
+    var spec = TransactionSpecifications.withFilter(filter);
+    if (!isAdmin) {
+      spec = spec.and(TransactionSpecifications.byOwner(userId));
+    }
+    return transactionRepository.findAllActive(spec);
   }
 
   /**
-   * Imports a batch of transactions from preview DTOs.
+   * Imports a batch of transactions from preview DTOs, assigning ownership to the specified user.
    *
    * <p>This method implements the batch import with all-or-nothing semantics:
    *
@@ -177,12 +200,16 @@ public class TransactionService {
    *   <li>Non-duplicate transactions are persisted atomically
    * </ul>
    *
+   * <p>Duplicate detection is global (not scoped per-owner) to prevent the same bank transaction
+   * from being imported twice by different users sharing a bank account.
+   *
    * @param transactions the list of transaction DTOs to import
+   * @param userId the ID of the user who will own the imported transactions
    * @return result containing created transactions and duplicate count
    * @throws BatchValidationException if any transaction fails business validation
    */
   @Transactional
-  public BatchImportResult batchImport(List<PreviewTransaction> transactions) {
+  public BatchImportResult batchImport(List<PreviewTransaction> transactions, String userId) {
     log.info("Starting batch import of {} transactions", transactions.size());
 
     // Phase 1: Business validation (beyond Jakarta Bean Validation)
@@ -209,7 +236,9 @@ public class TransactionService {
       }
 
       seenKeys.add(key);
-      toCreate.add(mapToEntity(dto));
+      var entity = mapToEntity(dto);
+      entity.setOwnerId(userId);
+      toCreate.add(entity);
     }
 
     var created = transactionRepository.saveAll(toCreate);
@@ -307,6 +336,30 @@ public class TransactionService {
     transaction.setAccountId(dto.accountId());
     // Note: category from preview DTO is not stored (Transaction entity doesn't have this field)
     // Note: fileImport is null for batch imports (not file-based)
+    return transaction;
+  }
+
+  /**
+   * Retrieves a transaction and validates ownership. Non-admin users can only access their own
+   * transactions. Ownership violations throw ResourceNotFoundException (404) rather than 403 to
+   * avoid leaking resource existence.
+   *
+   * @param id the transaction ID
+   * @param userId the ID of the requesting user
+   * @param isAdmin whether the requesting user has admin role
+   * @return the transaction
+   * @throws ResourceNotFoundException if the transaction does not exist or the user is not the
+   *     owner
+   */
+  private Transaction getTransactionWithOwnerCheck(Long id, String userId, boolean isAdmin) {
+    var transaction =
+        transactionRepository
+            .findByIdActive(id)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("Transaction not found with id: " + id));
+    if (!isAdmin && !transaction.getOwnerId().equals(userId)) {
+      throw new ResourceNotFoundException("Transaction not found with id: " + id);
+    }
     return transaction;
   }
 

@@ -49,4 +49,11 @@ public record TransactionFilter(
         Instant updatedAfter,
     @Schema(description = "End of last update timestamp range", example = "2025-10-15T00:00:00Z")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        Instant updatedBefore) {}
+        Instant updatedBefore) {
+
+  /** Creates an empty filter with all criteria set to null. */
+  public static TransactionFilter empty() {
+    return new TransactionFilter(
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+  }
+}

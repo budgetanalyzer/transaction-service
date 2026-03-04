@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.repository.spec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import jakarta.persistence.criteria.Predicate;
 
@@ -111,6 +112,17 @@ public class TransactionSpecifications {
 
       return cb.and(predicates.toArray(new Predicate[0]));
     };
+  }
+
+  /**
+   * Creates a specification that filters transactions by owner ID (exact match).
+   *
+   * @param ownerId the owner ID to filter by
+   * @return a specification matching transactions owned by the given user
+   */
+  public static Specification<Transaction> byOwner(String ownerId) {
+    Objects.requireNonNull(ownerId, "ownerId must not be null");
+    return (root, query, cb) -> cb.equal(root.get("ownerId"), ownerId);
   }
 
   /**

@@ -378,6 +378,34 @@ class TransactionSpecificationsIntegrationTest {
     assertThat(results).hasSize(3);
   }
 
+  // ==================== Owner Filter Tests ====================
+
+  @Test
+  void byOwner_matchesOnlyOwnedTransactions() {
+    // Given: transactions owned by different users
+    var owned1 = createTransaction("Owned 1", BigDecimal.TEN);
+    owned1.setOwnerId("user-A");
+    transactionRepository.save(owned1);
+
+    var owned2 = createTransaction("Owned 2", BigDecimal.TEN);
+    owned2.setOwnerId("user-A");
+    transactionRepository.save(owned2);
+
+    var other = createTransaction("Other User", BigDecimal.TEN);
+    other.setOwnerId("user-B");
+    transactionRepository.save(other);
+
+    // When: filter by owner "user-A"
+    var spec = TransactionSpecifications.byOwner("user-A");
+    var results = transactionRepository.findAll(spec);
+
+    // Then: only user-A's transactions are returned
+    assertThat(results).hasSize(2);
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Owned 1", "Owned 2");
+  }
+
   // ==================== Edge Cases ====================
 
   @Test
@@ -499,6 +527,7 @@ class TransactionSpecificationsIntegrationTest {
     transaction.setAmount(amount);
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
+    transaction.setOwnerId("test-user");
     return transaction;
   }
 
