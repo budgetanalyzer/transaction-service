@@ -192,8 +192,9 @@ class TransactionRepositoryIntegrationTest {
   @Test
   void findExistingDuplicateKeys_findsMatchingKeysForOwner() {
     // Given: a transaction exists for user-1
-    var transaction = createTransactionWithDetails(
-        LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
     transactionRepository.save(transaction);
 
     // When: checking for duplicates for the same owner
@@ -207,8 +208,9 @@ class TransactionRepositoryIntegrationTest {
   @Test
   void findExistingDuplicateKeys_doesNotFindKeysForDifferentOwner() {
     // Given: a transaction exists for user-1
-    var transaction = createTransactionWithDetails(
-        LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
     transactionRepository.save(transaction);
 
     // When: checking for duplicates for a different owner
@@ -222,8 +224,9 @@ class TransactionRepositoryIntegrationTest {
   @Test
   void findExistingDuplicateKeys_excludesDeletedTransactions() {
     // Given: a deleted transaction exists
-    var transaction = createTransactionWithDetails(
-        LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
     transactionRepository.save(transaction);
     transaction.markDeleted("test-user");
     transactionRepository.save(transaction);
