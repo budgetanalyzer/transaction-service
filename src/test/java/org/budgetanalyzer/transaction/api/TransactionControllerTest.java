@@ -532,6 +532,43 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
   }
 
+  // ==================== GET /v1/transactions/count ====================
+
+  @Test
+  @WithMockUser
+  void countTransactions_returnsCount() throws Exception {
+    // Given: service returns a count
+    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(42L);
+
+    // When/Then: GET returns 200 with count
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(42));
+
+    verify(transactionService, times(1)).countActive(any(), anyString(), anyBoolean());
+  }
+
+  @Test
+  @WithMockUser
+  void countTransactions_withFilterParams_returns200() throws Exception {
+    // Given: service returns a count
+    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(5L);
+
+    // When/Then: GET with filter params returns 200 with count
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .param("bankName", "Test Bank")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(5));
+
+    verify(transactionService, times(1)).countActive(any(), anyString(), anyBoolean());
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(Long id, String description, BigDecimal amount) {

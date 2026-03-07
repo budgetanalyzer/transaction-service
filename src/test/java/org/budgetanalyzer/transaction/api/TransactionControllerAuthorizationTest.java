@@ -68,6 +68,8 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
 
+    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(0L);
+
     when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
         .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));
   }
@@ -267,6 +269,24 @@ class TransactionControllerAuthorizationTest {
                 .with(csrf())
                 .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
         .andExpect(status().isNoContent());
+  }
+
+  // ==================== GET /v1/transactions/count authorization ====================
+
+  @Test
+  @WithMockUser(authorities = {"transactions:read"})
+  void countEndpoint_withReadPermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @WithMockUser(authorities = {"accounts:read"})
+  void countEndpoint_withoutReadPermission_returns403() throws Exception {
+    mockMvc.perform(get("/v1/transactions/count")).andExpect(status().isForbidden());
   }
 
   // ==================== GET /v1/transactions/{id} ownership ====================
