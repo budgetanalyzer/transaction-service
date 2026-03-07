@@ -24,6 +24,10 @@ ls -d /workspace/*-service
 ls ../service-common/
 ```
 
+## Code Exploration
+
+NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read directly.
+
 ## Service Purpose
 
 Manages financial transactions and CSV imports for the Budget Analyzer application.
@@ -34,6 +38,10 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - Multi-bank CSV file import with configurable formats
 - Advanced transaction search with dynamic filtering
 - Multi-account and multi-currency transaction support
+
+## Coding Standards
+
+**Before writing or modifying any Java code, read [code-quality-standards.md](../service-common/docs/code-quality-standards.md).** Do not skip this step. The most common violations: missing `var`, wildcard imports, abbreviated variable names, Javadoc without trailing periods.
 
 ## Spring Boot Patterns
 

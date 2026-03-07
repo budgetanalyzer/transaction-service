@@ -475,6 +475,63 @@ class TransactionServiceTest {
     verify(root, never()).get("ownerId");
   }
 
+  // ==================== countActive ====================
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void countActive_nonAdmin_filtersByOwner() {
+    // Given: repository returns a count
+    when(transactionRepository.countActive(any(Specification.class))).thenReturn(5L);
+
+    // When: non-admin user counts
+    var result = transactionService.countActive(emptyFilter(), USER_ID, NOT_ADMIN);
+
+    // Then: the specification includes an ownerId equality predicate
+    assertThat(result).isEqualTo(5L);
+
+    @SuppressWarnings("rawtypes")
+    ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
+    verify(transactionRepository).countActive(specCaptor.capture());
+
+    var capturedSpec = specCaptor.getValue();
+
+    Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
+    CriteriaQuery<?> cq = mock(CriteriaQuery.class);
+    CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
+
+    capturedSpec.toPredicate(root, cq, cb);
+
+    verify(root).get("ownerId");
+    verify(cb).equal(root.get("ownerId"), USER_ID);
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void countActive_admin_noOwnerFilter() {
+    // Given: repository returns a count
+    when(transactionRepository.countActive(any(Specification.class))).thenReturn(10L);
+
+    // When: admin user counts
+    var result = transactionService.countActive(emptyFilter(), USER_ID, IS_ADMIN);
+
+    // Then: the specification does NOT include an ownerId predicate
+    assertThat(result).isEqualTo(10L);
+
+    @SuppressWarnings("rawtypes")
+    ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
+    verify(transactionRepository).countActive(specCaptor.capture());
+
+    var capturedSpec = specCaptor.getValue();
+
+    Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
+    CriteriaQuery<?> cq = mock(CriteriaQuery.class);
+    CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
+
+    capturedSpec.toPredicate(root, cq, cb);
+
+    verify(root, never()).get("ownerId");
+  }
+
   // ==================== batchImport ====================
 
   @Test

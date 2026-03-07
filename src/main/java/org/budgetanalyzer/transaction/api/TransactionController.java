@@ -214,6 +214,28 @@ public class TransactionController {
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")
+  @Operation(
+      summary = "Count transactions",
+      description =
+          "Returns the count of active transactions matching the given filter criteria. "
+              + "Non-admin users only count their own transactions.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = Long.class))),
+      })
+  @GetMapping(path = "/count", produces = "application/json")
+  public long countTransactions(@Valid TransactionFilter filter) {
+    var userId = getCurrentUserId();
+    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    return transactionService.countActive(filter, userId, isAdmin);
+  }
+
+  @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transaction", description = "Get transaction by id")
   @ApiResponses(
       value = {

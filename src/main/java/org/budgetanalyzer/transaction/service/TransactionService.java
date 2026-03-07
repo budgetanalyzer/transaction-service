@@ -189,6 +189,23 @@ public class TransactionService {
   }
 
   /**
+   * Counts active transactions matching the filter criteria. Non-admin users only count their own
+   * transactions.
+   *
+   * @param filter the search filter criteria
+   * @param userId the ID of the requesting user
+   * @param isAdmin whether the requesting user has admin role
+   * @return the count of matching transactions
+   */
+  public long countActive(TransactionFilter filter, String userId, boolean isAdmin) {
+    var spec = TransactionSpecifications.withFilter(filter);
+    if (!isAdmin) {
+      spec = spec.and(TransactionSpecifications.byOwner(userId));
+    }
+    return transactionRepository.countActive(spec);
+  }
+
+  /**
    * Imports a batch of transactions from preview DTOs, assigning ownership to the specified user.
    *
    * <p>This method implements the batch import with all-or-nothing semantics:
