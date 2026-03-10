@@ -17,16 +17,16 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
+import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
+import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
@@ -35,27 +35,28 @@ import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 
 @WebMvcTest(StatementFormatController.class)
-@Import(ServletApiExceptionHandler.class)
-@AutoConfigureMockMvc(addFilters = false)
-@SuppressWarnings("removal")
+@Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
 class StatementFormatControllerTest {
 
   @Autowired private MockMvc mockMvc;
 
-  @MockBean private StatementFormatService statementFormatService;
+  @MockitoBean private StatementFormatService statementFormatService;
 
   @Nested
   class ListFormats {
 
     @Test
-    @WithMockUser
     void returnsAllFormats() throws Exception {
       var format1 = createCsvFormat("format-1", "Bank 1");
       var format2 = createCsvFormat("format-2", "Bank 2");
       when(statementFormatService.getAllFormats()).thenReturn(List.of(format1, format2));
 
       mockMvc
-          .perform(get("/v1/statement-formats"))
+          .perform(
+              get("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:read")))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.length()").value(2))
           .andExpect(jsonPath("$[0].formatKey").value("format-1"))
@@ -64,12 +65,15 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returnsEmptyListWhenNoFormats() throws Exception {
       when(statementFormatService.getAllFormats()).thenReturn(List.of());
 
       mockMvc
-          .perform(get("/v1/statement-formats"))
+          .perform(
+              get("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:read")))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.length()").value(0));
     }
@@ -79,13 +83,16 @@ class StatementFormatControllerTest {
   class GetFormat {
 
     @Test
-    @WithMockUser
     void returnsFormatWhenFound() throws Exception {
       var format = createCsvFormat("capital-one", "Capital One");
       when(statementFormatService.getByFormatKey("capital-one")).thenReturn(format);
 
       mockMvc
-          .perform(get("/v1/statement-formats/capital-one"))
+          .perform(
+              get("/v1/statement-formats/capital-one")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:read")))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.formatKey").value("capital-one"))
           .andExpect(jsonPath("$.bankName").value("Capital One"))
@@ -95,13 +102,16 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returns404WhenNotFound() throws Exception {
       when(statementFormatService.getByFormatKey("unknown"))
           .thenThrow(new ResourceNotFoundException("Statement format not found with key: unknown"));
 
       mockMvc
-          .perform(get("/v1/statement-formats/unknown"))
+          .perform(
+              get("/v1/statement-formats/unknown")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:read")))
           .andExpect(status().isNotFound())
           .andExpect(jsonPath("$.type").value("NOT_FOUND"))
           .andExpect(jsonPath("$.message").value("Statement format not found with key: unknown"));
@@ -112,7 +122,6 @@ class StatementFormatControllerTest {
   class CreateFormat {
 
     @Test
-    @WithMockUser
     void createsFormatSuccessfully() throws Exception {
       var format = createCsvFormat("new-format", "New Bank");
       when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
@@ -121,6 +130,9 @@ class StatementFormatControllerTest {
       mockMvc
           .perform(
               post("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -144,7 +156,6 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returns422WhenFormatKeyExists() throws Exception {
       when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
           .thenThrow(
@@ -155,6 +166,9 @@ class StatementFormatControllerTest {
       mockMvc
           .perform(
               post("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -176,11 +190,13 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returns400WhenMissingRequiredFields() throws Exception {
       mockMvc
           .perform(
               post("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -193,11 +209,13 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returns400WhenInvalidFormatKeyPattern() throws Exception {
       mockMvc
           .perform(
               post("/v1/statement-formats")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -216,7 +234,6 @@ class StatementFormatControllerTest {
   class UpdateFormat {
 
     @Test
-    @WithMockUser
     void updatesFormatSuccessfully() throws Exception {
       var updatedFormat = createCsvFormat("existing", "Updated Bank");
       when(statementFormatService.updateFormat(
@@ -226,6 +243,9 @@ class StatementFormatControllerTest {
       mockMvc
           .perform(
               put("/v1/statement-formats/existing")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -242,7 +262,6 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    @WithMockUser
     void returns404WhenFormatNotFound() throws Exception {
       when(statementFormatService.updateFormat(
               eq("unknown"), any(UpdateStatementFormatRequest.class)))
@@ -251,6 +270,9 @@ class StatementFormatControllerTest {
       mockMvc
           .perform(
               put("/v1/statement-formats/unknown")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write"))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       """
@@ -267,22 +289,30 @@ class StatementFormatControllerTest {
   class DisableFormat {
 
     @Test
-    @WithMockUser
     void disablesFormatSuccessfully() throws Exception {
-      mockMvc.perform(delete("/v1/statement-formats/to-disable")).andExpect(status().isNoContent());
+      mockMvc
+          .perform(
+              delete("/v1/statement-formats/to-disable")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:delete")))
+          .andExpect(status().isNoContent());
 
       verify(statementFormatService).disableFormat("to-disable");
     }
 
     @Test
-    @WithMockUser
     void returns404WhenFormatNotFound() throws Exception {
       doThrow(new ResourceNotFoundException("Statement format not found with key: unknown"))
           .when(statementFormatService)
           .disableFormat("unknown");
 
       mockMvc
-          .perform(delete("/v1/statement-formats/unknown"))
+          .perform(
+              delete("/v1/statement-formats/unknown")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:delete")))
           .andExpect(status().isNotFound())
           .andExpect(jsonPath("$.type").value("NOT_FOUND"));
     }

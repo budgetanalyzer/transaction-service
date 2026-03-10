@@ -24,18 +24,17 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
+import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
@@ -44,8 +43,7 @@ import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
 @WebMvcTest(TransactionController.class)
-@Import(ServletApiExceptionHandler.class)
-@AutoConfigureMockMvc(addFilters = false)
+@Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
 class TransactionControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -57,7 +55,6 @@ class TransactionControllerTest {
   // ==================== GET /v1/transactions/{id} ====================
 
   @Test
-  @WithMockUser
   void getTransaction_existingId_returns200AndTransaction() throws Exception {
     // Given: a transaction exists
     var transaction = createTransaction(1L, "Coffee Shop", BigDecimal.valueOf(4.50));
@@ -68,7 +65,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             get("/v1/transactions/1")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(1))
         .andExpect(jsonPath("$.description").value("Coffee Shop"))
@@ -81,7 +79,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void getTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
     when(transactionService.getTransaction(eq(9999L), anyString(), anyBoolean()))
@@ -91,7 +88,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             get("/v1/transactions/9999")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.type").value("NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
@@ -99,14 +97,9 @@ class TransactionControllerTest {
     verify(transactionService, times(1)).getTransaction(eq(9999L), anyString(), anyBoolean());
   }
 
-  // Note: Testing 401 for unauthenticated requests requires security filters enabled.
-  // This test class uses @AutoConfigureMockMvc(addFilters = false) for controller-level testing.
-  // Authentication behavior is tested via integration tests with full security configuration.
-
   // ==================== GET /v1/transactions ====================
 
   @Test
-  @WithMockUser
   void getTransactions_returnsListOfTransactions() throws Exception {
     // Given: multiple transactions exist
     var transactions =
@@ -121,7 +114,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             get("/v1/transactions")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(3))
         .andExpect(jsonPath("$[0].id").value(1))
@@ -137,7 +131,6 @@ class TransactionControllerTest {
   // ==================== PATCH /v1/transactions/{id} ====================
 
   @Test
-  @WithMockUser
   void updateTransaction_validRequest_returns200AndUpdatedTransaction() throws Exception {
     // Given: transaction exists and update is valid
     var updatedTransaction =
@@ -160,7 +153,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             patch("/v1/transactions/1")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -174,7 +168,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void updateTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
     when(transactionService.updateTransaction(
@@ -192,7 +185,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             patch("/v1/transactions/9999")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isNotFound())
@@ -206,13 +200,14 @@ class TransactionControllerTest {
   // ==================== DELETE /v1/transactions/{id} ====================
 
   @Test
-  @WithMockUser
   void deleteTransaction_existingId_returns204() throws Exception {
     // When/Then: DELETE returns 204 No Content
     mockMvc
         .perform(
             delete("/v1/transactions/1")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("auth0|test-user-123")
+                        .withPermissions("transactions:delete")))
         .andExpect(status().isNoContent());
 
     verify(transactionService, times(1))
@@ -220,7 +215,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void deleteTransaction_nonExistentId_returns404() throws Exception {
     // Given: transaction does not exist
     doThrow(new ResourceNotFoundException("Transaction not found with id: 9999"))
@@ -231,7 +225,9 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             delete("/v1/transactions/9999")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("auth0|test-user-123")
+                        .withPermissions("transactions:delete")))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.type").value("NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("Transaction not found with id: 9999"));
@@ -242,7 +238,6 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/bulk-delete ====================
 
   @Test
-  @WithMockUser
   void bulkDeleteTransactions_allFound_returns200WithDeletedCount() throws Exception {
     // Given: all transactions exist
     var result = new TransactionService.BulkDeleteResult(3, List.of());
@@ -260,7 +255,9 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123")
+                .with(
+                    ClaimsHeaderTestBuilder.user("auth0|test-user-123")
+                        .withPermissions("transactions:delete"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -272,7 +269,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void bulkDeleteTransactions_someNotFound_returns200WithPartialSuccess() throws Exception {
     // Given: some transactions don't exist
     var result = new TransactionService.BulkDeleteResult(2, List.of(9999L, 8888L));
@@ -290,7 +286,9 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "auth0|test-user-123")
+                .with(
+                    ClaimsHeaderTestBuilder.user("auth0|test-user-123")
+                        .withPermissions("transactions:delete"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isOk())
@@ -305,7 +303,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void bulkDeleteTransactions_emptyIdList_returns400() throws Exception {
     // Given: empty ID list (validation error)
     var requestBody =
@@ -319,6 +316,9 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user")
+                        .withPermissions("transactions:delete"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isBadRequest())
@@ -328,7 +328,6 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/preview ====================
 
   @Test
-  @WithMockUser
   void previewTransactions_csvFile_returns200WithPreviewResponse() throws Exception {
     // Given: a CSV file to preview
     var previewDto =
@@ -349,7 +348,12 @@ class TransactionControllerTest {
 
     // When/Then: POST returns 200 with preview response
     mockMvc
-        .perform(multipart("/v1/transactions/preview").file(csvFile).param("format", "capital-one"))
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile)
+                .param("format", "capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceFile").value("transactions.csv"))
         .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
@@ -362,7 +366,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void previewTransactions_withAccountId_passesAccountIdToService() throws Exception {
     // Given: preview request with accountId
     var previewDto =
@@ -387,7 +390,9 @@ class TransactionControllerTest {
             multipart("/v1/transactions/preview")
                 .file(csvFile)
                 .param("format", "capital-one")
-                .param("accountId", "checking-123"))
+                .param("accountId", "checking-123")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk());
 
     verify(transactionImportService, times(1))
@@ -395,7 +400,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void previewTransactions_pdfFile_returns200WithExplicitFormat() throws Exception {
     // Given: a PDF file to preview with explicit format
     var previewDto =
@@ -419,7 +423,9 @@ class TransactionControllerTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(pdfFile)
-                .param("format", "capital-one-yearly"))
+                .param("format", "capital-one-yearly")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceFile").value("statement.pdf"))
         .andExpect(jsonPath("$.detectedFormat").value("capital-one-yearly"))
@@ -432,7 +438,6 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/batch ====================
 
   @Test
-  @WithMockUser
   void batchImport_validTransactions_returns201WithCreatedTransactions() throws Exception {
     // Given: valid batch import request
     var createdTransactions =
@@ -470,7 +475,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isCreated())
@@ -482,7 +488,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void batchImport_validationFailure_returns400WithFieldErrors() throws Exception {
     // Given: request with missing required fields (null amount, null date)
     var requestBody =
@@ -503,6 +508,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isBadRequest())
@@ -512,7 +519,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void batchImport_emptyTransactionsList_returns400() throws Exception {
     // Given: empty transactions list
     var requestBody =
@@ -526,6 +532,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isBadRequest())
@@ -535,7 +543,6 @@ class TransactionControllerTest {
   // ==================== GET /v1/transactions/count ====================
 
   @Test
-  @WithMockUser
   void countTransactions_returnsCount() throws Exception {
     // Given: service returns a count
     when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(42L);
@@ -544,7 +551,8 @@ class TransactionControllerTest {
     mockMvc
         .perform(
             get("/v1/transactions/count")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(42));
 
@@ -552,7 +560,6 @@ class TransactionControllerTest {
   }
 
   @Test
-  @WithMockUser
   void countTransactions_withFilterParams_returns200() throws Exception {
     // Given: service returns a count
     when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(5L);
@@ -562,7 +569,8 @@ class TransactionControllerTest {
         .perform(
             get("/v1/transactions/count")
                 .param("bankName", "Test Bank")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "test-user"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(5));
 
@@ -586,21 +594,6 @@ class TransactionControllerTest {
     // Note: audit fields (createdAt, updatedAt) are managed by JPA auditing
     // and don't have public setters - they're set automatically by the framework
 
-    return transaction;
-  }
-
-  private Transaction createTransactionWithDetails(
-      Long id, LocalDate date, BigDecimal amount, String description, String accountId) {
-    var transaction = new Transaction();
-    transaction.setId(id);
-    transaction.setAccountId(accountId);
-    transaction.setBankName("Test Bank");
-    transaction.setDate(date);
-    transaction.setCurrencyIsoCode("USD");
-    transaction.setAmount(amount);
-    transaction.setType(TransactionType.DEBIT);
-    transaction.setDescription(description);
-    transaction.setOwnerId("test-user");
     return transaction;
   }
 

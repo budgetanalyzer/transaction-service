@@ -38,7 +38,7 @@ dependencies {
 
     // Service-specific dependencies
     implementation(libs.spring.boot.starter.validation)
-    implementation(libs.spring.boot.starter.oauth2.resource.server)
+    implementation(libs.spring.boot.starter.security)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
     implementation(libs.pdfbox)

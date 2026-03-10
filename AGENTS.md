@@ -54,7 +54,7 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 - **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
 
 **Quick reference:**
-- Naming: `*Controller`, `*Service`, `*ServiceImpl`, `*Repository`
+- Naming: `*Controller`, `*Service`, `*Repository`
 - Exceptions: Use `BusinessException` for business rule violations, `InvalidRequestException` for bad input
 - Logging: SLF4J with structured logging (never log sensitive data)
 - Validation: Bean Validation (@Valid) for request DTOs, business validation in service layer
@@ -62,7 +62,7 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 
 ### Authorization
 
-All endpoints are protected by fine-grained JWT-based permissions. The session-gateway mints JWTs containing user roles and atomic permissions (e.g., `transactions:read`, `transactions:write`) sourced from the permission-service. Controllers enforce access via `@PreAuthorize` annotations.
+All endpoints are protected by fine-grained claims-header-based permissions. Envoy ext_authz validates sessions and injects `X-User-Id`, `X-Permissions`, `X-Roles` headers. `ClaimsHeaderSecurityConfig` (from service-common) extracts these into the Spring Security context. Controllers enforce access via `@PreAuthorize` annotations. Tests use `ClaimsHeaderTestBuilder` to set up per-request authentication.
 
 See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC model, role definitions, and permission details. See also the [Permission Service README](../permission-service/README.md) for an overview.
 
@@ -176,9 +176,13 @@ find src/main/java/org/budgetanalyzer/transaction -type d | sort
 ```
 
 **Key Endpoints:**
-- Transaction CRUD: `/v1/transactions/**`
-- CSV Import: `/v1/transactions/import`
-- Search: `/v1/transactions/search`
+- Transactions: `GET/PATCH/DELETE /v1/transactions/**`
+- Count: `GET /v1/transactions/count`
+- Preview: `POST /v1/transactions/preview`
+- Batch Import: `POST /v1/transactions/batch`
+- Bulk Delete: `POST /v1/transactions/bulk-delete`
+- Saved Views: `/v1/views/**`
+- Statement Formats: `/v1/statement-formats/**`
 
 **Gateway Access:**
 - Internal: `http://localhost:8082/v1/transactions`
