@@ -1,11 +1,12 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -16,16 +17,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
+import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
+import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
+import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 
 @WebMvcTest(StatementFormatController.class)
-@Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
+@Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
 class StatementFormatControllerAuthorizationTest {
 
   @Autowired private MockMvc mockMvc;
@@ -35,7 +39,11 @@ class StatementFormatControllerAuthorizationTest {
   @BeforeEach
   void setupServiceMocks() {
     when(statementFormatService.getAllFormats()).thenReturn(List.of());
-    when(statementFormatService.createFormat(any())).thenReturn(createStubFormat());
+    when(statementFormatService.getByFormatKey(anyString())).thenReturn(createStubFormat());
+    when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
+        .thenReturn(createStubFormat());
+    when(statementFormatService.updateFormat(anyString(), any(UpdateStatementFormatRequest.class)))
+        .thenReturn(createStubFormat());
   }
 
   // ==================== No authentication ====================
@@ -48,94 +56,161 @@ class StatementFormatControllerAuthorizationTest {
   // ==================== Read permission ====================
 
   @Test
-  @WithMockUser(authorities = {"statementformats:read"})
-  void readEndpoint_withReadPermission_returns200() throws Exception {
-    mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isOk());
+  void listEndpoint_withReadPermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/statement-formats")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"accounts:read"})
-  void readEndpoint_withoutReadPermission_returns403() throws Exception {
-    mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isForbidden());
+  void listEndpoint_withoutReadPermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/statement-formats")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read")))
+        .andExpect(status().isForbidden());
   }
 
-  // ==================== Write/Delete permission ====================
+  @Test
+  void getEndpoint_withReadPermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isOk());
+  }
 
   @Test
-  @WithMockUser(authorities = {"statementformats:write"})
-  void writeEndpoint_withWritePermission_returns201() throws Exception {
+  void getEndpoint_withoutReadPermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  // ==================== Write permission ====================
+
+  @Test
+  void createEndpoint_withWritePermission_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/statement-formats")
-                .with(csrf())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                    {
-                      "formatKey": "test-bank",
-                      "displayName": "Test Bank Export",
-                      "formatType": "CSV",
-                      "bankName": "Test Bank",
-                      "defaultCurrencyIsoCode": "USD",
-                      "dateHeader": "Date",
-                      "dateFormat": "MM/dd/uu",
-                      "descriptionHeader": "Description",
-                      "creditHeader": "Amount"
-                    }
-                    """))
+                .content(createValidFormatJson()))
         .andExpect(status().isCreated());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "transactions:write", "transactions:delete"})
-  void writeEndpoint_withoutWritePermission_returns403() throws Exception {
+  void createEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
             post("/v1/statement-formats")
-                .with(csrf())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                    {
-                      "formatKey": "test-bank",
-                      "displayName": "Test Bank Export",
-                      "formatType": "CSV",
-                      "bankName": "Test Bank",
-                      "defaultCurrencyIsoCode": "USD",
-                      "dateHeader": "Date",
-                      "dateFormat": "MM/dd/uu",
-                      "descriptionHeader": "Description",
-                      "creditHeader": "Amount"
-                    }
-                    """))
+                .content(createValidFormatJson()))
         .andExpect(status().isForbidden());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:read", "transactions:write", "transactions:delete"})
+  void updateEndpoint_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            put("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"bankName\": \"Updated Bank\"}"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void updateEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            put("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"bankName\": \"Updated Bank\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  // ==================== Delete permission ====================
+
+  @Test
+  void deleteEndpoint_withDeletePermission_returns204() throws Exception {
+    mockMvc
+        .perform(
+            delete("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:delete")))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
   void deleteEndpoint_withoutDeletePermission_returns403() throws Exception {
     mockMvc
-        .perform(delete("/v1/statement-formats/capital-one").with(csrf()))
+        .perform(
+            delete("/v1/statement-formats/capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read", "statementformats:write")))
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Full statement format permissions (production JWT shape)
-  // ====================
+  // ==================== Admin with full permissions ====================
 
   @Test
-  @WithMockUser(
-      authorities = {"statementformats:read", "statementformats:write", "statementformats:delete"})
-  void readEndpoint_withFullPermissions_returns200() throws Exception {
-    mockMvc.perform(get("/v1/statement-formats")).andExpect(status().isOk());
+  void admin_readEndpoint_returns200() throws Exception {
+    mockMvc
+        .perform(get("/v1/statement-formats").with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void admin_writeEndpoint_returns201() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats")
+                .with(ClaimsHeaderTestBuilder.admin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createValidFormatJson()))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
+  void admin_deleteEndpoint_returns204() throws Exception {
+    mockMvc
+        .perform(delete("/v1/statement-formats/capital-one").with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isNoContent());
   }
 
   // ==================== Helpers ====================
 
   private StatementFormat createStubFormat() {
     return StatementFormat.createCsvFormat(
-        "test-bank",
-        "Test Bank Export",
-        "Test Bank",
+        "capital-one",
+        "Capital One - Export",
+        "Capital One",
         "USD",
         "Date",
         "MM/dd/uu",
@@ -144,5 +219,21 @@ class StatementFormatControllerAuthorizationTest {
         "Amount",
         null,
         null);
+  }
+
+  private String createValidFormatJson() {
+    return """
+        {
+          "formatKey": "new-format",
+          "displayName": "New Bank - Export",
+          "formatType": "CSV",
+          "bankName": "New Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "dateHeader": "Date",
+          "dateFormat": "MM/dd/uu",
+          "descriptionHeader": "Description",
+          "creditHeader": "Amount"
+        }
+        """;
   }
 }

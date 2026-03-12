@@ -8,8 +8,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -28,15 +26,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.service.security.SecurityContextUtil;
-import org.budgetanalyzer.service.security.test.JwtTestBuilder;
+import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
+import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.domain.Transaction;
@@ -45,12 +41,11 @@ import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
 @WebMvcTest(TransactionController.class)
-@Import({ServletApiExceptionHandler.class, MethodSecurityTestConfig.class})
+@Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
 class TransactionControllerAuthorizationTest {
 
   private static final String USER_ID = "usr_test123";
   private static final String OTHER_USER_ID = "usr_other789";
-  private static final Jwt ADMIN_JWT = JwtTestBuilder.admin().build();
 
   @Autowired private MockMvc mockMvc;
 
@@ -84,31 +79,35 @@ class TransactionControllerAuthorizationTest {
   // ==================== Read permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void readEndpoint_withReadPermission_returns200() throws Exception {
     mockMvc
         .perform(
             get("/v1/transactions")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_test123"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read")))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"accounts:read"})
   void readEndpoint_withoutReadPermission_returns403() throws Exception {
-    mockMvc.perform(get("/v1/transactions")).andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            get("/v1/transactions")
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("accounts:read")))
+        .andExpect(status().isForbidden());
   }
 
   // ==================== Write permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:write"})
   void writeEndpoint_withWritePermission_returns201() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_test123")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -131,19 +130,24 @@ class TransactionControllerAuthorizationTest {
   // ==================== Delete permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void deleteEndpoint_withoutDeletePermission_returns403() throws Exception {
-    mockMvc.perform(delete("/v1/transactions/1").with(csrf())).andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            delete("/v1/transactions/1")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read")))
+        .andExpect(status().isForbidden());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:delete"})
   void bulkDeleteEndpoint_withDeletePermission_returns200() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/bulk-delete")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_test123")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:delete"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"ids\": [1, 2]}"))
         .andExpect(status().isOk());
@@ -152,7 +156,6 @@ class TransactionControllerAuthorizationTest {
   // ==================== Preview permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void previewEndpoint_withReadPermission_returns200() throws Exception {
     var csvFile =
         new MockMultipartFile(
@@ -166,13 +169,13 @@ class TransactionControllerAuthorizationTest {
             multipart("/v1/transactions/preview")
                 .file(csvFile)
                 .param("format", "capital-one")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_test123"))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read")))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"accounts:read"})
   void previewEndpoint_withoutReadPermission_returns403() throws Exception {
     var csvFile =
         new MockMultipartFile(
@@ -186,19 +189,20 @@ class TransactionControllerAuthorizationTest {
             multipart("/v1/transactions/preview")
                 .file(csvFile)
                 .param("format", "capital-one")
-                .with(csrf()))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("accounts:read")))
         .andExpect(status().isForbidden());
   }
 
   // ==================== Write without permission ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void writeEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
-                .with(csrf())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("transactions:read"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -218,16 +222,12 @@ class TransactionControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Admin with full permissions (production JWT shape) ====================
+  // ==================== Admin with full permissions ====================
 
   @Test
   void admin_readEndpoint_returns200() throws Exception {
     mockMvc
-        .perform(
-            get("/v1/transactions")
-                .with(
-                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
+        .perform(get("/v1/transactions").with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isOk());
   }
 
@@ -236,10 +236,7 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
-                .with(
-                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456")
+                .with(ClaimsHeaderTestBuilder.admin())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -262,58 +259,54 @@ class TransactionControllerAuthorizationTest {
   @Test
   void admin_deleteEndpoint_returns204() throws Exception {
     mockMvc
-        .perform(
-            delete("/v1/transactions/1")
-                .with(
-                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
+        .perform(delete("/v1/transactions/1").with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isNoContent());
   }
 
   // ==================== GET /v1/transactions/count authorization ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void countEndpoint_withReadPermission_returns200() throws Exception {
     mockMvc
         .perform(
             get("/v1/transactions/count")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read")))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"accounts:read"})
   void countEndpoint_withoutReadPermission_returns403() throws Exception {
-    mockMvc.perform(get("/v1/transactions/count")).andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("accounts:read")))
+        .andExpect(status().isForbidden());
   }
 
   // ==================== GET /v1/transactions/{id} ownership ====================
 
   @Test
-  @WithMockUser(authorities = {"accounts:read"})
   void getById_withoutReadPermission_returns403() throws Exception {
     mockMvc
         .perform(
-            get("/v1/transactions/1").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+            get("/v1/transactions/1")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("accounts:read")))
         .andExpect(status().isForbidden());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void getById_withReadPermission_ownTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
     when(transactionService.getTransaction(eq(1L), eq(USER_ID), eq(false))).thenReturn(transaction);
 
     mockMvc
         .perform(
-            get("/v1/transactions/1").header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+            get("/v1/transactions/1")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read")))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void getById_withReadPermission_otherUsersTransaction_returns404() throws Exception {
     when(transactionService.getTransaction(eq(1L), eq(OTHER_USER_ID), eq(false)))
         .thenThrow(new ResourceNotFoundException("Transaction not found with id: 1"));
@@ -321,7 +314,9 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             get("/v1/transactions/1")
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID))
+                .with(
+                    ClaimsHeaderTestBuilder.user(OTHER_USER_ID)
+                        .withPermissions("transactions:read")))
         .andExpect(status().isNotFound());
   }
 
@@ -331,31 +326,24 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.getTransaction(eq(1L), anyString(), eq(true))).thenReturn(transaction);
 
     mockMvc
-        .perform(
-            get("/v1/transactions/1")
-                .with(
-                    jwt().jwt(ADMIN_JWT).authorities(JwtTestBuilder.extractAuthorities(ADMIN_JWT)))
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, "usr_admin456"))
+        .perform(get("/v1/transactions/1").with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isOk());
   }
 
   // ==================== PATCH /v1/transactions/{id} ownership ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:read"})
   void updateEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
             patch("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID)
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"description\": \"Updated\"}"))
         .andExpect(status().isForbidden());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:write"})
   void updateEndpoint_withWritePermission_ownTransaction_returns200() throws Exception {
     var transaction = createTestTransaction(1L, "Updated", new BigDecimal("4.50"));
     when(transactionService.updateTransaction(
@@ -365,15 +353,13 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             patch("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID)
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"description\": \"Updated\"}"))
         .andExpect(status().isOk());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:write"})
   void updateEndpoint_withWritePermission_otherUsersTransaction_returns404() throws Exception {
     when(transactionService.updateTransaction(
             eq(1L), eq(OTHER_USER_ID), eq(false), eq("Updated"), isNull()))
@@ -382,8 +368,9 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             patch("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID)
+                .with(
+                    ClaimsHeaderTestBuilder.user(OTHER_USER_ID)
+                        .withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"description\": \"Updated\"}"))
         .andExpect(status().isNotFound());
@@ -392,18 +379,15 @@ class TransactionControllerAuthorizationTest {
   // ==================== DELETE /v1/transactions/{id} ownership ====================
 
   @Test
-  @WithMockUser(authorities = {"transactions:delete"})
   void deleteEndpoint_withDeletePermission_ownTransaction_returns204() throws Exception {
     mockMvc
         .perform(
             delete("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, USER_ID))
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:delete")))
         .andExpect(status().isNoContent());
   }
 
   @Test
-  @WithMockUser(authorities = {"transactions:delete"})
   void deleteEndpoint_withDeletePermission_otherUsersTransaction_returns404() throws Exception {
     doThrow(new ResourceNotFoundException("Transaction not found with id: 1"))
         .when(transactionService)
@@ -412,8 +396,9 @@ class TransactionControllerAuthorizationTest {
     mockMvc
         .perform(
             delete("/v1/transactions/1")
-                .with(csrf())
-                .header(SecurityContextUtil.INTERNAL_USER_ID_HEADER, OTHER_USER_ID))
+                .with(
+                    ClaimsHeaderTestBuilder.user(OTHER_USER_ID)
+                        .withPermissions("transactions:delete")))
         .andExpect(status().isNotFound());
   }
 
