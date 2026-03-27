@@ -27,8 +27,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/budget_analyzer
-    username: budget_analyzer
-    password: budget_analyzer
+    username: ${SPRING_DATASOURCE_USERNAME:transaction_service}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   jpa:
