@@ -55,12 +55,21 @@ The Transaction Service is responsible for:
 ### Running Locally
 
 ```bash
-# Build the service
-./gradlew build
+# Start shared infrastructure in the orchestration repo
+cd ../orchestration
+tilt up
 
-# Run the service
+# In another terminal, run the service directly
+cd ../transaction-service
+export SPRING_DATASOURCE_PASSWORD=your_transaction_database_password
 ./gradlew bootRun
 ```
+
+`SPRING_DATASOURCE_USERNAME` already defaults to `transaction_service`, and the
+host defaults to `localhost:5432`. If you are reusing values from
+`../orchestration/.env`, map `POSTGRES_TRANSACTION_SERVICE_PASSWORD` to
+`SPRING_DATASOURCE_PASSWORD`. This service has no RabbitMQ dependency in the
+Phase 1 local baseline.
 
 The service runs on port 8082 for development/debugging.
 
@@ -119,11 +128,11 @@ transaction-service/
 ## Integration
 
 This service integrates with:
-- **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** (BFF) — mints internal RS256-signed JWTs containing user identity, roles, and permissions; backend services never see Auth0 tokens
-- **API Gateway** (NGINX) for routing, with JWT validation via [Token Validation Service](https://github.com/budgetanalyzer/token-validation-service)
+- **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** and **ext-authz** — validate browser sessions and inject pre-validated `X-User-Id`, `X-Roles`, and `X-Permissions` headers before requests reach the service
+- **API Gateway** (Envoy + NGINX) for routing and session enforcement
 - **PostgreSQL** for data persistence
-- **Service Common** for shared utilities (including automatic JWT validation against session-gateway's JWKS endpoint)
-- **[Permission Service](https://github.com/budgetanalyzer/permission-service)** for fine-grained JWT-based authorization (roles and atomic permissions like `transactions:read`, `transactions:write`)
+- **Service Common** for shared utilities (including claims-header security that reads pre-validated headers from ext-authz)
+- **[Permission Service](https://github.com/budgetanalyzer/permission-service)** for fine-grained claims-header-based authorization (roles and atomic permissions like `transactions:read`, `transactions:write`)
 
 See the [orchestration repository](https://github.com/budgetanalyzer/orchestration) for full system setup.
 
@@ -132,7 +141,6 @@ See the [orchestration repository](https://github.com/budgetanalyzer/orchestrati
 - **Orchestration**: https://github.com/budgetanalyzer/orchestration
 - **Service Common**: https://github.com/budgetanalyzer/service-common
 - **Session Gateway**: https://github.com/budgetanalyzer/session-gateway
-- **Token Validation Service**: https://github.com/budgetanalyzer/token-validation-service
 - **Currency Service**: https://github.com/budgetanalyzer/currency-service
 - **Permission Service**: https://github.com/budgetanalyzer/permission-service
 - **Web Frontend**: https://github.com/budgetanalyzer/budget-analyzer-web

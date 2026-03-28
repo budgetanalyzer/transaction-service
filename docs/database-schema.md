@@ -16,7 +16,9 @@ This service uses a dedicated schema in the shared PostgreSQL database with Flyw
 ls -l src/main/resources/db/migration/
 
 # Connect to database
-docker exec -it postgres psql -U budget_analyzer -d budget_analyzer
+POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer'
 
 # List all tables in this service's schema
 \dt transaction_service.*
@@ -140,8 +142,9 @@ CREATE INDEX idx_categories_type ON categories(category_type);
 ls -lh src/main/resources/db/migration/
 
 # View migration history
-docker exec postgres psql -U budget_analyzer -d budget_analyzer \
-  -c "SELECT * FROM flyway_schema_history;"
+POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer -c "SELECT * FROM flyway_schema_history;"'
 ```
 
 ### Creating Migrations
@@ -272,11 +275,15 @@ ALTER TABLE transactions ALTER COLUMN currency TYPE VARCHAR(3);
 ### Local Development
 
 ```bash
+POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
+
 # Backup
-docker exec postgres pg_dump -U budget_analyzer budget_analyzer > backup.sql
+kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" pg_dump -U transaction_service budget_analyzer' > backup.sql
 
 # Restore
-docker exec -i postgres psql -U budget_analyzer budget_analyzer < backup.sql
+kubectl exec -i -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer' < backup.sql
 ```
 
 ### Test Data
@@ -286,8 +293,9 @@ docker exec -i postgres psql -U budget_analyzer budget_analyzer < backup.sql
 curl -X POST http://localhost:8082/admin/seed-test-data
 
 # Clear all data (DANGEROUS - dev only)
-docker exec postgres psql -U budget_analyzer -d budget_analyzer \
-  -c "TRUNCATE TABLE transactions CASCADE;"
+POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer -c "TRUNCATE TABLE transactions CASCADE;"'
 ```
 
 ## References
