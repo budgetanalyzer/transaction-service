@@ -29,6 +29,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
@@ -418,16 +420,16 @@ class TransactionServiceTest {
     verify(transactionRepository, times(1)).save(any(Transaction.class));
   }
 
-  // ==================== search ====================
+  // ==================== getTransactions ====================
 
   @SuppressWarnings("unchecked")
   @Test
-  void search_nonAdmin_filtersByOwner() {
+  void getTransactions_filtersByOwner() {
     // Given: repository returns results
     when(transactionRepository.findAllActive(any(Specification.class))).thenReturn(List.of());
 
-    // When: non-admin user searches
-    transactionService.search(emptyFilter(), USER_ID, NOT_ADMIN);
+    // When: user retrieves their transactions
+    transactionService.getTransactions(USER_ID);
 
     // Then: the specification includes an ownerId equality predicate
     @SuppressWarnings("rawtypes")
@@ -436,7 +438,6 @@ class TransactionServiceTest {
 
     var capturedSpec = specCaptor.getValue();
 
-    // Evaluate the captured spec against mocks to verify owner filter is composed
     Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
     CriteriaQuery<?> cq = mock(CriteriaQuery.class);
     CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
@@ -448,43 +449,79 @@ class TransactionServiceTest {
     verify(cb).equal(root.get("ownerId"), USER_ID);
   }
 
+  // ==================== search (admin, paged) ====================
+
   @SuppressWarnings("unchecked")
   @Test
-  void search_admin_noOwnerFilter() {
-    // Given: repository returns results
-    when(transactionRepository.findAllActive(any(Specification.class))).thenReturn(List.of());
+  void search_delegatesToFindAllActiveWithSpecAndPageable() {
+    // Given: repository returns a page
+    var pageable = PageRequest.of(0, 20);
+    when(transactionRepository.findAllActive(any(Specification.class), eq(pageable)))
+        .thenReturn(Page.empty());
 
-    // When: admin user searches
-    transactionService.search(emptyFilter(), USER_ID, IS_ADMIN);
+    // When: search is called
+    var result = transactionService.search(emptyFilter(), pageable);
 
-    // Then: the specification does NOT include an ownerId predicate
+    // Then: delegates to findAllActive with spec and pageable
+    assertThat(result).isEmpty();
+    verify(transactionRepository).findAllActive(any(Specification.class), eq(pageable));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void search_specIncludesFilterPredicates() {
+    // Given: a filter with ownerId set
+    var filter =
+        new org.budgetanalyzer.transaction.api.request.TransactionFilter(
+            null,
+            "owner-abc",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var pageable = PageRequest.of(0, 10);
+    when(transactionRepository.findAllActive(any(Specification.class), eq(pageable)))
+        .thenReturn(Page.empty());
+
+    // When: search is called with the filter
+    transactionService.search(filter, pageable);
+
+    // Then: the spec includes the ownerId predicate from the filter
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
-    verify(transactionRepository).findAllActive(specCaptor.capture());
+    verify(transactionRepository).findAllActive(specCaptor.capture(), eq(pageable));
 
     var capturedSpec = specCaptor.getValue();
 
-    // Evaluate the captured spec against mocks to verify no owner filter
     Root<Transaction> root = mock(Root.class, RETURNS_DEEP_STUBS);
     CriteriaQuery<?> cq = mock(CriteriaQuery.class);
     CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_MOCKS);
 
     capturedSpec.toPredicate(root, cq, cb);
 
-    // Verify the owner filter was NOT applied
-    verify(root, never()).get("ownerId");
+    verify(root).get("ownerId");
+    verify(cb).equal(root.get("ownerId"), "owner-abc");
   }
 
-  // ==================== countActive ====================
+  // ==================== countActiveForUser / countActive ====================
 
   @SuppressWarnings("unchecked")
   @Test
-  void countActive_nonAdmin_filtersByOwner() {
+  void countActiveForUser_filtersByOwner() {
     // Given: repository returns a count
     when(transactionRepository.countActive(any(Specification.class))).thenReturn(5L);
 
-    // When: non-admin user counts
-    var result = transactionService.countActive(emptyFilter(), USER_ID, NOT_ADMIN);
+    // When: user-scoped count executes
+    var result = transactionService.countActiveForUser(emptyFilter(), USER_ID);
 
     // Then: the specification includes an ownerId equality predicate
     assertThat(result).isEqualTo(5L);
@@ -511,8 +548,8 @@ class TransactionServiceTest {
     // Given: repository returns a count
     when(transactionRepository.countActive(any(Specification.class))).thenReturn(10L);
 
-    // When: admin user counts
-    var result = transactionService.countActive(emptyFilter(), USER_ID, IS_ADMIN);
+    // When: admin-wide count executes
+    var result = transactionService.countActive(emptyFilter());
 
     // Then: the specification does NOT include an ownerId predicate
     assertThat(result).isEqualTo(10L);

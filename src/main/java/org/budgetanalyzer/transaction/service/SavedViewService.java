@@ -158,21 +158,19 @@ public class SavedViewService {
    * @return the count
    */
   public long countViewTransactions(SavedView view) {
-    var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded());
-    var matchingTransactions =
-        transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+    var matchingTransactions = findMatchingTransactions(view);
 
     // Get IDs of matching transactions
     var matchingIds =
         matchingTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
     // Filter pinned IDs to active transactions only
-    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds());
+    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds(), view.getUserId());
     var pinnedActiveIds =
         pinnedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
     // Filter excluded IDs to active transactions only
-    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds());
+    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds(), view.getUserId());
     var excludedActiveIds =
         excludedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
@@ -267,23 +265,20 @@ public class SavedViewService {
   }
 
   private ViewMembership resolveViewMembership(SavedView view) {
-    var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded());
-
     // Get transactions matching criteria (already filters soft-deleted)
-    var matchingTransactions =
-        transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+    var matchingTransactions = findMatchingTransactions(view);
 
     // Extract matching IDs
     var matchingIds =
         matchingTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
     // Filter pinned IDs to active transactions only
-    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds());
+    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds(), view.getUserId());
     var pinnedActiveIds =
         pinnedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
     // Filter excluded IDs to active transactions only
-    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds());
+    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds(), view.getUserId());
     var excludedActiveIds =
         excludedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
 
@@ -301,15 +296,21 @@ public class SavedViewService {
     return new ViewMembership(matched, pinned, excluded);
   }
 
-  private List<Transaction> findTransactionsByIds(Collection<Long> ids) {
+  private List<Transaction> findMatchingTransactions(SavedView view) {
+    var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded(), view.getUserId());
+    return transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+  }
+
+  private List<Transaction> findTransactionsByIds(Collection<Long> ids, String ownerId) {
     return ids.stream()
         .map(transactionRepository::findByIdActive)
         .filter(java.util.Optional::isPresent)
         .map(java.util.Optional::get)
+        .filter(transaction -> ownerId.equals(transaction.getOwnerId()))
         .toList();
   }
 
-  private TransactionFilter criteriaToFilter(ViewCriteria criteria, boolean openEnded) {
+  TransactionFilter criteriaToFilter(ViewCriteria criteria, boolean openEnded, String ownerId) {
     // Determine effective end date
     LocalDate effectiveEndDate = criteria.endDate();
     if (openEnded && effectiveEndDate == null) {
@@ -337,6 +338,7 @@ public class SavedViewService {
 
     return new TransactionFilter(
         null, // id
+        ownerId,
         accountIdFilter, // accountId
         bankNameFilter, // bankName
         criteria.startDate(), // dateFrom

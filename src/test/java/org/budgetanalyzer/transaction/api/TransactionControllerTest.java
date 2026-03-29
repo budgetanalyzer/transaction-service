@@ -108,7 +108,7 @@ class TransactionControllerTest {
             createTransaction(2L, "Gas", BigDecimal.valueOf(35.00)),
             createTransaction(3L, "Restaurant", BigDecimal.valueOf(75.00)));
 
-    when(transactionService.search(any(), anyString(), anyBoolean())).thenReturn(transactions);
+    when(transactionService.getTransactions(anyString())).thenReturn(transactions);
 
     // When/Then: GET returns 200 with list
     mockMvc
@@ -125,7 +125,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$[2].id").value(3))
         .andExpect(jsonPath("$[2].description").value("Restaurant"));
 
-    verify(transactionService, times(1)).search(any(), anyString(), anyBoolean());
+    verify(transactionService, times(1)).getTransactions(anyString());
   }
 
   // ==================== PATCH /v1/transactions/{id} ====================
@@ -545,7 +545,7 @@ class TransactionControllerTest {
   @Test
   void countTransactions_returnsCount() throws Exception {
     // Given: service returns a count
-    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(42L);
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(42L);
 
     // When/Then: GET returns 200 with count
     mockMvc
@@ -556,13 +556,13 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(42));
 
-    verify(transactionService, times(1)).countActive(any(), anyString(), anyBoolean());
+    verify(transactionService, times(1)).countActiveForUser(any(), eq("test-user"));
   }
 
   @Test
   void countTransactions_withFilterParams_returns200() throws Exception {
     // Given: service returns a count
-    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(5L);
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(5L);
 
     // When/Then: GET with filter params returns 200 with count
     mockMvc
@@ -574,7 +574,35 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(5));
 
-    verify(transactionService, times(1)).countActive(any(), anyString(), anyBoolean());
+    verify(transactionService, times(1)).countActiveForUser(any(), eq("test-user"));
+  }
+
+  @Test
+  void countTransactions_adminCallerStillUsesRequestingUserScope() throws Exception {
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(7L);
+
+    mockMvc
+        .perform(get("/v1/transactions/count").with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(7));
+
+    verify(transactionService).countActiveForUser(any(), eq("usr_admin456"));
+  }
+
+  @Test
+  void countTransactions_ownerIdParamIgnored_usesAuthenticatedUserId() throws Exception {
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(3L);
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .param("ownerId", "usr_other999")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(3));
+
+    verify(transactionService).countActiveForUser(any(), eq("test-user"));
   }
 
   // ==================== Helper Methods ====================

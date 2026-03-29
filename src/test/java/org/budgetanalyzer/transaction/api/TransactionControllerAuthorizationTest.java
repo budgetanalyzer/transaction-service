@@ -55,7 +55,7 @@ class TransactionControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    when(transactionService.search(any(), anyString(), anyBoolean())).thenReturn(List.of());
+    when(transactionService.getTransactions(anyString())).thenReturn(List.of());
 
     when(transactionService.batchImport(anyList(), anyString()))
         .thenReturn(new TransactionService.BatchImportResult(List.of(), 0));
@@ -63,7 +63,7 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
 
-    when(transactionService.countActive(any(), anyString(), anyBoolean())).thenReturn(0L);
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(0L);
 
     when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
         .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));

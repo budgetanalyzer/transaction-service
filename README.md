@@ -111,6 +111,28 @@ This project enforces:
 - **Checkstyle** for standards
 - **Spotless** for automated formatting
 
+## Admin Search And Counts
+
+`GET /v1/admin/transactions` is the admin-only paged transaction search endpoint used for
+cross-user browsing. It returns `PagedResponse<AdminTransactionResponse>` with a stable
+`content` array and `metadata` object. The metadata fields are `page`, `size`,
+`numberOfElements`, `totalElements`, `totalPages`, `first`, and `last`.
+
+- Default pagination is `page=0` and `size=50`.
+- Maximum page size is `100`.
+- Default sort is `date,desc` then `id,desc`.
+- Supported sort fields are `id`, `ownerId`, `accountId`, `bankName`, `date`,
+  `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, and `updatedAt`.
+- Unsupported sort fields are rejected with HTTP `400`.
+- Each response item includes the standard transaction fields plus `ownerId`.
+
+Count behavior is split the same way:
+
+- `GET /v1/transactions/count` always counts only the requesting user's active transactions,
+  even when the caller has the `ADMIN` role.
+- `GET /v1/admin/transactions/count` is the admin-only cross-user count endpoint and accepts the
+  same transaction filter fields as admin search.
+
 ## Project Structure
 
 ```

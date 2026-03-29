@@ -406,6 +406,82 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("Owned 1", "Owned 2");
   }
 
+  // ==================== Owner ID Filter (via withFilter) Tests ====================
+
+  @Test
+  void withFilter_ownerId_matchesExactOwnerId() {
+    // Given: transactions owned by different users
+    var ownedByA = createTransaction("Transaction A", BigDecimal.TEN);
+    ownedByA.setOwnerId("user-A");
+    transactionRepository.save(ownedByA);
+
+    var ownedByB = createTransaction("Transaction B", BigDecimal.TEN);
+    ownedByB.setOwnerId("user-B");
+    transactionRepository.save(ownedByB);
+
+    // When: filter by ownerId via withFilter
+    var spec = TransactionSpecifications.withFilter(filterByOwnerId("user-A"));
+    var results = transactionRepository.findAll(spec);
+
+    // Then: only user-A's transaction is returned
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getOwnerId()).isEqualTo("user-A");
+    assertThat(results.get(0).getDescription()).isEqualTo("Transaction A");
+  }
+
+  @Test
+  void withFilter_ownerId_isCaseSensitive() {
+    // Given: transactions whose ownerIds differ only in case
+    var upperCase = createTransaction("Upper Case Owner", BigDecimal.TEN);
+    upperCase.setOwnerId("User-A");
+    transactionRepository.save(upperCase);
+
+    var lowerCase = createTransaction("Lower Case Owner", BigDecimal.TEN);
+    lowerCase.setOwnerId("user-a");
+    transactionRepository.save(lowerCase);
+
+    // When: filter by exact case "User-A"
+    var spec = TransactionSpecifications.withFilter(filterByOwnerId("User-A"));
+    var results = transactionRepository.findAll(spec);
+
+    // Then: only the exact-case match is returned (not case-insensitive)
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getOwnerId()).isEqualTo("User-A");
+    assertThat(results.get(0).getDescription()).isEqualTo("Upper Case Owner");
+  }
+
+  @Test
+  void withFilter_ownerIdCombinedWithOtherFilters_appliesBothFilters() {
+    // Given: transactions across owners and banks
+    var chaseTransactionForUserA = createTransaction("Chase Payment", BigDecimal.TEN);
+    chaseTransactionForUserA.setOwnerId("user-A");
+    chaseTransactionForUserA.setBankName("Chase");
+    transactionRepository.save(chaseTransactionForUserA);
+
+    var wellsTransactionForUserA = createTransaction("Wells Payment", BigDecimal.TEN);
+    wellsTransactionForUserA.setOwnerId("user-A");
+    wellsTransactionForUserA.setBankName("Wells Fargo");
+    transactionRepository.save(wellsTransactionForUserA);
+
+    var chaseTransactionForUserB = createTransaction("Chase Other", BigDecimal.TEN);
+    chaseTransactionForUserB.setOwnerId("user-B");
+    chaseTransactionForUserB.setBankName("Chase");
+    transactionRepository.save(chaseTransactionForUserB);
+
+    // When: filter by ownerId="user-A" AND bankName="chase"
+    var filter =
+        new TransactionFilter(
+            null, "user-A", null, "chase", null, null, null, null, null, null, null, null, null,
+            null, null);
+    var spec = TransactionSpecifications.withFilter(filter);
+    var results = transactionRepository.findAll(spec);
+
+    // Then: only user-A's Chase transaction is returned
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getOwnerId()).isEqualTo("user-A");
+    assertThat(results.get(0).getBankName()).isEqualTo("Chase");
+  }
+
   // ==================== Edge Cases ====================
 
   @Test
@@ -446,21 +522,44 @@ class TransactionSpecificationsIntegrationTest {
   // Filter factory methods
   private TransactionFilter filterByDescription(String description) {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, null, description, null, null, null, null);
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        description,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  private TransactionFilter filterByOwnerId(String ownerId) {
+    return new TransactionFilter(
+        null, ownerId, null, null, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 
   private TransactionFilter filterByAccountId(String accountId) {
     return new TransactionFilter(
-        null, accountId, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, accountId, null, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 
   private TransactionFilter filterByBankName(String bankName) {
     return new TransactionFilter(
-        null, null, bankName, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, bankName, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 
   private TransactionFilter filterByCurrency(String currencyIsoCode) {
     return new TransactionFilter(
+        null,
         null,
         null,
         null,
@@ -479,23 +578,25 @@ class TransactionSpecificationsIntegrationTest {
 
   private TransactionFilter filterByType(TransactionType type) {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, type, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, type, null, null, null, null, null);
   }
 
   private TransactionFilter filterByDateRange(LocalDate dateFrom, LocalDate dateTo) {
     return new TransactionFilter(
-        null, null, null, dateFrom, dateTo, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, dateFrom, dateTo, null, null, null, null, null, null, null, null,
+        null);
   }
 
   private TransactionFilter filterByAmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
     return new TransactionFilter(
-        null, null, null, null, null, null, minAmount, maxAmount, null, null, null, null, null,
-        null);
+        null, null, null, null, null, null, null, minAmount, maxAmount, null, null, null, null,
+        null, null);
   }
 
   private TransactionFilter filterByMultipleFields(
       String description, String accountId, String bankName) {
     return new TransactionFilter(
+        null,
         null,
         accountId,
         bankName,
@@ -514,7 +615,7 @@ class TransactionSpecificationsIntegrationTest {
 
   private TransactionFilter emptyFilter() {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 
   // Transaction factory methods

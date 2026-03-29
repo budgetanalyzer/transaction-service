@@ -205,10 +205,9 @@ public class TransactionController {
   @GetMapping(path = "", produces = "application/json")
   public List<TransactionResponse> getTransactions() {
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
-    log.info("Received get transactions request - User ID: {}, isAdmin: {}", userId, isAdmin);
+    log.info("Received get transactions request - User ID: {}", userId);
 
-    var transactions = transactionService.search(TransactionFilter.empty(), userId, isAdmin);
+    var transactions = transactionService.getTransactions(userId);
 
     return transactions.stream().map(TransactionResponse::from).toList();
   }
@@ -217,8 +216,8 @@ public class TransactionController {
   @Operation(
       summary = "Count transactions",
       description =
-          "Returns the count of active transactions matching the given filter criteria. "
-              + "Non-admin users only count their own transactions.")
+          "Returns the count of active transactions owned by the requesting user and matching the "
+              + "given filter criteria.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -231,8 +230,7 @@ public class TransactionController {
   @GetMapping(path = "/count", produces = "application/json")
   public long countTransactions(@Valid TransactionFilter filter) {
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
-    return transactionService.countActive(filter, userId, isAdmin);
+    return transactionService.countActiveForUser(filter, userId);
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")

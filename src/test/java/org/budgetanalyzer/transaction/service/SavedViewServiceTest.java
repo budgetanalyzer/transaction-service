@@ -347,6 +347,109 @@ class SavedViewServiceTest {
     assertThat(result.excluded()).isEmpty();
   }
 
+  // ==================== owner scoping regression ====================
+
+  @Test
+  void criteriaToFilter_setsOwnerIdFromParameter() {
+    var criteria =
+        new org.budgetanalyzer.transaction.domain.ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    var filter = savedViewService.criteriaToFilter(criteria, false, USER_ID);
+
+    assertThat(filter.ownerId()).isEqualTo(USER_ID);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void getViewTransactions_excludesForeignOwnerTransactionsAcrossMembershipTypes() {
+    testView.setCriteria(
+        new org.budgetanalyzer.transaction.domain.ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null));
+    testView.setPinnedIds(Set.of(3L, 4L, 5L));
+    testView.setExcludedIds(Set.of(1L, 6L));
+
+    var ownedPinnedTransaction =
+        createTransaction(4L, "Owned Pin", LocalDate.of(2024, 12, 15), USER_ID);
+    var foreignPinnedTransaction =
+        createTransaction(5L, "Foreign Pin", LocalDate.of(2024, 12, 18), "usr_foreign");
+    var foreignExcludedTransaction =
+        createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
+
+    // findAllActive spec filters by ownerId, so only owned transactions are returned
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findAllActive(any(Specification.class)))
+        .thenReturn(List.of(testTransaction1, testTransaction3));
+    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdActive(3L)).thenReturn(Optional.of(testTransaction3));
+    when(transactionRepository.findByIdActive(4L)).thenReturn(Optional.of(ownedPinnedTransaction));
+    when(transactionRepository.findByIdActive(5L))
+        .thenReturn(Optional.of(foreignPinnedTransaction));
+    when(transactionRepository.findByIdActive(6L))
+        .thenReturn(Optional.of(foreignExcludedTransaction));
+
+    var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
+
+    // Foreign pinned/excluded still filtered at Java level in findTransactionsByIds
+    assertThat(result.matched()).containsExactly(3L);
+    assertThat(result.pinned()).containsExactly(4L);
+    assertThat(result.excluded()).containsExactly(1L);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void countViewTransactions_doesNotCountForeignOwnerTransactions() {
+    testView.setCriteria(
+        new org.budgetanalyzer.transaction.domain.ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null));
+    testView.setPinnedIds(Set.of(4L, 5L));
+    testView.setExcludedIds(Set.of(1L, 6L));
+
+    var ownedPinnedTransaction =
+        createTransaction(4L, "Owned Pin", LocalDate.of(2024, 12, 15), USER_ID);
+    var foreignPinnedTransaction =
+        createTransaction(5L, "Foreign Pin", LocalDate.of(2024, 12, 18), "usr_foreign");
+    var foreignExcludedTransaction =
+        createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
+
+    // findAllActive spec filters by ownerId, so only owned transactions are returned
+    when(transactionRepository.findAllActive(any(Specification.class)))
+        .thenReturn(List.of(testTransaction1, testTransaction3));
+    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdActive(4L)).thenReturn(Optional.of(ownedPinnedTransaction));
+    when(transactionRepository.findByIdActive(5L))
+        .thenReturn(Optional.of(foreignPinnedTransaction));
+    when(transactionRepository.findByIdActive(6L))
+        .thenReturn(Optional.of(foreignExcludedTransaction));
+
+    var count = savedViewService.countViewTransactions(testView);
+
+    // matched: [1,3] - excluded [1] = [3] (1 match) + pinned: [4] - matching [1,3] = [4] (1 pin) =
+    // 2
+    assertThat(count).isEqualTo(2);
+  }
+
   // ==================== countViewTransactions ====================
 
   @Test
@@ -511,6 +614,11 @@ class SavedViewServiceTest {
   }
 
   private Transaction createTransaction(Long id, String description, LocalDate date) {
+    return createTransaction(id, description, date, USER_ID);
+  }
+
+  private Transaction createTransaction(
+      Long id, String description, LocalDate date, String ownerId) {
     var transaction = new Transaction();
     transaction.setId(id);
     transaction.setAccountId("test-account");
@@ -520,7 +628,7 @@ class SavedViewServiceTest {
     transaction.setAmount(BigDecimal.valueOf(100.00));
     transaction.setType(TransactionType.DEBIT);
     transaction.setDescription(description);
-    transaction.setOwnerId("test-user");
+    transaction.setOwnerId(ownerId);
     try {
       var createdAtField = transaction.getClass().getSuperclass().getDeclaredField("createdAt");
       createdAtField.setAccessible(true);

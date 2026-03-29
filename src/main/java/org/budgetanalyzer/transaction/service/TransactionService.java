@@ -9,6 +9,9 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -172,36 +175,53 @@ public class TransactionService {
   public record BulkDeleteResult(int deletedCount, List<Long> notFoundIds) {}
 
   /**
-   * Searches for transactions matching the filter criteria. Non-admin users only see their own
-   * transactions.
+   * Retrieves all active transactions owned by the specified user.
    *
-   * @param filter the search filter criteria
-   * @param userId the ID of the requesting user
-   * @param isAdmin whether the requesting user has admin role
-   * @return the list of matching transactions
+   * @param userId the ID of the user whose transactions to retrieve
+   * @return the list of transactions owned by the user
    */
-  public List<Transaction> search(TransactionFilter filter, String userId, boolean isAdmin) {
-    var spec = TransactionSpecifications.withFilter(filter);
-    if (!isAdmin) {
-      spec = spec.and(TransactionSpecifications.byOwner(userId));
-    }
-    return transactionRepository.findAllActive(spec);
+  public List<Transaction> getTransactions(String userId) {
+    return transactionRepository.findAllActive(TransactionSpecifications.byOwner(userId));
   }
 
   /**
-   * Counts active transactions matching the filter criteria. Non-admin users only count their own
-   * transactions.
+   * Searches for transactions matching the filter criteria with pagination.
+   *
+   * <p>This method does not apply owner scoping — it returns all matching transactions regardless
+   * of owner. Access is restricted to admin users via {@code @PreAuthorize}.
    *
    * @param filter the search filter criteria
-   * @param userId the ID of the requesting user
-   * @param isAdmin whether the requesting user has admin role
+   * @param pageable pagination and sorting parameters
+   * @return a page of matching transactions
+   */
+  @PreAuthorize("hasRole('ADMIN')")
+  public Page<Transaction> search(TransactionFilter filter, Pageable pageable) {
+    var spec = TransactionSpecifications.withFilter(filter);
+    return transactionRepository.findAllActive(spec, pageable);
+  }
+
+  /**
+   * Counts active transactions matching the filter criteria for a specific user.
+   *
+   * @param filter the search filter criteria
+   * @param userId the ID of the transaction owner to scope the count to
    * @return the count of matching transactions
    */
-  public long countActive(TransactionFilter filter, String userId, boolean isAdmin) {
+  public long countActiveForUser(TransactionFilter filter, String userId) {
     var spec = TransactionSpecifications.withFilter(filter);
-    if (!isAdmin) {
-      spec = spec.and(TransactionSpecifications.byOwner(userId));
-    }
+    spec = spec.and(TransactionSpecifications.byOwner(userId));
+    return transactionRepository.countActive(spec);
+  }
+
+  /**
+   * Counts active transactions matching the filter criteria across all users.
+   *
+   * @param filter the search filter criteria
+   * @return the count of matching transactions
+   */
+  @PreAuthorize("hasRole('ADMIN')")
+  public long countActive(TransactionFilter filter) {
+    var spec = TransactionSpecifications.withFilter(filter);
     return transactionRepository.countActive(spec);
   }
 

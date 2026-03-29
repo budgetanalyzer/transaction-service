@@ -15,6 +15,13 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 public record TransactionFilter(
     @Schema(description = "Unique identifier for the transaction", example = "1") Long id,
     @Schema(
+            description =
+                "ID of the user who owns the transaction. Only effective on admin endpoints;"
+                    + " ignored on user-scoped endpoints where the authenticated user is always"
+                    + " applied.",
+            example = "usr_test123")
+        String ownerId,
+    @Schema(
             description = "Identifier for the account associated with the transaction",
             example = "checking-3223")
         String accountId,
@@ -23,6 +30,7 @@ public record TransactionFilter(
             example = "Capital One")
         String bankName,
     @Schema(description = "Start date for transaction date range", example = "2025-10-01")
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate dateFrom,
     @Schema(description = "End date for transaction date range", example = "2025-10-14")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -39,21 +47,21 @@ public record TransactionFilter(
     @Schema(description = "Text to match in the transaction description", example = "Grocery")
         String description,
     @Schema(description = "Start of creation timestamp range", example = "2025-10-14T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant createdAfter,
     @Schema(description = "End of creation timestamp range", example = "2025-10-15T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant createdBefore,
     @Schema(description = "Start of last update timestamp range", example = "2025-10-14T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant updatedAfter,
     @Schema(description = "End of last update timestamp range", example = "2025-10-15T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant updatedBefore) {
 
   /** Creates an empty filter with all criteria set to null. */
   public static TransactionFilter empty() {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 }
