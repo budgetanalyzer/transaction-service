@@ -60,8 +60,33 @@ curl -X POST http://localhost:8080/api/v1/transactions \
 **List Transactions**
 ```
 GET /api/v1/transactions
-Query params: page, size, sort, accountId, startDate, endDate, category
-Response: Page<Transaction>
+Response: List<Transaction>
+Notes: Returns only the requesting user's active transactions.
+```
+
+**Count User Transactions**
+```
+GET /api/v1/transactions/count
+Query params: id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
+Response: long
+Notes: Always scoped to the requesting user's active transactions.
+```
+
+**Admin Search Transactions**
+```
+GET /api/v1/admin/transactions
+Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
+Response: PagedResponse<AdminTransactionResponse>
+Notes: Admin only. Requires the `ADMIN` role. Default sort is `date,desc` then `id,desc`. Maximum page size is `100`. Supported sort fields are `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, and `updatedAt`. Unsupported sort fields return `400`.
+Contract: `content` contains `AdminTransactionResponse` items. `metadata` contains `page`, `size`, `numberOfElements`, `totalElements`, `totalPages`, `first`, and `last`.
+```
+
+**Admin Count Transactions**
+```
+GET /api/v1/admin/transactions/count
+Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
+Response: long
+Notes: Admin only cross-user count endpoint. Requires the `ADMIN` role.
 ```
 
 **Get Transaction**
@@ -194,6 +219,37 @@ Response: Category (201 Created)
 }
 ```
 
+### Admin Transaction Search Response
+
+```json
+{
+  "content": [
+    {
+      "id": 101,
+      "ownerId": "usr_test123",
+      "accountId": "checking-12345",
+      "bankName": "Capital One",
+      "date": "2025-11-10",
+      "currencyIsoCode": "USD",
+      "amount": 75.50,
+      "type": "DEBIT",
+      "description": "Restaurant dinner",
+      "createdAt": "2025-11-10T18:30:00Z",
+      "updatedAt": "2025-11-10T18:30:00Z"
+    }
+  ],
+  "metadata": {
+    "page": 0,
+    "size": 50,
+    "numberOfElements": 1,
+    "totalElements": 1,
+    "totalPages": 1,
+    "first": true,
+    "last": true
+  }
+}
+```
+
 ### Error Response
 
 ```json
@@ -222,14 +278,25 @@ See: [@service-common/docs/error-handling.md](https://github.com/budgetanalyzer/
 
 ## Authentication & Authorization
 
-**Status:** Not yet implemented
+This service uses trusted claims-header-based security from `service-common`.
 
-**Future:**
-- OAuth 2.0 / JWT tokens
-- Role-based access control (RBAC)
-- User-scoped data access
+- Requests are authenticated from `X-User-Id`, `X-Permissions`, and `X-Roles` headers injected by
+  the ingress auth path.
+- `GET /api/v1/transactions` and `GET /api/v1/transactions/count` require
+  `X-Permissions: transactions:read`.
+- Write endpoints require `transactions:write`.
+- `GET /api/v1/admin/transactions` and `GET /api/v1/admin/transactions/count` require the
+  `ADMIN` role in `X-Roles`. They do not require `transactions:read`.
+- OpenAPI docs and health endpoints remain public.
 
-**Current:** All endpoints publicly accessible (local dev only)
+Example local admin request:
+
+```bash
+curl \
+  -H "X-User-Id: usr_admin456" \
+  -H "X-Roles: ADMIN" \
+  http://localhost:8082/transaction-service/v1/admin/transactions
+```
 
 ## Rate Limiting
 
@@ -242,28 +309,41 @@ See: [@service-common/docs/error-handling.md](https://github.com/budgetanalyzer/
 
 ## Pagination
 
-**Standard pagination for list endpoints:**
+`GET /api/v1/transactions` remains an unpaged user-scoped list endpoint. The stable paged response
+contract applies to admin search:
 
 **Request:**
 ```
-GET /api/v1/transactions?page=0&size=20&sort=transactionDate,desc
+GET /api/v1/admin/transactions?page=0&size=20&sort=date,desc&sort=id,desc
 ```
 
 **Response:**
 ```json
 {
-  "content": [...],
-  "pageable": {
-    "pageNumber": 0,
-    "pageSize": 20,
-    "sort": {"sorted": true, "orders": [...]},
-    "offset": 0
-  },
-  "totalPages": 5,
-  "totalElements": 100,
-  "last": false,
-  "first": true,
-  "numberOfElements": 20
+  "content": [
+    {
+      "id": 101,
+      "ownerId": "usr_test123",
+      "accountId": "checking-12345",
+      "bankName": "Capital One",
+      "date": "2025-11-10",
+      "currencyIsoCode": "USD",
+      "amount": 75.50,
+      "type": "DEBIT",
+      "description": "Restaurant dinner",
+      "createdAt": "2025-11-10T18:30:00Z",
+      "updatedAt": "2025-11-10T18:30:00Z"
+    }
+  ],
+  "metadata": {
+    "page": 0,
+    "size": 20,
+    "numberOfElements": 1,
+    "totalElements": 1,
+    "totalPages": 1,
+    "first": true,
+    "last": true
+  }
 }
 ```
 

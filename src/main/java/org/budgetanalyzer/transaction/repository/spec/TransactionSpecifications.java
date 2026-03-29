@@ -45,6 +45,11 @@ public class TransactionSpecifications {
         predicates.add(cb.equal(root.get("id"), filter.id()));
       }
 
+      // Owner ID (exact match)
+      if (filter.ownerId() != null && !filter.ownerId().isBlank()) {
+        predicates.add(cb.equal(root.get("ownerId"), filter.ownerId()));
+      }
+
       // Account ID (case-insensitive LIKE with multi-word OR support)
       Predicate accountIdPredicate =
           createTextFilterPredicate(cb, root.get("accountId"), filter.accountId());

@@ -14,6 +14,8 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 @Schema(description = "Filter for querying transactions by various fields")
 public record TransactionFilter(
     @Schema(description = "Unique identifier for the transaction", example = "1") Long id,
+    @Schema(description = "ID of the user who owns the transaction", example = "usr_test123")
+        String ownerId,
     @Schema(
             description = "Identifier for the account associated with the transaction",
             example = "checking-3223")
@@ -39,21 +41,21 @@ public record TransactionFilter(
     @Schema(description = "Text to match in the transaction description", example = "Grocery")
         String description,
     @Schema(description = "Start of creation timestamp range", example = "2025-10-14T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant createdAfter,
     @Schema(description = "End of creation timestamp range", example = "2025-10-15T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant createdBefore,
     @Schema(description = "Start of last update timestamp range", example = "2025-10-14T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant updatedAfter,
     @Schema(description = "End of last update timestamp range", example = "2025-10-15T00:00:00Z")
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant updatedBefore) {
 
   /** Creates an empty filter with all criteria set to null. */
   public static TransactionFilter empty() {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 }
