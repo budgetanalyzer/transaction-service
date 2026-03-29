@@ -589,6 +589,22 @@ class TransactionControllerTest {
     verify(transactionService).countActiveForUser(any(), eq("usr_admin456"));
   }
 
+  @Test
+  void countTransactions_ownerIdParamIgnored_usesAuthenticatedUserId() throws Exception {
+    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(3L);
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/count")
+                .param("ownerId", "usr_other999")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(3));
+
+    verify(transactionService).countActiveForUser(any(), eq("test-user"));
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(Long id, String description, BigDecimal amount) {

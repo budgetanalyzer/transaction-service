@@ -129,6 +129,32 @@ cat src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpec
 
 See [TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
 
+### Admin Transaction Search
+
+**ADMIN role required.** Cross-user transaction search and count for admin users, exposed via `AdminTransactionController`.
+
+**Endpoints:**
+- `GET /v1/admin/transactions` — Paginated search across all users (default sort: `date`, `id` DESC)
+- `GET /v1/admin/transactions/count` — Count matching transactions across all users
+
+**Admin-only filter field:**
+- `ownerId` — Filter by the owning user's ID. Part of `TransactionFilter` but only effective on admin endpoints; ignored on user-scoped endpoints where the authenticated user is always applied.
+
+**Sort fields:** `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, `updatedAt`
+
+**Authorization:** Class-level `@PreAuthorize("hasRole('ADMIN')")` — requires the `ADMIN` role from the `X-Roles` claims header.
+
+**Response:** `AdminTransactionResponse` extends the standard transaction response with the `ownerId` field.
+
+**Discovery:**
+```bash
+# View admin controller
+cat src/main/java/org/budgetanalyzer/transaction/api/AdminTransactionController.java
+
+# View admin response DTO
+cat src/main/java/org/budgetanalyzer/transaction/api/response/AdminTransactionResponse.java
+```
+
 ### Soft Delete Pattern
 
 Transactions are never permanently deleted:
@@ -192,6 +218,8 @@ find src/main/java/org/budgetanalyzer/transaction -type d | sort
 - Preview: `POST /v1/transactions/preview`
 - Batch Import: `POST /v1/transactions/batch`
 - Bulk Delete: `POST /v1/transactions/bulk-delete`
+- Admin Search: `GET /v1/admin/transactions` (ADMIN role)
+- Admin Count: `GET /v1/admin/transactions/count` (ADMIN role)
 - Saved Views: `/v1/views/**`
 - Statement Formats: `/v1/statement-formats/**`
 

@@ -15,8 +15,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
@@ -64,6 +70,32 @@ public class AdminTransactionController {
    * @return a paged response of admin transaction results
    */
   @Operation(summary = "Search transactions across all users")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = PagedResponse.class))),
+        @ApiResponse(
+            responseCode = "400",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Invalid Sort Field",
+                            summary = "Unsupported sort field requested",
+                            value =
+                                """
+                        {
+                          "type": "VALIDATION_ERROR",
+                          "message": "Unsupported sort field: invalid. Allowed sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt"
+                        }
+                        """)))
+      })
   @GetMapping(produces = "application/json")
   public PagedResponse<AdminTransactionResponse> searchTransactions(
       @Valid TransactionFilter filter,
@@ -97,6 +129,15 @@ public class AdminTransactionController {
    * @return the count of matching transactions
    */
   @Operation(summary = "Count transactions across all users")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = Long.class))),
+      })
   @GetMapping(path = "/count", produces = "application/json")
   public long countTransactions(@Valid TransactionFilter filter) {
     log.info(

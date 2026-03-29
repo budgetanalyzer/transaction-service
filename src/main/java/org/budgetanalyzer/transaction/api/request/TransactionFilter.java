@@ -14,7 +14,12 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 @Schema(description = "Filter for querying transactions by various fields")
 public record TransactionFilter(
     @Schema(description = "Unique identifier for the transaction", example = "1") Long id,
-    @Schema(description = "ID of the user who owns the transaction", example = "usr_test123")
+    @Schema(
+            description =
+                "ID of the user who owns the transaction. Only effective on admin endpoints;"
+                    + " ignored on user-scoped endpoints where the authenticated user is always"
+                    + " applied.",
+            example = "usr_test123")
         String ownerId,
     @Schema(
             description = "Identifier for the account associated with the transaction",
