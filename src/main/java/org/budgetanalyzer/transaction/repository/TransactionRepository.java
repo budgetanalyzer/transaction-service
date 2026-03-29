@@ -10,7 +10,7 @@ import org.budgetanalyzer.core.repository.SoftDeleteOperations;
 import org.budgetanalyzer.transaction.domain.Transaction;
 
 public interface TransactionRepository
-    extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction> {
+    extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction, Long> {
 
   /**
    * Finds all duplicate keys (date|amount|description) that exist in the database for a specific
