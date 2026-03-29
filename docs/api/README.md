@@ -7,7 +7,7 @@
 
 ## Overview
 
-This service provides RESTful APIs for transaction and budget management. All endpoints follow RESTful conventions and return JSON responses.
+This service provides RESTful APIs for financial transaction management, including CSV/PDF import, advanced filtering, and admin search. All endpoints follow RESTful conventions and return JSON responses.
 
 ## Quick Start
 
@@ -37,20 +37,9 @@ curl http://localhost:8082/v3/api-docs > openapi.json
 # Health check
 curl http://localhost:8082/actuator/health
 
-# List transactions
-curl http://localhost:8080/api/v1/transactions
-
-# Create transaction
-curl -X POST http://localhost:8080/api/v1/transactions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "accountId": "123e4567-e89b-12d3-a456-426614174000",
-    "amount": 50.00,
-    "currency": "USD",
-    "transactionDate": "2025-11-10",
-    "description": "Grocery shopping",
-    "type": "DEBIT"
-  }'
+# List transactions (requires auth headers)
+curl -H "X-User-Id: usr_test123" -H "X-Permissions: transactions:read" \
+  http://localhost:8082/v1/transactions
 ```
 
 ## API Endpoints
@@ -59,161 +48,232 @@ curl -X POST http://localhost:8080/api/v1/transactions \
 
 **List Transactions**
 ```
-GET /api/v1/transactions
-Response: List<Transaction>
-Notes: Returns only the requesting user's active transactions.
+GET /v1/transactions
+Response: List<TransactionResponse>
+Permission: transactions:read
+Notes: Returns only the requesting user's active (non-deleted) transactions.
 ```
 
 **Count User Transactions**
 ```
-GET /api/v1/transactions/count
+GET /v1/transactions/count
 Query params: id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
 Response: long
+Permission: transactions:read
 Notes: Always scoped to the requesting user's active transactions.
-```
-
-**Admin Search Transactions**
-```
-GET /api/v1/admin/transactions
-Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
-Response: PagedResponse<AdminTransactionResponse>
-Notes: Admin only. Requires the `ADMIN` role. Default sort is `date,desc` then `id,desc`. Maximum page size is `100`. Supported sort fields are `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, and `updatedAt`. Unsupported sort fields return `400`.
-Contract: `content` contains `AdminTransactionResponse` items. `metadata` contains `page`, `size`, `numberOfElements`, `totalElements`, `totalPages`, `first`, and `last`.
-```
-
-**Admin Count Transactions**
-```
-GET /api/v1/admin/transactions/count
-Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
-Response: long
-Notes: Admin only cross-user count endpoint. Requires the `ADMIN` role.
 ```
 
 **Get Transaction**
 ```
-GET /api/v1/transactions/{id}
-Response: Transaction
-```
-
-**Create Transaction**
-```
-POST /api/v1/transactions
-Body: TransactionRequest
-Response: Transaction (201 Created)
+GET /v1/transactions/{id}
+Response: TransactionResponse
+Permission: transactions:read
 ```
 
 **Update Transaction**
 ```
-PUT /api/v1/transactions/{id}
-Body: TransactionRequest
-Response: Transaction
+PATCH /v1/transactions/{id}
+Body: TransactionUpdateRequest (description, accountId)
+Response: TransactionResponse
+Permission: transactions:write
+Notes: Only description and accountId are mutable. All other fields are immutable.
 ```
 
 **Delete Transaction**
 ```
-DELETE /api/v1/transactions/{id}
+DELETE /v1/transactions/{id}
 Response: 204 No Content
+Permission: transactions:delete
+Notes: Soft-deletes the transaction (sets deleted=true).
 ```
 
-**Search Transactions**
+**Bulk Delete Transactions**
 ```
-POST /api/v1/transactions/search
-Body: TransactionSearchCriteria
-Response: Page<Transaction>
-```
-
-**Import CSV**
-```
-POST /api/v1/transactions/import
-Body: multipart/form-data (files[], bankFormat)
-Response: TransactionImportResponse
+POST /v1/transactions/bulk-delete
+Body: { "ids": [1, 2, 3] }
+Response: BulkDeleteResponse
+Permission: transactions:delete
+Notes: Soft-deletes multiple transactions. Returns deletedCount and notFoundIds.
 ```
 
-### Budgets
-
-**List Budgets**
+**Preview Transactions (File Import)**
 ```
-GET /api/v1/budgets
-Query params: page, size, sort, category, startDate, endDate
-Response: Page<Budget>
-```
-
-**Get Budget**
-```
-GET /api/v1/budgets/{id}
-Response: Budget
+POST /v1/transactions/preview
+Content-Type: multipart/form-data
+Params: format (required), accountId (optional), file (required)
+Response: PreviewResponse
+Permission: transactions:read
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys.
 ```
 
-**Create Budget**
+**Batch Import Transactions**
 ```
-POST /api/v1/budgets
-Body: BudgetRequest
-Response: Budget (201 Created)
-```
-
-**Update Budget**
-```
-PUT /api/v1/budgets/{id}
-Body: BudgetRequest
-Response: Budget
+POST /v1/transactions/batch
+Body: BatchImportRequest (list of PreviewTransaction objects)
+Response: BatchImportResponse (201 Created)
+Permission: transactions:write
+Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates (date + amount + description) are skipped.
 ```
 
-**Delete Budget**
+### Admin Transactions
+
+**Admin Search Transactions**
 ```
-DELETE /api/v1/budgets/{id}
+GET /v1/admin/transactions
+Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
+Response: PagedResponse<AdminTransactionResponse>
+Role: ADMIN
+Notes: Default sort is date,desc then id,desc. Default page size is 50, maximum is 100. Supported sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt. Unsupported sort fields return 400.
+Contract: content contains AdminTransactionResponse items. metadata contains page, size, numberOfElements, totalElements, totalPages, first, last.
+```
+
+**Admin Count Transactions**
+```
+GET /v1/admin/transactions/count
+Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
+Response: long
+Role: ADMIN
+Notes: Cross-user count endpoint. Does not require transactions:read.
+```
+
+### Saved Views
+
+**Create Saved View**
+```
+POST /v1/views
+Body: CreateSavedViewRequest
+Response: SavedViewResponse (201 Created)
+Permission: transactions:write
+```
+
+**List Saved Views**
+```
+GET /v1/views
+Response: List<SavedViewResponse>
+Permission: transactions:read
+Notes: Returns only the requesting user's views.
+```
+
+**Get Saved View**
+```
+GET /v1/views/{id}
+Response: SavedViewResponse
+Permission: transactions:read
+```
+
+**Update Saved View**
+```
+PUT /v1/views/{id}
+Body: UpdateSavedViewRequest
+Response: SavedViewResponse
+Permission: transactions:write
+```
+
+**Delete Saved View**
+```
+DELETE /v1/views/{id}
 Response: 204 No Content
+Permission: transactions:write
 ```
 
-### Categories
-
-**List Categories**
+**Get View Transactions**
 ```
-GET /api/v1/categories
-Query params: type (INCOME/EXPENSE)
-Response: List<Category>
-```
-
-**Get Category**
-```
-GET /api/v1/categories/{id}
-Response: Category
+GET /v1/views/{id}/transactions
+Response: List<ViewMembershipResponse>
+Permission: transactions:read
+Notes: Returns transactions matching the view's criteria, plus pinned/excluded overrides.
 ```
 
-**Create Category**
+**Pin Transaction to View**
 ```
-POST /api/v1/categories
-Body: CategoryRequest
-Response: Category (201 Created)
+POST /v1/views/{id}/pin/{txnId}
+Response: SavedViewResponse
+Permission: transactions:write
+```
+
+**Unpin Transaction from View**
+```
+DELETE /v1/views/{id}/pin/{txnId}
+Response: SavedViewResponse
+Permission: transactions:write
+```
+
+**Exclude Transaction from View**
+```
+POST /v1/views/{id}/exclude/{txnId}
+Response: SavedViewResponse
+Permission: transactions:write
+```
+
+**Remove Exclusion from View**
+```
+DELETE /v1/views/{id}/exclude/{txnId}
+Response: SavedViewResponse
+Permission: transactions:write
+```
+
+### Statement Formats
+
+**List Statement Formats**
+```
+GET /v1/statement-formats
+Response: List<StatementFormatResponse>
+Permission: statementformats:read
+```
+
+**Get Statement Format**
+```
+GET /v1/statement-formats/{formatKey}
+Response: StatementFormatResponse
+Permission: statementformats:read
+```
+
+**Create Statement Format**
+```
+POST /v1/statement-formats
+Body: CreateStatementFormatRequest
+Response: StatementFormatResponse (201 Created)
+Permission: statementformats:write
+```
+
+**Update Statement Format**
+```
+PUT /v1/statement-formats/{formatKey}
+Body: UpdateStatementFormatRequest
+Response: StatementFormatResponse
+Permission: statementformats:write
+```
+
+**Delete Statement Format**
+```
+DELETE /v1/statement-formats/{formatKey}
+Response: 204 No Content
+Permission: statementformats:delete
 ```
 
 ## Request/Response Examples
 
-### TransactionRequest
+### TransactionUpdateRequest
 
 ```json
 {
-  "accountId": "123e4567-e89b-12d3-a456-426614174000",
-  "amount": 75.50,
-  "currency": "USD",
-  "transactionDate": "2025-11-10",
-  "description": "Restaurant dinner",
-  "category": "Food & Dining",
-  "type": "DEBIT"
+  "description": "Whole Foods - groceries for dinner party",
+  "accountId": "checking-12345"
 }
 ```
 
-### Transaction Response
+### TransactionResponse
 
 ```json
 {
-  "id": "987e6543-e21b-12d3-a456-426614174000",
-  "accountId": "123e4567-e89b-12d3-a456-426614174000",
+  "id": 101,
+  "accountId": "checking-12345",
+  "bankName": "Capital One",
+  "date": "2025-11-10",
+  "currencyIsoCode": "USD",
   "amount": 75.50,
-  "currency": "USD",
-  "transactionDate": "2025-11-10",
-  "description": "Restaurant dinner",
-  "category": "Food & Dining",
   "type": "DEBIT",
+  "description": "Restaurant dinner",
   "createdAt": "2025-11-10T18:30:00Z",
   "updatedAt": "2025-11-10T18:30:00Z"
 }
@@ -250,27 +310,38 @@ Response: Category (201 Created)
 }
 ```
 
-### Error Response
+### Error Responses
 
+**Application error:**
 ```json
 {
-  "timestamp": "2025-11-10T18:30:00Z",
-  "status": 400,
-  "error": "Bad Request",
-  "message": "Invalid transaction date: date cannot be in the future",
-  "path": "/api/v1/transactions"
+  "type": "APPLICATION_ERROR",
+  "message": "Format not supported: fake-bank",
+  "code": "FORMAT_NOT_SUPPORTED"
+}
+```
+
+**Validation error:**
+```json
+{
+  "type": "VALIDATION_ERROR",
+  "message": "Validation failed for 2 field(s)",
+  "fieldErrors": [
+    { "field": "transactions[0].amount", "message": "must not be null" },
+    { "field": "transactions[1].date", "message": "must not be null" }
+  ]
 }
 ```
 
 ## Error Handling
 
 **Standard HTTP Status Codes:**
-- `200 OK` - Successful GET/PUT
-- `201 Created` - Successful POST
+- `200 OK` - Successful GET/PATCH/bulk operations
+- `201 Created` - Successful POST (batch import, create)
 - `204 No Content` - Successful DELETE
-- `400 Bad Request` - Validation error
+- `400 Bad Request` - Validation error or invalid request
 - `404 Not Found` - Resource not found
-- `409 Conflict` - Business rule violation
+- `422 Unprocessable Entity` - Business rule violation (e.g., unsupported format)
 - `500 Internal Server Error` - Server error
 
 **Error Response Format:**
@@ -282,11 +353,13 @@ This service uses trusted claims-header-based security from `service-common`.
 
 - Requests are authenticated from `X-User-Id`, `X-Permissions`, and `X-Roles` headers injected by
   the ingress auth path.
-- `GET /api/v1/transactions` and `GET /api/v1/transactions/count` require
+- `GET /v1/transactions` and `GET /v1/transactions/count` require
   `X-Permissions: transactions:read`.
-- Write endpoints require `transactions:write`.
-- `GET /api/v1/admin/transactions` and `GET /api/v1/admin/transactions/count` require the
+- Write endpoints require `transactions:write`. Delete endpoints require `transactions:delete`.
+- `GET /v1/admin/transactions` and `GET /v1/admin/transactions/count` require the
   `ADMIN` role in `X-Roles`. They do not require `transactions:read`.
+- Statement format endpoints require `statementformats:read`, `statementformats:write`, or
+  `statementformats:delete` respectively.
 - OpenAPI docs and health endpoints remain public.
 
 Example local admin request:
@@ -295,7 +368,7 @@ Example local admin request:
 curl \
   -H "X-User-Id: usr_admin456" \
   -H "X-Roles: ADMIN" \
-  http://localhost:8082/transaction-service/v1/admin/transactions
+  http://localhost:8082/v1/admin/transactions
 ```
 
 ## Rate Limiting
@@ -309,12 +382,12 @@ curl \
 
 ## Pagination
 
-`GET /api/v1/transactions` remains an unpaged user-scoped list endpoint. The stable paged response
+`GET /v1/transactions` remains an unpaged user-scoped list endpoint. The stable paged response
 contract applies to admin search:
 
 **Request:**
 ```
-GET /api/v1/admin/transactions?page=0&size=20&sort=date,desc&sort=id,desc
+GET /v1/admin/transactions?page=0&size=20&sort=date,desc&sort=id,desc
 ```
 
 **Response:**
@@ -349,23 +422,21 @@ GET /api/v1/admin/transactions?page=0&size=20&sort=date,desc&sort=id,desc
 
 ## Validation Rules
 
-### Transaction
+### Batch Import (PreviewTransaction)
 
-- `accountId` - Required, valid UUID
-- `amount` - Required, positive number
-- `currency` - Required, valid ISO 4217 code
-- `transactionDate` - Required, not in future
-- `description` - Required, 1-500 characters
+- `date` - Required
+- `description` - Required, non-blank
+- `amount` - Required
 - `type` - Required, DEBIT or CREDIT
+- `bankName` - Required, non-blank
+- `currencyIsoCode` - Required, non-blank
+- `accountId` - Optional
+- `category` - Optional
 
-### Budget
+### Transaction Update (TransactionUpdateRequest)
 
-- `name` - Required, 1-200 characters
-- `amount` - Required, positive number
-- `currency` - Required, valid ISO 4217 code
-- `startDate` - Required
-- `endDate` - Required, after startDate
-- `category` - Optional, 1-100 characters
+- `description` - Optional, max 500 characters
+- `accountId` - Optional, max 100 characters
 
 ## Discovery Commands
 

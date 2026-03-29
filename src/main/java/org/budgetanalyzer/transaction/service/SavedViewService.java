@@ -298,11 +298,7 @@ public class SavedViewService {
 
   private List<Transaction> findMatchingTransactions(SavedView view) {
     var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded(), view.getUserId());
-    return transactionRepository
-        .findAllActive(TransactionSpecifications.withFilter(filter))
-        .stream()
-        .filter(transaction -> view.getUserId().equals(transaction.getOwnerId()))
-        .toList();
+    return transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
   }
 
   private List<Transaction> findTransactionsByIds(Collection<Long> ids, String ownerId) {

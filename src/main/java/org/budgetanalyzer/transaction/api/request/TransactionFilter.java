@@ -25,6 +25,7 @@ public record TransactionFilter(
             example = "Capital One")
         String bankName,
     @Schema(description = "Start date for transaction date range", example = "2025-10-01")
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate dateFrom,
     @Schema(description = "End date for transaction date range", example = "2025-10-14")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
