@@ -325,6 +325,8 @@ cd ../transaction-service
 - Use soft-delete pattern - never hard delete transactions
 - For code quality standards and build commands, see [service-common/AGENTS.md](../service-common/AGENTS.md)
 
+**NO GIT WRITE OPERATIONS**: Never run git commands (commit, push, checkout, reset, etc.) without explicit user request. The user controls git workflow entirely. You may suggest what to commit, but don't do it.
+
 ## Honest Discourse
 
 Do not over-validate ideas. The user wants honest pushback, not agreement.
