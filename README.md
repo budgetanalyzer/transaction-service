@@ -150,10 +150,10 @@ transaction-service/
 ## Integration
 
 This service integrates with:
-- **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** and **ext-authz** — validate browser sessions and inject pre-validated `X-User-Id`, `X-Roles`, and `X-Permissions` headers before requests reach the service
+- **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** and **Envoy ext_authz** — Session Gateway manages browser authentication and Redis-backed sessions; Envoy ext_authz validates those sessions and injects pre-validated `X-User-Id`, `X-Roles`, and `X-Permissions` headers before requests reach the service
 - **API Gateway** (Envoy + NGINX) for routing and session enforcement
 - **PostgreSQL** for data persistence
-- **Service Common** for shared utilities (including claims-header security that reads pre-validated headers from ext-authz)
+- **Service Common** for shared utilities (including claims-header security that reads pre-validated headers from ext_authz)
 - **[Permission Service](https://github.com/budgetanalyzer/permission-service)** for fine-grained claims-header-based authorization (roles and atomic permissions like `transactions:read`, `transactions:write`)
 
 See the [orchestration repository](https://github.com/budgetanalyzer/orchestration) for full system setup.

@@ -73,7 +73,7 @@ Manages financial transactions and CSV imports for the Budget Analyzer applicati
 
 ### Authorization
 
-All endpoints are protected by fine-grained claims-header-based permissions. Envoy ext_authz validates sessions and injects `X-User-Id`, `X-Permissions`, `X-Roles` headers. `ClaimsHeaderSecurityConfig` (from service-common) extracts these into the Spring Security context. Controllers enforce access via `@PreAuthorize` annotations. Tests use `ClaimsHeaderTestBuilder` to set up per-request authentication.
+All endpoints are protected by fine-grained claims-header-based permissions. Session Gateway manages browser authentication and Redis-backed sessions. Envoy ext_authz validates those sessions and injects `X-User-Id`, `X-Permissions`, `X-Roles` headers. `ClaimsHeaderSecurityConfig` (from service-common) extracts these into the Spring Security context. Controllers enforce access via `@PreAuthorize` annotations. Tests use `ClaimsHeaderTestBuilder` to set up per-request authentication.
 
 See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC model, role definitions, and permission details. See also the [Permission Service README](../permission-service/README.md) for an overview.
 
