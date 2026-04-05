@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -72,12 +73,7 @@ public class AdminTransactionController {
   @Operation(summary = "Search transactions across all users")
   @ApiResponses(
       value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = PagedResponse.class))),
+        @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/json")),
         @ApiResponse(
             responseCode = "400",
             content =
@@ -99,7 +95,8 @@ public class AdminTransactionController {
   @GetMapping(produces = "application/json")
   public PagedResponse<AdminTransactionResponse> searchTransactions(
       @Valid TransactionFilter filter,
-      @PageableDefault(
+      @ParameterObject
+          @PageableDefault(
               size = 50,
               sort = {"date", "id"},
               direction = Sort.Direction.DESC)
