@@ -36,7 +36,7 @@ class AdminTransactionControllerAuthorizationTest {
   @BeforeEach
   void setupServiceMocks() {
     when(transactionService.search(any(), any(Pageable.class))).thenReturn(Page.empty());
-    when(transactionService.countActive(any())).thenReturn(0L);
+    when(transactionService.countNotDeleted(any())).thenReturn(0L);
   }
 
   @Test

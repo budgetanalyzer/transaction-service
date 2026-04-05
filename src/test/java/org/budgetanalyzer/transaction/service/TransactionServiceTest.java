@@ -132,7 +132,7 @@ class TransactionServiceTest {
   void getTransaction_ownerMatch_returnsTransaction() {
     // Given: a transaction owned by the user
     var transaction = createTransaction(1L, "Coffee Shop", BigDecimal.valueOf(4.50));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When: owner requests their transaction
     var result = transactionService.getTransaction(1L, USER_ID, NOT_ADMIN);
@@ -142,14 +142,14 @@ class TransactionServiceTest {
     assertThat(result.getId()).isEqualTo(1L);
     assertThat(result.getDescription()).isEqualTo("Coffee Shop");
 
-    verify(transactionRepository, times(1)).findByIdActive(1L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(1L);
   }
 
   @Test
   void getTransaction_ownerMismatch_throwsResourceNotFoundException() {
     // Given: a transaction owned by another user
     var transaction = createTransaction(1L, "Coffee Shop", BigDecimal.valueOf(4.50));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When/Then: non-owner gets 404
     assertThatThrownBy(() -> transactionService.getTransaction(1L, OTHER_USER_ID, NOT_ADMIN))
@@ -161,7 +161,7 @@ class TransactionServiceTest {
   void getTransaction_admin_bypassesOwnerCheck() {
     // Given: a transaction owned by another user
     var transaction = createTransaction(1L, "Coffee Shop", BigDecimal.valueOf(4.50));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When: admin requests any transaction
     var result = transactionService.getTransaction(1L, OTHER_USER_ID, IS_ADMIN);
@@ -174,14 +174,14 @@ class TransactionServiceTest {
   @Test
   void getTransaction_nonExistentId_throwsResourceNotFoundException() {
     // Given: transaction does not exist
-    when(transactionRepository.findByIdActive(9999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(9999L)).thenReturn(Optional.empty());
 
     // When/Then: get throws exception
     assertThatThrownBy(() -> transactionService.getTransaction(9999L, USER_ID, NOT_ADMIN))
         .isInstanceOf(ResourceNotFoundException.class)
         .hasMessageContaining("Transaction not found with id: 9999");
 
-    verify(transactionRepository, times(1)).findByIdActive(9999L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(9999L);
   }
 
   // ==================== updateTransaction ====================
@@ -190,7 +190,7 @@ class TransactionServiceTest {
   void updateTransaction_updateDescription_updatesAndSaves() {
     // Given: a transaction exists owned by user
     var transaction = createTransaction(1L, "Old Description", BigDecimal.valueOf(100.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
     when(transactionRepository.save(any(Transaction.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -202,7 +202,7 @@ class TransactionServiceTest {
     assertThat(result.getDescription()).isEqualTo("New Description");
     assertThat(result.getAccountId()).isEqualTo("test-account"); // unchanged
 
-    verify(transactionRepository, times(1)).findByIdActive(1L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(1L);
     verify(transactionRepository, times(1)).save(transaction);
   }
 
@@ -210,7 +210,7 @@ class TransactionServiceTest {
   void updateTransaction_updateAccountId_updatesAndSaves() {
     // Given: a transaction exists owned by user
     var transaction = createTransaction(1L, "Expense", BigDecimal.valueOf(50.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
     when(transactionRepository.save(any(Transaction.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -222,7 +222,7 @@ class TransactionServiceTest {
     assertThat(result.getAccountId()).isEqualTo("new-account-123");
     assertThat(result.getDescription()).isEqualTo("Expense"); // unchanged
 
-    verify(transactionRepository, times(1)).findByIdActive(1L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(1L);
     verify(transactionRepository, times(1)).save(transaction);
   }
 
@@ -230,7 +230,7 @@ class TransactionServiceTest {
   void updateTransaction_updateBothFields_updatesAndSaves() {
     // Given: a transaction exists owned by user
     var transaction = createTransaction(1L, "Old", BigDecimal.valueOf(25.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
     when(transactionRepository.save(any(Transaction.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -243,7 +243,7 @@ class TransactionServiceTest {
     assertThat(result.getDescription()).isEqualTo("New Description");
     assertThat(result.getAccountId()).isEqualTo("new-account");
 
-    verify(transactionRepository, times(1)).findByIdActive(1L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(1L);
     verify(transactionRepository, times(1)).save(transaction);
   }
 
@@ -251,7 +251,7 @@ class TransactionServiceTest {
   void updateTransaction_ownerMismatch_throwsResourceNotFoundException() {
     // Given: a transaction owned by another user
     var transaction = createTransaction(1L, "Expense", BigDecimal.valueOf(50.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When/Then: non-owner gets 404
     assertThatThrownBy(
@@ -265,7 +265,7 @@ class TransactionServiceTest {
   @Test
   void updateTransaction_nonExistentId_throwsResourceNotFoundException() {
     // Given: transaction does not exist
-    when(transactionRepository.findByIdActive(9999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(9999L)).thenReturn(Optional.empty());
 
     // When/Then: update throws exception
     assertThatThrownBy(
@@ -273,7 +273,7 @@ class TransactionServiceTest {
         .isInstanceOf(ResourceNotFoundException.class)
         .hasMessageContaining("Transaction not found with id: 9999");
 
-    verify(transactionRepository, times(1)).findByIdActive(9999L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(9999L);
   }
 
   // ==================== deleteTransaction ====================
@@ -282,7 +282,7 @@ class TransactionServiceTest {
   void deleteTransaction_existingTransaction_marksDeletedAndSaves() {
     // Given: a transaction exists owned by user
     var transaction = createTransaction(1L, "To Delete", BigDecimal.valueOf(100.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When: delete is called
     transactionService.deleteTransaction(1L, USER_ID, NOT_ADMIN);
@@ -292,7 +292,7 @@ class TransactionServiceTest {
     assertThat(transaction.getDeletedBy()).isEqualTo(USER_ID);
     assertThat(transaction.getDeletedAt()).isNotNull();
 
-    verify(transactionRepository, times(1)).findByIdActive(1L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(1L);
     verify(transactionRepository, times(1))
         .save(
             argThat(
@@ -304,7 +304,7 @@ class TransactionServiceTest {
   void deleteTransaction_ownerMismatch_throwsResourceNotFoundException() {
     // Given: a transaction owned by another user
     var transaction = createTransaction(1L, "To Delete", BigDecimal.valueOf(100.00));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction));
 
     // When/Then: non-owner gets 404
     assertThatThrownBy(() -> transactionService.deleteTransaction(1L, OTHER_USER_ID, NOT_ADMIN))
@@ -317,14 +317,14 @@ class TransactionServiceTest {
   @Test
   void deleteTransaction_nonExistentId_throwsResourceNotFoundException() {
     // Given: transaction does not exist
-    when(transactionRepository.findByIdActive(9999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(9999L)).thenReturn(Optional.empty());
 
     // When/Then: delete throws exception
     assertThatThrownBy(() -> transactionService.deleteTransaction(9999L, USER_ID, NOT_ADMIN))
         .isInstanceOf(ResourceNotFoundException.class)
         .hasMessageContaining("Transaction not found with id: 9999");
 
-    verify(transactionRepository, times(1)).findByIdActive(9999L);
+    verify(transactionRepository, times(1)).findByIdNotDeleted(9999L);
   }
 
   // ==================== bulkDeleteTransactions ====================
@@ -336,9 +336,9 @@ class TransactionServiceTest {
     var transaction2 = createTransaction(2L, "DESC2", BigDecimal.valueOf(200));
     var transaction3 = createTransaction(3L, "DESC3", BigDecimal.valueOf(300));
 
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(transaction2));
-    when(transactionRepository.findByIdActive(3L)).thenReturn(Optional.of(transaction3));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(transaction2));
+    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(transaction3));
 
     var ids = List.of(1L, 2L, 3L);
 
@@ -361,10 +361,10 @@ class TransactionServiceTest {
     var transaction1 = createTransaction(1L, "DESC1", BigDecimal.valueOf(100));
     var transaction2 = createTransaction(2L, "DESC2", BigDecimal.valueOf(200));
 
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(transaction2));
-    when(transactionRepository.findByIdActive(9999L)).thenReturn(Optional.empty());
-    when(transactionRepository.findByIdActive(8888L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(transaction2));
+    when(transactionRepository.findByIdNotDeleted(9999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(8888L)).thenReturn(Optional.empty());
 
     var ids = List.of(1L, 2L, 9999L, 8888L);
 
@@ -383,8 +383,8 @@ class TransactionServiceTest {
     // Given: 2 transactions, but one is already deleted
     var transaction1 = createTransaction(1L, "DESC1", BigDecimal.valueOf(100));
 
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.empty());
 
     var ids = List.of(1L, 2L);
 
@@ -405,8 +405,8 @@ class TransactionServiceTest {
     var otherTransaction = createTransaction(2L, "Theirs", BigDecimal.valueOf(200));
     otherTransaction.setOwnerId(OTHER_USER_ID);
 
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(ownedTransaction));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(otherTransaction));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(ownedTransaction));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(otherTransaction));
 
     var ids = List.of(1L, 2L);
 
@@ -426,7 +426,7 @@ class TransactionServiceTest {
   @Test
   void getTransactions_filtersByOwner() {
     // Given: repository returns results
-    when(transactionRepository.findAllActive(any(Specification.class))).thenReturn(List.of());
+    when(transactionRepository.findAllNotDeleted(any(Specification.class))).thenReturn(List.of());
 
     // When: user retrieves their transactions
     transactionService.getTransactions(USER_ID);
@@ -434,7 +434,7 @@ class TransactionServiceTest {
     // Then: the specification includes an ownerId equality predicate
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
-    verify(transactionRepository).findAllActive(specCaptor.capture());
+    verify(transactionRepository).findAllNotDeleted(specCaptor.capture());
 
     var capturedSpec = specCaptor.getValue();
 
@@ -456,15 +456,15 @@ class TransactionServiceTest {
   void search_delegatesToFindAllActiveWithSpecAndPageable() {
     // Given: repository returns a page
     var pageable = PageRequest.of(0, 20);
-    when(transactionRepository.findAllActive(any(Specification.class), eq(pageable)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class), eq(pageable)))
         .thenReturn(Page.empty());
 
     // When: search is called
     var result = transactionService.search(emptyFilter(), pageable);
 
-    // Then: delegates to findAllActive with spec and pageable
+    // Then: delegates to findAllNotDeleted with spec and pageable
     assertThat(result).isEmpty();
-    verify(transactionRepository).findAllActive(any(Specification.class), eq(pageable));
+    verify(transactionRepository).findAllNotDeleted(any(Specification.class), eq(pageable));
   }
 
   @SuppressWarnings("unchecked")
@@ -489,7 +489,7 @@ class TransactionServiceTest {
             null,
             null);
     var pageable = PageRequest.of(0, 10);
-    when(transactionRepository.findAllActive(any(Specification.class), eq(pageable)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class), eq(pageable)))
         .thenReturn(Page.empty());
 
     // When: search is called with the filter
@@ -498,7 +498,7 @@ class TransactionServiceTest {
     // Then: the spec includes the ownerId predicate from the filter
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
-    verify(transactionRepository).findAllActive(specCaptor.capture(), eq(pageable));
+    verify(transactionRepository).findAllNotDeleted(specCaptor.capture(), eq(pageable));
 
     var capturedSpec = specCaptor.getValue();
 
@@ -512,23 +512,23 @@ class TransactionServiceTest {
     verify(cb).equal(root.get("ownerId"), "owner-abc");
   }
 
-  // ==================== countActiveForUser / countActive ====================
+  // ==================== countNotDeletedForUser / countNotDeleted ====================
 
   @SuppressWarnings("unchecked")
   @Test
-  void countActiveForUser_filtersByOwner() {
+  void countNotDeletedForUser_filtersByOwner() {
     // Given: repository returns a count
-    when(transactionRepository.countActive(any(Specification.class))).thenReturn(5L);
+    when(transactionRepository.countNotDeleted(any(Specification.class))).thenReturn(5L);
 
     // When: user-scoped count executes
-    var result = transactionService.countActiveForUser(emptyFilter(), USER_ID);
+    var result = transactionService.countNotDeletedForUser(emptyFilter(), USER_ID);
 
     // Then: the specification includes an ownerId equality predicate
     assertThat(result).isEqualTo(5L);
 
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
-    verify(transactionRepository).countActive(specCaptor.capture());
+    verify(transactionRepository).countNotDeleted(specCaptor.capture());
 
     var capturedSpec = specCaptor.getValue();
 
@@ -544,19 +544,19 @@ class TransactionServiceTest {
 
   @SuppressWarnings("unchecked")
   @Test
-  void countActive_admin_noOwnerFilter() {
+  void countNotDeleted_admin_noOwnerFilter() {
     // Given: repository returns a count
-    when(transactionRepository.countActive(any(Specification.class))).thenReturn(10L);
+    when(transactionRepository.countNotDeleted(any(Specification.class))).thenReturn(10L);
 
     // When: admin-wide count executes
-    var result = transactionService.countActive(emptyFilter());
+    var result = transactionService.countNotDeleted(emptyFilter());
 
     // Then: the specification does NOT include an ownerId predicate
     assertThat(result).isEqualTo(10L);
 
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Specification> specCaptor = ArgumentCaptor.forClass(Specification.class);
-    verify(transactionRepository).countActive(specCaptor.capture());
+    verify(transactionRepository).countNotDeleted(specCaptor.capture());
 
     var capturedSpec = specCaptor.getValue();
 

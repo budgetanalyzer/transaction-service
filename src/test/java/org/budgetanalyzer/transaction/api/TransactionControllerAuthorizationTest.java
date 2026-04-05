@@ -63,7 +63,7 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
 
-    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(0L);
+    when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(0L);
 
     when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
         .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));
