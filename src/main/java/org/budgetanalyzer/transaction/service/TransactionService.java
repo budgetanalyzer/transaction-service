@@ -147,7 +147,7 @@ public class TransactionService {
     var deletedCount = 0;
 
     for (Long id : ids) {
-      var transactionOpt = transactionRepository.findByIdActive(id);
+      var transactionOpt = transactionRepository.findByIdNotDeleted(id);
 
       if (transactionOpt.isEmpty()) {
         notFoundIds.add(id);
@@ -181,7 +181,7 @@ public class TransactionService {
    * @return the list of transactions owned by the user
    */
   public List<Transaction> getTransactions(String userId) {
-    return transactionRepository.findAllActive(TransactionSpecifications.byOwner(userId));
+    return transactionRepository.findAllNotDeleted(TransactionSpecifications.byOwner(userId));
   }
 
   /**
@@ -197,7 +197,7 @@ public class TransactionService {
   @PreAuthorize("hasRole('ADMIN')")
   public Page<Transaction> search(TransactionFilter filter, Pageable pageable) {
     var spec = TransactionSpecifications.withFilter(filter);
-    return transactionRepository.findAllActive(spec, pageable);
+    return transactionRepository.findAllNotDeleted(spec, pageable);
   }
 
   /**
@@ -207,10 +207,10 @@ public class TransactionService {
    * @param userId the ID of the transaction owner to scope the count to
    * @return the count of matching transactions
    */
-  public long countActiveForUser(TransactionFilter filter, String userId) {
+  public long countNotDeletedForUser(TransactionFilter filter, String userId) {
     var spec = TransactionSpecifications.withFilter(filter);
     spec = spec.and(TransactionSpecifications.byOwner(userId));
-    return transactionRepository.countActive(spec);
+    return transactionRepository.countNotDeleted(spec);
   }
 
   /**
@@ -220,9 +220,9 @@ public class TransactionService {
    * @return the count of matching transactions
    */
   @PreAuthorize("hasRole('ADMIN')")
-  public long countActive(TransactionFilter filter) {
+  public long countNotDeleted(TransactionFilter filter) {
     var spec = TransactionSpecifications.withFilter(filter);
-    return transactionRepository.countActive(spec);
+    return transactionRepository.countNotDeleted(spec);
   }
 
   /**
@@ -391,7 +391,7 @@ public class TransactionService {
   private Transaction getTransactionWithOwnerCheck(Long id, String userId, boolean isAdmin) {
     var transaction =
         transactionRepository
-            .findByIdActive(id)
+            .findByIdNotDeleted(id)
             .orElseThrow(
                 () -> new ResourceNotFoundException("Transaction not found with id: " + id));
     if (!isAdmin && !transaction.getOwnerId().equals(userId)) {

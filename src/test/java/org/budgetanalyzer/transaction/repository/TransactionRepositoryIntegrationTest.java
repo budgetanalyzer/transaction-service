@@ -78,14 +78,14 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findByIdActive_existingNonDeletedTransaction_returnsTransaction() {
+  void findByIdNotDeleted_existingNonDeletedTransaction_returnsTransaction() {
     // Given: a non-deleted transaction exists
     var transaction =
         transactionRepository.save(createTransaction("Restaurant", BigDecimal.valueOf(75.00)));
     var id = transaction.getId();
 
-    // When: findByIdActive is called
-    var found = transactionRepository.findByIdActive(id);
+    // When: findByIdNotDeleted is called
+    var found = transactionRepository.findByIdNotDeleted(id);
 
     // Then: transaction is found
     assertThat(found).isPresent();
@@ -94,7 +94,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findByIdActive_deletedTransaction_returnsEmpty() {
+  void findByIdNotDeleted_deletedTransaction_returnsEmpty() {
     // Given: a deleted transaction exists
     var transaction =
         transactionRepository.save(createTransaction("To Delete", BigDecimal.valueOf(100.00)));
@@ -102,8 +102,8 @@ class TransactionRepositoryIntegrationTest {
     transactionRepository.save(transaction);
     var id = transaction.getId();
 
-    // When: findByIdActive is called
-    var found = transactionRepository.findByIdActive(id);
+    // When: findByIdNotDeleted is called
+    var found = transactionRepository.findByIdNotDeleted(id);
 
     // Then: transaction is not found (because it's deleted)
     assertThat(found).isEmpty();
@@ -153,8 +153,8 @@ class TransactionRepositoryIntegrationTest {
     assertThat(transaction.getDeletedBy()).isEqualTo("admin-user");
     assertThat(transaction.getDeletedAt()).isNotNull();
 
-    // And: findByIdActive returns empty
-    var found = transactionRepository.findByIdActive(id);
+    // And: findByIdNotDeleted returns empty
+    var found = transactionRepository.findByIdNotDeleted(id);
     assertThat(found).isEmpty();
 
     // But: findById still returns the transaction (soft delete)
@@ -164,7 +164,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findAllActive_excludesSoftDeletedTransactions() {
+  void findAllNotDeleted_excludesSoftDeletedTransactions() {
     // Given: 3 transactions, one is deleted
     transactionRepository.save(createTransaction("Active 1", BigDecimal.valueOf(10.00)));
     transactionRepository.save(createTransaction("Active 2", BigDecimal.valueOf(20.00)));
@@ -174,8 +174,8 @@ class TransactionRepositoryIntegrationTest {
     deleted.markDeleted("test-user");
     transactionRepository.save(deleted);
 
-    // When: findAllActive is called
-    var activeTransactions = transactionRepository.findAllActive();
+    // When: findAllNotDeleted is called
+    var activeTransactions = transactionRepository.findAllNotDeleted();
 
     // Then: only non-deleted transactions are returned
     assertThat(activeTransactions).hasSize(2);

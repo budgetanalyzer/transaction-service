@@ -148,7 +148,7 @@ public class AdminTransactionController {
         hasDateFilter(filter),
         hasAmountFilter(filter),
         hasTimestampFilter(filter));
-    return transactionService.countActive(filter);
+    return transactionService.countNotDeleted(filter);
   }
 
   private void validateSortFields(Pageable pageable) {

@@ -545,7 +545,7 @@ class TransactionControllerTest {
   @Test
   void countTransactions_returnsCount() throws Exception {
     // Given: service returns a count
-    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(42L);
+    when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(42L);
 
     // When/Then: GET returns 200 with count
     mockMvc
@@ -556,13 +556,13 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(42));
 
-    verify(transactionService, times(1)).countActiveForUser(any(), eq("test-user"));
+    verify(transactionService, times(1)).countNotDeletedForUser(any(), eq("test-user"));
   }
 
   @Test
   void countTransactions_withFilterParams_returns200() throws Exception {
     // Given: service returns a count
-    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(5L);
+    when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(5L);
 
     // When/Then: GET with filter params returns 200 with count
     mockMvc
@@ -574,24 +574,24 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(5));
 
-    verify(transactionService, times(1)).countActiveForUser(any(), eq("test-user"));
+    verify(transactionService, times(1)).countNotDeletedForUser(any(), eq("test-user"));
   }
 
   @Test
   void countTransactions_adminCallerStillUsesRequestingUserScope() throws Exception {
-    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(7L);
+    when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(7L);
 
     mockMvc
         .perform(get("/v1/transactions/count").with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(7));
 
-    verify(transactionService).countActiveForUser(any(), eq("usr_admin456"));
+    verify(transactionService).countNotDeletedForUser(any(), eq("usr_admin456"));
   }
 
   @Test
   void countTransactions_ownerIdParamIgnored_usesAuthenticatedUserId() throws Exception {
-    when(transactionService.countActiveForUser(any(), anyString())).thenReturn(3L);
+    when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(3L);
 
     mockMvc
         .perform(
@@ -602,7 +602,7 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").value(3));
 
-    verify(transactionService).countActiveForUser(any(), eq("test-user"));
+    verify(transactionService).countNotDeletedForUser(any(), eq("test-user"));
   }
 
   // ==================== Helper Methods ====================

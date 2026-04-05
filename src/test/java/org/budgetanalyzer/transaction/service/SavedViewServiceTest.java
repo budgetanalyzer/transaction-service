@@ -162,7 +162,7 @@ class SavedViewServiceTest {
             null));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
@@ -189,9 +189,9 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(3L));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1));
-    when(transactionRepository.findByIdActive(3L)).thenReturn(Optional.of(testTransaction3));
+    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -218,9 +218,9 @@ class SavedViewServiceTest {
     testView.setExcludedIds(Set.of(2L));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2, testTransaction3));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -248,10 +248,10 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(1L, 2L));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -278,7 +278,7 @@ class SavedViewServiceTest {
             null));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class))).thenReturn(List.of());
+    when(transactionRepository.findAllNotDeleted(any(Specification.class))).thenReturn(List.of());
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -303,10 +303,11 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(1L, 99L));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdActive(99L)).thenReturn(Optional.empty()); // Soft-deleted
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(99L))
+        .thenReturn(Optional.empty()); // Soft-deleted
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -333,9 +334,10 @@ class SavedViewServiceTest {
     testView.setExcludedIds(Set.of(99L));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdActive(99L)).thenReturn(Optional.empty()); // Soft-deleted
+    when(transactionRepository.findByIdNotDeleted(99L))
+        .thenReturn(Optional.empty()); // Soft-deleted
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -390,16 +392,17 @@ class SavedViewServiceTest {
     var foreignExcludedTransaction =
         createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
 
-    // findAllActive spec filters by ownerId, so only owned transactions are returned
+    // findAllNotDeleted spec filters by ownerId, so only owned transactions are returned
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction3));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdActive(3L)).thenReturn(Optional.of(testTransaction3));
-    when(transactionRepository.findByIdActive(4L)).thenReturn(Optional.of(ownedPinnedTransaction));
-    when(transactionRepository.findByIdActive(5L))
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+    when(transactionRepository.findByIdNotDeleted(4L))
+        .thenReturn(Optional.of(ownedPinnedTransaction));
+    when(transactionRepository.findByIdNotDeleted(5L))
         .thenReturn(Optional.of(foreignPinnedTransaction));
-    when(transactionRepository.findByIdActive(6L))
+    when(transactionRepository.findByIdNotDeleted(6L))
         .thenReturn(Optional.of(foreignExcludedTransaction));
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
@@ -433,14 +436,15 @@ class SavedViewServiceTest {
     var foreignExcludedTransaction =
         createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
 
-    // findAllActive spec filters by ownerId, so only owned transactions are returned
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    // findAllNotDeleted spec filters by ownerId, so only owned transactions are returned
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction3));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdActive(4L)).thenReturn(Optional.of(ownedPinnedTransaction));
-    when(transactionRepository.findByIdActive(5L))
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(4L))
+        .thenReturn(Optional.of(ownedPinnedTransaction));
+    when(transactionRepository.findByIdNotDeleted(5L))
         .thenReturn(Optional.of(foreignPinnedTransaction));
-    when(transactionRepository.findByIdActive(6L))
+    when(transactionRepository.findByIdNotDeleted(6L))
         .thenReturn(Optional.of(foreignExcludedTransaction));
 
     var count = savedViewService.countViewTransactions(testView);
@@ -470,10 +474,10 @@ class SavedViewServiceTest {
 
     var pinnedTransaction = createTransaction(100L, "Pinned", LocalDate.of(2024, 12, 15));
 
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2, testTransaction3));
-    when(transactionRepository.findByIdActive(100L)).thenReturn(Optional.of(pinnedTransaction));
-    when(transactionRepository.findByIdActive(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(100L)).thenReturn(Optional.of(pinnedTransaction));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -496,9 +500,10 @@ class SavedViewServiceTest {
             null));
     testView.setPinnedIds(Set.of(99L));
 
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdActive(99L)).thenReturn(Optional.empty()); // Soft-deleted
+    when(transactionRepository.findByIdNotDeleted(99L))
+        .thenReturn(Optional.empty()); // Soft-deleted
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -521,9 +526,10 @@ class SavedViewServiceTest {
             null));
     testView.setExcludedIds(Set.of(99L));
 
-    when(transactionRepository.findAllActive(any(Specification.class)))
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdActive(99L)).thenReturn(Optional.empty()); // Soft-deleted
+    when(transactionRepository.findByIdNotDeleted(99L))
+        .thenReturn(Optional.empty()); // Soft-deleted
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -536,7 +542,7 @@ class SavedViewServiceTest {
   @Test
   void pinTransaction_validTransaction_pinsToView() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -548,7 +554,7 @@ class SavedViewServiceTest {
   @Test
   void pinTransaction_nonExistentTransaction_throwsResourceNotFoundException() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdActive(999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> savedViewService.pinTransaction(VIEW_ID, USER_ID, 999L))
         .isInstanceOf(ResourceNotFoundException.class)
@@ -561,7 +567,7 @@ class SavedViewServiceTest {
   void pinTransaction_alsoRemovesFromExcluded() {
     testView.setExcludedIds(new HashSet<>(Set.of(1L)));
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -576,7 +582,7 @@ class SavedViewServiceTest {
   @Test
   void excludeTransaction_validTransaction_excludesFromView() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -589,7 +595,7 @@ class SavedViewServiceTest {
   void excludeTransaction_alsoRemovesFromPinned() {
     testView.setPinnedIds(new HashSet<>(Set.of(1L)));
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdActive(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 

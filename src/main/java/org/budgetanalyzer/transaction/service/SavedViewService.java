@@ -196,7 +196,7 @@ public class SavedViewService {
 
     // Verify transaction exists
     transactionRepository
-        .findByIdActive(transactionId)
+        .findByIdNotDeleted(transactionId)
         .orElseThrow(
             () -> new ResourceNotFoundException("Transaction not found with id: " + transactionId));
 
@@ -235,7 +235,7 @@ public class SavedViewService {
 
     // Verify transaction exists
     transactionRepository
-        .findByIdActive(transactionId)
+        .findByIdNotDeleted(transactionId)
         .orElseThrow(
             () -> new ResourceNotFoundException("Transaction not found with id: " + transactionId));
 
@@ -298,12 +298,12 @@ public class SavedViewService {
 
   private List<Transaction> findMatchingTransactions(SavedView view) {
     var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded(), view.getUserId());
-    return transactionRepository.findAllActive(TransactionSpecifications.withFilter(filter));
+    return transactionRepository.findAllNotDeleted(TransactionSpecifications.withFilter(filter));
   }
 
   private List<Transaction> findTransactionsByIds(Collection<Long> ids, String ownerId) {
     return ids.stream()
-        .map(transactionRepository::findByIdActive)
+        .map(transactionRepository::findByIdNotDeleted)
         .filter(java.util.Optional::isPresent)
         .map(java.util.Optional::get)
         .filter(transaction -> ownerId.equals(transaction.getOwnerId()))

@@ -230,7 +230,7 @@ public class TransactionController {
   @GetMapping(path = "/count", produces = "application/json")
   public long countTransactions(@Valid TransactionFilter filter) {
     var userId = getCurrentUserId();
-    return transactionService.countActiveForUser(filter, userId);
+    return transactionService.countNotDeletedForUser(filter, userId);
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")

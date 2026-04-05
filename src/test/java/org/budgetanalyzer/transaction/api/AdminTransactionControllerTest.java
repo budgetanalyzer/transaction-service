@@ -240,7 +240,7 @@ class AdminTransactionControllerTest {
 
   @Test
   void countTransactions_returnsCount() throws Exception {
-    when(transactionService.countActive(any())).thenReturn(42L);
+    when(transactionService.countNotDeleted(any())).thenReturn(42L);
 
     mockMvc
         .perform(
@@ -251,7 +251,7 @@ class AdminTransactionControllerTest {
         .andExpect(jsonPath("$").value(42));
 
     var filterCaptor = ArgumentCaptor.forClass(TransactionFilter.class);
-    verify(transactionService).countActive(filterCaptor.capture());
+    verify(transactionService).countNotDeleted(filterCaptor.capture());
     assertThat(filterCaptor.getValue().ownerId()).isEqualTo("usr_test123");
   }
 
