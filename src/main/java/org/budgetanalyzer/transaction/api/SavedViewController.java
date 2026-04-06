@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -69,14 +71,21 @@ public class SavedViewController {
                     schema = @Schema(implementation = ApiErrorResponse.class)))
       })
   @PostMapping(consumes = "application/json", produces = "application/json")
-  @ResponseStatus(HttpStatus.CREATED)
-  public SavedViewResponse createView(@Valid @RequestBody CreateSavedViewRequest request) {
+  public ResponseEntity<SavedViewResponse> createView(
+      @Valid @RequestBody CreateSavedViewRequest request) {
     var userId = getCurrentUserId();
     log.info("Creating saved view '{}' for user {}", request.name(), userId);
 
     var view = savedViewService.createView(userId, request);
     var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+
+    var location =
+        ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{id}")
+            .buildAndExpand(view.getId())
+            .toUri();
+
+    return ResponseEntity.created(location).body(SavedViewResponse.from(view, transactionCount));
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")

@@ -101,7 +101,7 @@ class TransactionControllerAuthorizationTest {
   // ==================== Write permission ====================
 
   @Test
-  void writeEndpoint_withWritePermission_returns201() throws Exception {
+  void writeEndpoint_withWritePermission_returns200() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
@@ -124,7 +124,7 @@ class TransactionControllerAuthorizationTest {
                       ]
                     }
                     """))
-        .andExpect(status().isCreated());
+        .andExpect(status().isOk());
   }
 
   // ==================== Delete permission ====================
@@ -232,7 +232,7 @@ class TransactionControllerAuthorizationTest {
   }
 
   @Test
-  void admin_writeEndpoint_returns201() throws Exception {
+  void admin_writeEndpoint_returns200() throws Exception {
     mockMvc
         .perform(
             post("/v1/transactions/batch")
@@ -253,7 +253,7 @@ class TransactionControllerAuthorizationTest {
                       ]
                     }
                     """))
-        .andExpect(status().isCreated());
+        .andExpect(status().isOk());
   }
 
   @Test

@@ -28,7 +28,6 @@ import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.response.AdminTransactionResponse;
-import org.budgetanalyzer.transaction.api.response.AdminTransactionSearchResponse;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
 /** Admin controller for searching transactions across all users. */
@@ -76,10 +75,8 @@ public class AdminTransactionController {
       value = {
         @ApiResponse(
             responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = AdminTransactionSearchResponse.class))),
+            description = "Admin transactions retrieved successfully",
+            useReturnTypeSchema = true),
         @ApiResponse(
             responseCode = "400",
             content =
