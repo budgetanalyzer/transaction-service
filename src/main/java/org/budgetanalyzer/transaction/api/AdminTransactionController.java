@@ -28,6 +28,7 @@ import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.response.AdminTransactionResponse;
+import org.budgetanalyzer.transaction.api.response.AdminTransactionSearchResponse;
 import org.budgetanalyzer.transaction.service.TransactionService;
 
 /** Admin controller for searching transactions across all users. */
@@ -73,7 +74,12 @@ public class AdminTransactionController {
   @Operation(summary = "Search transactions across all users")
   @ApiResponses(
       value = {
-        @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/json")),
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = AdminTransactionSearchResponse.class))),
         @ApiResponse(
             responseCode = "400",
             content =
@@ -94,7 +100,7 @@ public class AdminTransactionController {
       })
   @GetMapping(produces = "application/json")
   public PagedResponse<AdminTransactionResponse> searchTransactions(
-      @Valid TransactionFilter filter,
+      @ParameterObject @Valid TransactionFilter filter,
       @ParameterObject
           @PageableDefault(
               size = 50,
@@ -136,7 +142,7 @@ public class AdminTransactionController {
                     schema = @Schema(implementation = Long.class))),
       })
   @GetMapping(path = "/count", produces = "application/json")
-  public long countTransactions(@Valid TransactionFilter filter) {
+  public long countTransactions(@ParameterObject @Valid TransactionFilter filter) {
     log.info(
         "Admin transaction count request - hasIdentityFilters: {} hasTextFilters: {} "
             + "hasDateFilter: {} hasAmountFilter: {} hasTimestampFilter: {}",
