@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -91,7 +92,8 @@ class SavedViewControllerAuthorizationTest {
                       "openEnded": false
                     }
                     """))
-        .andExpect(status().isCreated());
+        .andExpect(status().isCreated())
+        .andExpect(header().exists("Location"));
   }
 
   @Test
@@ -176,6 +178,7 @@ class SavedViewControllerAuthorizationTest {
 
   private SavedView createStubView() {
     var view = new SavedView();
+    view.setId(UUID.randomUUID());
     view.setName("Test View");
     view.setUserId("usr_test123");
     view.setCriteria(new ViewCriteria(null, null, null, null, null, null, null, null));

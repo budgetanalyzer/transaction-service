@@ -146,7 +146,7 @@ public class TransactionController {
   @ApiResponses(
       value = {
         @ApiResponse(
-            responseCode = "201",
+            responseCode = "200",
             content =
                 @Content(
                     mediaType = "application/json",
@@ -175,7 +175,6 @@ public class TransactionController {
                     }))
       })
   @PostMapping(path = "/batch", consumes = "application/json", produces = "application/json")
-  @ResponseStatus(HttpStatus.CREATED)
   public BatchImportResponse batchImportTransactions(
       @Valid @RequestBody BatchImportRequest request) {
     log.info("Received batch import request with {} transactions", request.transactions().size());

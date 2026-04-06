@@ -438,7 +438,7 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/batch ====================
 
   @Test
-  void batchImport_validTransactions_returns201WithCreatedTransactions() throws Exception {
+  void batchImport_validTransactions_returns200WithCreatedTransactions() throws Exception {
     // Given: valid batch import request
     var createdTransactions =
         List.of(
@@ -471,7 +471,7 @@ class TransactionControllerTest {
         }
         """;
 
-    // When/Then: POST returns 201 with created transactions
+    // When/Then: POST returns 200 with created transactions
     mockMvc
         .perform(
             post("/v1/transactions/batch")
@@ -479,7 +479,7 @@ class TransactionControllerTest {
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
-        .andExpect(status().isCreated())
+        .andExpect(status().isOk())
         .andExpect(jsonPath("$.created").value(2))
         .andExpect(jsonPath("$.duplicatesSkipped").value(0))
         .andExpect(jsonPath("$.transactions.length()").value(2));

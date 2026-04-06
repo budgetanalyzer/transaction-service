@@ -73,7 +73,10 @@ public class AdminTransactionController {
   @Operation(summary = "Search transactions across all users")
   @ApiResponses(
       value = {
-        @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/json")),
+        @ApiResponse(
+            responseCode = "200",
+            description = "Admin transactions retrieved successfully",
+            useReturnTypeSchema = true),
         @ApiResponse(
             responseCode = "400",
             content =
@@ -94,7 +97,7 @@ public class AdminTransactionController {
       })
   @GetMapping(produces = "application/json")
   public PagedResponse<AdminTransactionResponse> searchTransactions(
-      @Valid TransactionFilter filter,
+      @ParameterObject @Valid TransactionFilter filter,
       @ParameterObject
           @PageableDefault(
               size = 50,
@@ -136,7 +139,7 @@ public class AdminTransactionController {
                     schema = @Schema(implementation = Long.class))),
       })
   @GetMapping(path = "/count", produces = "application/json")
-  public long countTransactions(@Valid TransactionFilter filter) {
+  public long countTransactions(@ParameterObject @Valid TransactionFilter filter) {
     log.info(
         "Admin transaction count request - hasIdentityFilters: {} hasTextFilters: {} "
             + "hasDateFilter: {} hasAmountFilter: {} hasTimestampFilter: {}",
