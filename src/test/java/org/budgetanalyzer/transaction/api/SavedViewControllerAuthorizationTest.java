@@ -58,9 +58,7 @@ class SavedViewControllerAuthorizationTest {
     mockMvc
         .perform(
             get("/v1/views")
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("transactions:read")))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:read")))
         .andExpect(status().isOk());
   }
 
@@ -69,7 +67,7 @@ class SavedViewControllerAuthorizationTest {
     mockMvc
         .perform(
             get("/v1/views")
-                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("accounts:read")))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:write")))
         .andExpect(status().isForbidden());
   }
 
@@ -80,9 +78,7 @@ class SavedViewControllerAuthorizationTest {
     mockMvc
         .perform(
             post("/v1/views")
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("transactions:write"))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -101,9 +97,7 @@ class SavedViewControllerAuthorizationTest {
     mockMvc
         .perform(
             post("/v1/views")
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("transactions:read"))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:read"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -125,7 +119,7 @@ class SavedViewControllerAuthorizationTest {
             delete("/v1/views/" + UUID.randomUUID())
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("transactions:read", "transactions:write")))
+                        .withPermissions("views:read", "views:write")))
         .andExpect(status().isForbidden());
   }
 
@@ -134,23 +128,21 @@ class SavedViewControllerAuthorizationTest {
     mockMvc
         .perform(
             delete("/v1/views/" + UUID.randomUUID())
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("transactions:delete")))
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:delete")))
         .andExpect(status().isNoContent());
   }
 
-  // ==================== Admin with full permissions ====================
+  // ==================== Admin without view permissions ====================
 
   @Test
-  void admin_readEndpoint_returns200() throws Exception {
+  void admin_readEndpoint_returns403() throws Exception {
     mockMvc
         .perform(get("/v1/views").with(ClaimsHeaderTestBuilder.admin()))
-        .andExpect(status().isOk());
+        .andExpect(status().isForbidden());
   }
 
   @Test
-  void admin_writeEndpoint_returns201() throws Exception {
+  void admin_writeEndpoint_returns403() throws Exception {
     mockMvc
         .perform(
             post("/v1/views")
@@ -164,14 +156,14 @@ class SavedViewControllerAuthorizationTest {
                       "openEnded": false
                     }
                     """))
-        .andExpect(status().isCreated());
+        .andExpect(status().isForbidden());
   }
 
   @Test
-  void admin_deleteEndpoint_returns204() throws Exception {
+  void admin_deleteEndpoint_returns403() throws Exception {
     mockMvc
         .perform(delete("/v1/views/" + UUID.randomUUID()).with(ClaimsHeaderTestBuilder.admin()))
-        .andExpect(status().isNoContent());
+        .andExpect(status().isForbidden());
   }
 
   // ==================== Helpers ====================

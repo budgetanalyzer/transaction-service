@@ -142,7 +142,7 @@ See [TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transactio
 
 **Sort fields:** `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, `updatedAt`
 
-**Authorization:** Method-level `@PreAuthorize("hasAuthority('transactions:read:any')")`. The permission is bundled into the `ADMIN` role by `permission-service` migration `V5__add_cross_user_transaction_permissions.sql`.
+**Authorization:** Method-level `@PreAuthorize("hasAuthority('transactions:read:any')")`. The permission is bundled into the `ADMIN` role by current `permission-service` seed data.
 
 **Response:** `TransactionResponse`, the same DTO returned by the self-scope endpoints. `ownerId` is a first-class field on that record and is always populated.
 

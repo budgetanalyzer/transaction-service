@@ -143,14 +143,14 @@ Notes: Cross-user count endpoint. Does not require transactions:read.
 POST /v1/views
 Body: CreateSavedViewRequest
 Response: SavedViewResponse (201 Created)
-Permission: transactions:write
+Permission: views:write
 ```
 
 **List Saved Views**
 ```
 GET /v1/views
 Response: List<SavedViewResponse>
-Permission: transactions:read
+Permission: views:read
 Notes: Returns only the requesting user's views.
 ```
 
@@ -158,7 +158,7 @@ Notes: Returns only the requesting user's views.
 ```
 GET /v1/views/{id}
 Response: SavedViewResponse
-Permission: transactions:read
+Permission: views:read
 ```
 
 **Update Saved View**
@@ -166,21 +166,21 @@ Permission: transactions:read
 PUT /v1/views/{id}
 Body: UpdateSavedViewRequest
 Response: SavedViewResponse
-Permission: transactions:write
+Permission: views:write
 ```
 
 **Delete Saved View**
 ```
 DELETE /v1/views/{id}
 Response: 204 No Content
-Permission: transactions:write
+Permission: views:delete
 ```
 
 **Get View Transactions**
 ```
 GET /v1/views/{id}/transactions
-Response: List<ViewMembershipResponse>
-Permission: transactions:read
+Response: ViewMembershipResponse
+Permission: views:read
 Notes: Returns transactions matching the view's criteria, plus pinned/excluded overrides.
 ```
 
@@ -188,28 +188,28 @@ Notes: Returns transactions matching the view's criteria, plus pinned/excluded o
 ```
 POST /v1/views/{id}/pin/{txnId}
 Response: SavedViewResponse
-Permission: transactions:write
+Permission: views:write
 ```
 
 **Unpin Transaction from View**
 ```
 DELETE /v1/views/{id}/pin/{txnId}
 Response: SavedViewResponse
-Permission: transactions:write
+Permission: views:write
 ```
 
 **Exclude Transaction from View**
 ```
 POST /v1/views/{id}/exclude/{txnId}
 Response: SavedViewResponse
-Permission: transactions:write
+Permission: views:write
 ```
 
 **Remove Exclusion from View**
 ```
 DELETE /v1/views/{id}/exclude/{txnId}
 Response: SavedViewResponse
-Permission: transactions:write
+Permission: views:write
 ```
 
 ### Statement Formats
@@ -357,6 +357,7 @@ This service uses trusted claims-header-based security from `service-common`.
 - `GET /v1/transactions` and `GET /v1/transactions/count` require
   `X-Permissions: transactions:read` and are always scoped to the requesting user.
 - Write endpoints require `transactions:write`. Delete endpoints require `transactions:delete`.
+- Saved view endpoints require `views:read`, `views:write`, or `views:delete` respectively.
 - `GET /v1/transactions/search` and `GET /v1/transactions/search/count` require
   `transactions:read:any` in `X-Permissions`. They do not require `transactions:read`.
 - The `:any` variants of the per-resource permissions
@@ -365,8 +366,8 @@ This service uses trusted claims-header-based security from `service-common`.
   `POST /v1/transactions/bulk-delete`. The unscoped `transactions:read`,
   `transactions:write`, or `transactions:delete` permission is still required to enter the
   controller method; `:any` only allows the caller to act on transactions owned by other
-  users. The `ADMIN` role bundles all three `:any` permissions via `permission-service`
-  migration `V5__add_cross_user_transaction_permissions.sql`.
+  users. The `ADMIN` role bundles all three `:any` permissions in the current
+  `permission-service` seed data. `views:*` intentionally has no `:any` variants yet.
 - Statement format endpoints require `statementformats:read`, `statementformats:write`, or
   `statementformats:delete` respectively.
 - OpenAPI docs and health endpoints remain public.
