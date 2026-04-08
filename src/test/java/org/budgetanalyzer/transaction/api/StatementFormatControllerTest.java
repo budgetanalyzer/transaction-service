@@ -2,10 +2,8 @@ package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -13,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Nested;
@@ -86,6 +85,12 @@ class StatementFormatControllerTest {
     @Test
     void returnsFormatWhenFound() throws Exception {
       var format = createCsvFormat("capital-one", "Capital One");
+      setAuditFields(
+          format,
+          Instant.parse("2026-04-08T10:30:00Z"),
+          Instant.parse("2026-04-08T10:45:00Z"),
+          "usr_creator",
+          "usr_updater");
       when(statementFormatService.getByFormatKey("capital-one")).thenReturn(format);
 
       mockMvc
@@ -99,7 +104,11 @@ class StatementFormatControllerTest {
           .andExpect(jsonPath("$.bankName").value("Capital One"))
           .andExpect(jsonPath("$.formatType").value("CSV"))
           .andExpect(jsonPath("$.defaultCurrencyIsoCode").value("USD"))
-          .andExpect(jsonPath("$.enabled").value(true));
+          .andExpect(jsonPath("$.enabled").value(true))
+          .andExpect(jsonPath("$.createdAt").value("2026-04-08T10:30:00Z"))
+          .andExpect(jsonPath("$.updatedAt").value("2026-04-08T10:45:00Z"))
+          .andExpect(jsonPath("$.createdBy").value("usr_creator"))
+          .andExpect(jsonPath("$.updatedBy").value("usr_updater"));
     }
 
     @Test
@@ -287,39 +296,6 @@ class StatementFormatControllerTest {
     }
   }
 
-  @Nested
-  class DisableFormat {
-
-    @Test
-    void disablesFormatSuccessfully() throws Exception {
-      mockMvc
-          .perform(
-              delete("/v1/statement-formats/to-disable")
-                  .with(
-                      ClaimsHeaderTestBuilder.user("usr_test123")
-                          .withPermissions("statementformats:delete")))
-          .andExpect(status().isNoContent());
-
-      verify(statementFormatService).disableFormat("to-disable");
-    }
-
-    @Test
-    void returns404WhenFormatNotFound() throws Exception {
-      doThrow(new ResourceNotFoundException("Statement format not found with key: unknown"))
-          .when(statementFormatService)
-          .disableFormat("unknown");
-
-      mockMvc
-          .perform(
-              delete("/v1/statement-formats/unknown")
-                  .with(
-                      ClaimsHeaderTestBuilder.user("usr_test123")
-                          .withPermissions("statementformats:delete")))
-          .andExpect(status().isNotFound())
-          .andExpect(jsonPath("$.type").value("NOT_FOUND"));
-    }
-  }
-
   private StatementFormat createCsvFormat(String formatKey, String bankName) {
     return StatementFormat.createCsvFormat(
         formatKey,
@@ -333,5 +309,35 @@ class StatementFormatControllerTest {
         "Amount",
         null,
         null);
+  }
+
+  private void setAuditFields(
+      StatementFormat format,
+      Instant createdAt,
+      Instant updatedAt,
+      String createdBy,
+      String updatedBy) {
+    try {
+      var auditableEntityClass = format.getClass().getSuperclass();
+
+      var createdAtField = auditableEntityClass.getDeclaredField("createdAt");
+      createdAtField.setAccessible(true);
+      createdAtField.set(format, createdAt);
+
+      var updatedAtField = auditableEntityClass.getDeclaredField("updatedAt");
+      updatedAtField.setAccessible(true);
+      updatedAtField.set(format, updatedAt);
+
+      var createdByField = auditableEntityClass.getDeclaredField("createdBy");
+      createdByField.setAccessible(true);
+      createdByField.set(format, createdBy);
+
+      var updatedByField = auditableEntityClass.getDeclaredField("updatedBy");
+      updatedByField.setAccessible(true);
+      updatedByField.set(format, updatedBy);
+    } catch (ReflectiveOperationException reflectiveOperationException) {
+      throw new IllegalStateException(
+          "Failed to set audit fields on statement format", reflectiveOperationException);
+    }
   }
 }

@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -228,6 +227,24 @@ class StatementFormatServiceTest {
     }
 
     @Test
+    void disablingCsvFormatViaUpdateRefreshesExtractors() {
+      var existingFormat = createCsvFormat("existing");
+      when(statementFormatRepository.findByFormatKey("existing"))
+          .thenReturn(Optional.of(existingFormat));
+      when(statementFormatRepository.save(any(StatementFormat.class)))
+          .thenAnswer(invocation -> invocation.getArgument(0));
+
+      var request =
+          new UpdateStatementFormatRequest(
+              null, null, null, null, null, null, null, null, null, null, false);
+
+      var result = statementFormatService.updateFormat("existing", request);
+
+      assertThat(result.isEnabled()).isFalse();
+      verify(statementExtractorRegistry).refreshCsvExtractors();
+    }
+
+    @Test
     void throwsResourceNotFoundWhenFormatDoesNotExist() {
       when(statementFormatRepository.findByFormatKey("unknown")).thenReturn(Optional.empty());
 
@@ -254,44 +271,6 @@ class StatementFormatServiceTest {
               null, "Updated Bank", null, null, null, null, null, null, null, null, null);
 
       statementFormatService.updateFormat("pdf-format", request);
-
-      verify(statementExtractorRegistry, never()).refreshCsvExtractors();
-    }
-  }
-
-  @Nested
-  class DisableFormat {
-
-    @Test
-    void disablesFormatSuccessfully() {
-      var format = createCsvFormat("to-disable");
-      when(statementFormatRepository.findByFormatKey("to-disable")).thenReturn(Optional.of(format));
-
-      statementFormatService.disableFormat("to-disable");
-
-      var captor = ArgumentCaptor.forClass(StatementFormat.class);
-      verify(statementFormatRepository).save(captor.capture());
-      assertThat(captor.getValue().isEnabled()).isFalse();
-      verify(statementExtractorRegistry).refreshCsvExtractors();
-    }
-
-    @Test
-    void throwsResourceNotFoundWhenFormatDoesNotExist() {
-      when(statementFormatRepository.findByFormatKey("unknown")).thenReturn(Optional.empty());
-
-      assertThatThrownBy(() -> statementFormatService.disableFormat("unknown"))
-          .isInstanceOf(ResourceNotFoundException.class);
-
-      verify(statementFormatRepository, never()).save(any());
-    }
-
-    @Test
-    void doesNotRefreshExtractorsForPdfFormat() {
-      var pdfFormat = StatementFormat.createPdfFormat("pdf-format", "Bank - PDF", "Bank", "USD");
-      when(statementFormatRepository.findByFormatKey("pdf-format"))
-          .thenReturn(Optional.of(pdfFormat));
-
-      statementFormatService.disableFormat("pdf-format");
 
       verify(statementExtractorRegistry, never()).refreshCsvExtractors();
     }

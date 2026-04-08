@@ -6,17 +6,14 @@ import jakarta.validation.Valid;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -208,33 +205,5 @@ public class StatementFormatController {
     log.info("Received update statement format request: {}", formatKey);
 
     return StatementFormatResponse.from(statementFormatService.updateFormat(formatKey, request));
-  }
-
-  @PreAuthorize("hasAuthority('statementformats:delete')")
-  @Operation(
-      summary = "Disable a statement format",
-      description =
-          "Disables a statement format (soft delete). Disabled formats will not be available "
-              + "for file imports but can be re-enabled by updating the format.")
-  @ApiResponses(
-      value = {
-        @ApiResponse(responseCode = "204", description = "Format successfully disabled"),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)),
-            description = "Statement format not found")
-      })
-  @DeleteMapping(path = "/{formatKey}")
-  @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void disableFormat(
-      @Parameter(description = "Unique format identifier", example = "capital-one")
-          @PathVariable("formatKey")
-          String formatKey) {
-    log.info("Received disable statement format request: {}", formatKey);
-
-    statementFormatService.disableFormat(formatKey);
   }
 }

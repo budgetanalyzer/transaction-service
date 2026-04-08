@@ -10,6 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 
+import org.budgetanalyzer.core.domain.AuditableEntity;
+
 /**
  * Entity representing a configurable statement format for file imports.
  *
@@ -19,7 +21,7 @@ import jakarta.validation.constraints.NotNull;
  */
 @Entity
 @Table(name = "statement_format")
-public class StatementFormat {
+public class StatementFormat extends AuditableEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

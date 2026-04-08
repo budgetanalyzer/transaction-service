@@ -260,6 +260,25 @@ class StatementFormatRepositoryIntegrationTest {
   }
 
   @Nested
+  class AuditFields {
+
+    @BeforeEach
+    void setUp() {
+      deleteTestFormat("audit-fields");
+    }
+
+    @Test
+    void savesAuditFieldsForNewFormat() {
+      var saved = repository.save(createCsvFormat("audit-fields", "Audit Bank"));
+
+      assertThat(saved.getCreatedAt()).isNotNull();
+      assertThat(saved.getUpdatedAt()).isNotNull();
+      assertThat(saved.getCreatedBy()).isNull();
+      assertThat(saved.getUpdatedBy()).isNull();
+    }
+  }
+
+  @Nested
   class MigrationSeededFormats {
 
     @Test
@@ -274,6 +293,16 @@ class StatementFormatRepositoryIntegrationTest {
               "capital-one-credit-monthly-statement",
               "capital-one-credit-yearly-statement",
               "capital-one-bank-monthly-statement");
+    }
+
+    @Test
+    void seededFormatsHaveSystemAuditValues() {
+      var formats = repository.findByEnabledTrue();
+
+      assertThat(formats).isNotEmpty();
+      assertThat(formats).allSatisfy(format -> assertThat(format.getCreatedAt()).isNotNull());
+      assertThat(formats).extracting(StatementFormat::getCreatedBy).containsOnly("SYSTEM");
+      assertThat(formats).extracting(StatementFormat::getUpdatedBy).containsOnly("SYSTEM");
     }
 
     @Test

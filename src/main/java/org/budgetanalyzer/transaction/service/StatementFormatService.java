@@ -117,26 +117,6 @@ public class StatementFormatService {
     return saved;
   }
 
-  /**
-   * Disables a statement format (soft delete).
-   *
-   * @param formatKey the format key of the format to disable
-   * @throws ResourceNotFoundException if not found
-   */
-  @Transactional
-  public void disableFormat(String formatKey) {
-    var format = getByFormatKey(formatKey);
-    format.setEnabled(false);
-    statementFormatRepository.save(format);
-
-    log.info("Disabled statement format: {}", formatKey);
-
-    // Refresh CSV extractors to remove the disabled format
-    if (format.getFormatType() == FormatType.CSV) {
-      statementExtractorRegistry.refreshCsvExtractors();
-    }
-  }
-
   private StatementFormat mapToEntity(CreateStatementFormatRequest request) {
     if (request.formatType() == FormatType.CSV) {
       return StatementFormat.createCsvFormat(

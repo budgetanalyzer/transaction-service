@@ -30,7 +30,11 @@ CREATE TABLE statement_format (
     debit_header VARCHAR(50),
     type_header VARCHAR(50),
     category_header VARCHAR(50),
-    enabled BOOLEAN NOT NULL DEFAULT TRUE
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE,
+    created_by VARCHAR(50),
+    updated_by VARCHAR(50)
 );
 ```
 
@@ -40,7 +44,8 @@ CREATE TABLE statement_format (
 - `GET /v1/statement-formats/{formatKey}` - Get specific format
 - `POST /v1/statement-formats` - Create new format
 - `PUT /v1/statement-formats/{formatKey}` - Update format
-- `DELETE /v1/statement-formats/{formatKey}` - Disable format (soft delete)
+
+Disable a format through `PUT /v1/statement-formats/{formatKey}` with `{"enabled": false}`.
 
 ### Amount Column Patterns
 
