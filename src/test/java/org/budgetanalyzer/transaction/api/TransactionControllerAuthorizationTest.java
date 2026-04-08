@@ -7,12 +7,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
@@ -24,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -64,6 +68,10 @@ class TransactionControllerAuthorizationTest {
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
 
     when(transactionService.countNotDeletedForUser(any(), anyString())).thenReturn(0L);
+
+    when(transactionService.search(any(), any(Pageable.class))).thenReturn(Page.empty());
+
+    when(transactionService.countNotDeleted(any())).thenReturn(0L);
 
     when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
         .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));
@@ -400,6 +408,180 @@ class TransactionControllerAuthorizationTest {
                     ClaimsHeaderTestBuilder.user(OTHER_USER_ID)
                         .withPermissions("transactions:delete")))
         .andExpect(status().isNotFound());
+  }
+
+  // ==================== GET /v1/transactions/search authorization matrix ====================
+
+  @Test
+  void search_noAuthentication_returns401() throws Exception {
+    mockMvc.perform(get("/v1/transactions/search")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void search_withReadOnly_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void search_withReadAnyOnly_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read:any")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void search_withReadAndReadAny_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:read", "transactions:read:any")))
+        .andExpect(status().isOk());
+  }
+
+  // ============== GET /v1/transactions/search/count authorization matrix ==============
+
+  @Test
+  void searchCount_noAuthentication_returns401() throws Exception {
+    mockMvc.perform(get("/v1/transactions/search/count")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void searchCount_withReadOnly_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search/count")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void searchCount_withReadAnyOnly_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search/count")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read:any")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void searchCount_withReadAndReadAny_returns200() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/search/count")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:read", "transactions:read:any")))
+        .andExpect(status().isOk());
+  }
+
+  // ============== GET /v1/transactions/{id} :any relaxes ownership ==============
+
+  @Test
+  void getById_withReadAnyOnly_returns403() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/transactions/1")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read:any")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void getById_withReadAndReadAny_otherUsersTransaction_returns200() throws Exception {
+    var transaction = createTestTransaction(1L, "Coffee", new BigDecimal("4.50"));
+    transaction.setOwnerId(OTHER_USER_ID);
+    when(transactionService.getTransaction(eq(1L), eq(USER_ID), eq(true))).thenReturn(transaction);
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/1")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:read", "transactions:read:any")))
+        .andExpect(status().isOk());
+  }
+
+  // ============== PATCH /v1/transactions/{id} :any relaxes ownership ==============
+
+  @Test
+  void updateEndpoint_withWriteAndWriteAny_otherUsersTransaction_returns200() throws Exception {
+    var transaction = createTestTransaction(1L, "Updated", new BigDecimal("4.50"));
+    transaction.setOwnerId(OTHER_USER_ID);
+    when(transactionService.updateTransaction(
+            eq(1L), eq(USER_ID), eq(true), eq("Updated"), isNull()))
+        .thenReturn(transaction);
+
+    mockMvc
+        .perform(
+            patch("/v1/transactions/1")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:write", "transactions:write:any"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\": \"Updated\"}"))
+        .andExpect(status().isOk());
+  }
+
+  // ============== DELETE /v1/transactions/{id} :any relaxes ownership ==============
+
+  @Test
+  void deleteEndpoint_withDeleteAndDeleteAny_otherUsersTransaction_returns204() throws Exception {
+    mockMvc
+        .perform(
+            delete("/v1/transactions/1")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:delete", "transactions:delete:any")))
+        .andExpect(status().isNoContent());
+
+    verify(transactionService).deleteTransaction(eq(1L), eq(USER_ID), eq(true));
+  }
+
+  // ============== POST /v1/transactions/bulk-delete :any relaxes ownership ==============
+
+  @Test
+  void bulkDelete_withDeleteOnly_mixedIds_otherUsersIdsLandInNotFound() throws Exception {
+    when(transactionService.bulkDeleteTransactions(eq(List.of(1L, 2L)), eq(USER_ID), eq(false)))
+        .thenReturn(new TransactionService.BulkDeleteResult(1, List.of(2L)));
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/bulk-delete")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:delete"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\": [1, 2]}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.deletedCount").value(1))
+        .andExpect(jsonPath("$.notFoundIds.length()").value(1))
+        .andExpect(jsonPath("$.notFoundIds[0]").value(2));
+  }
+
+  @Test
+  void bulkDelete_withDeleteAndDeleteAny_mixedIds_allDeleted() throws Exception {
+    when(transactionService.bulkDeleteTransactions(eq(List.of(1L, 2L)), eq(USER_ID), eq(true)))
+        .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/bulk-delete")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID)
+                        .withPermissions("transactions:delete", "transactions:delete:any"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\": [1, 2]}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.deletedCount").value(2))
+        .andExpect(jsonPath("$.notFoundIds").isEmpty());
   }
 
   // ==================== Test helpers ====================

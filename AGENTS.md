@@ -129,30 +129,30 @@ cat src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpec
 
 See [TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
 
-### Admin Transaction Search
+### Cross-User Transaction Search
 
-**ADMIN role required.** Cross-user transaction search and count for admin users, exposed via `AdminTransactionController`.
+**Requires `transactions:read:any` permission.** Cross-user transaction search and count, exposed as additional handlers on `TransactionController`.
 
 **Endpoints:**
-- `GET /v1/admin/transactions` — Paginated search across all users (default sort: `date`, `id` DESC)
-- `GET /v1/admin/transactions/count` — Count matching transactions across all users
+- `GET /v1/transactions/search` — Paginated search across all users (default sort: `date`, `id` DESC)
+- `GET /v1/transactions/search/count` — Count matching transactions across all users
 
-**Admin-only filter field:**
-- `ownerId` — Filter by the owning user's ID. Part of `TransactionFilter` but only effective on admin endpoints; ignored on user-scoped endpoints where the authenticated user is always applied.
+**Cross-user filter field:**
+- `ownerId` — Filter by the owning user's ID. Part of `TransactionFilter` but only effective on the cross-user endpoints; ignored on user-scoped endpoints where the authenticated user is always applied.
 
 **Sort fields:** `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, `updatedAt`
 
-**Authorization:** Class-level `@PreAuthorize("hasRole('ADMIN')")` — requires the `ADMIN` role from the `X-Roles` claims header.
+**Authorization:** Method-level `@PreAuthorize("hasAuthority('transactions:read:any')")`. The permission is bundled into the `ADMIN` role by `permission-service` migration `V5__add_cross_user_transaction_permissions.sql`.
 
-**Response:** `AdminTransactionResponse` extends the standard transaction response with the `ownerId` field.
+**Response:** `TransactionResponse`, the same DTO returned by the self-scope endpoints. `ownerId` is a first-class field on that record and is always populated.
 
 **Discovery:**
 ```bash
-# View admin controller
-cat src/main/java/org/budgetanalyzer/transaction/api/AdminTransactionController.java
+# View controller (cross-user handlers live alongside the self-scope ones)
+cat src/main/java/org/budgetanalyzer/transaction/api/TransactionController.java
 
-# View admin response DTO
-cat src/main/java/org/budgetanalyzer/transaction/api/response/AdminTransactionResponse.java
+# View response DTO
+cat src/main/java/org/budgetanalyzer/transaction/api/response/TransactionResponse.java
 ```
 
 ### Soft Delete Pattern
@@ -218,8 +218,8 @@ find src/main/java/org/budgetanalyzer/transaction -type d | sort
 - Preview: `POST /v1/transactions/preview`
 - Batch Import: `POST /v1/transactions/batch`
 - Bulk Delete: `POST /v1/transactions/bulk-delete`
-- Admin Search: `GET /v1/admin/transactions` (ADMIN role)
-- Admin Count: `GET /v1/admin/transactions/count` (ADMIN role)
+- Cross-user Search: `GET /v1/transactions/search` (`transactions:read:any`)
+- Cross-user Count: `GET /v1/transactions/search/count` (`transactions:read:any`)
 - Saved Views: `/v1/views/**`
 - Statement Formats: `/v1/statement-formats/**`
 

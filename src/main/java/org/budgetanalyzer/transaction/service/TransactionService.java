@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,36 +66,37 @@ public class TransactionService {
   }
 
   /**
-   * Retrieves a transaction by its ID, enforcing ownership for non-admin users.
+   * Retrieves a transaction by its ID, enforcing ownership unless the caller can act on any.
    *
    * @param id the transaction ID
    * @param userId the ID of the requesting user
-   * @param isAdmin whether the requesting user has admin role
+   * @param canActOnAny whether the caller has the corresponding {@code :any} permission
    * @return the transaction
    * @throws ResourceNotFoundException if the transaction does not exist or the user is not the
    *     owner
    */
-  public Transaction getTransaction(Long id, String userId, boolean isAdmin) {
-    return getTransactionWithOwnerCheck(id, userId, isAdmin);
+  public Transaction getTransaction(Long id, String userId, boolean canActOnAny) {
+    return getTransactionWithOwnerCheck(id, userId, canActOnAny);
   }
 
   /**
-   * Updates mutable fields of an existing transaction, enforcing ownership for non-admin users.
+   * Updates mutable fields of an existing transaction, enforcing ownership unless the caller can
+   * act on any.
    *
    * <p>Only updates fields that are non-null in the provided transaction object. Immutable fields
    * (date, amount, type, currencyIsoCode, bankName) cannot be updated.
    *
    * @param id the transaction ID
    * @param userId the ID of the requesting user
-   * @param isAdmin whether the requesting user has admin role
+   * @param canActOnAny whether the caller has the corresponding {@code :any} permission
    * @param description the new description (null to keep existing)
    * @param accountId the new account ID (null to keep existing)
    * @return the updated transaction
    */
   @Transactional
   public Transaction updateTransaction(
-      Long id, String userId, boolean isAdmin, String description, String accountId) {
-    var existingTransaction = getTransactionWithOwnerCheck(id, userId, isAdmin);
+      Long id, String userId, boolean canActOnAny, String description, String accountId) {
+    var existingTransaction = getTransactionWithOwnerCheck(id, userId, canActOnAny);
 
     if (description != null) {
       existingTransaction.setDescription(description);
@@ -110,15 +110,16 @@ public class TransactionService {
   }
 
   /**
-   * Soft-deletes a transaction by marking it as deleted, enforcing ownership for non-admin users.
+   * Soft-deletes a transaction by marking it as deleted, enforcing ownership unless the caller can
+   * act on any.
    *
    * @param id the transaction ID
    * @param userId the ID of the requesting user (also used as deletedBy)
-   * @param isAdmin whether the requesting user has admin role
+   * @param canActOnAny whether the caller has the corresponding {@code :any} permission
    */
   @Transactional
-  public void deleteTransaction(Long id, String userId, boolean isAdmin) {
-    var transaction = getTransactionWithOwnerCheck(id, userId, isAdmin);
+  public void deleteTransaction(Long id, String userId, boolean canActOnAny) {
+    var transaction = getTransactionWithOwnerCheck(id, userId, canActOnAny);
     transaction.markDeleted(userId);
 
     transactionRepository.save(transaction);
@@ -127,22 +128,24 @@ public class TransactionService {
   /**
    * Bulk soft-deletes multiple transactions by marking them as deleted.
    *
-   * <p>This method processes all provided IDs and attempts to soft-delete each transaction. For
-   * non-admin users, transactions owned by other users are treated as not found (returning 404
-   * rather than 403 to avoid leaking resource existence). Unlike single delete, this method does
-   * not throw an exception for non-existent IDs. Instead, it returns a result object containing
-   * both the count of successfully deleted transactions and a list of IDs that were not found.
+   * <p>This method processes all provided IDs and attempts to soft-delete each transaction. When
+   * the caller cannot act on any, transactions owned by other users are treated as not found
+   * (returning 404 rather than 403 to avoid leaking resource existence). Unlike single delete, this
+   * method does not throw an exception for non-existent IDs. Instead, it returns a result object
+   * containing both the count of successfully deleted transactions and a list of IDs that were not
+   * found.
    *
    * <p>All deletions occur within a single transaction. If any error occurs during processing
    * (other than "not found"), all changes will be rolled back.
    *
    * @param ids the list of transaction IDs to delete
    * @param userId the ID of the requesting user (also used as deletedBy)
-   * @param isAdmin whether the requesting user has admin role
+   * @param canActOnAny whether the caller has the corresponding {@code :any} permission
    * @return a BulkDeleteResult containing the count of deleted items and list of not found IDs
    */
   @Transactional
-  public BulkDeleteResult bulkDeleteTransactions(List<Long> ids, String userId, boolean isAdmin) {
+  public BulkDeleteResult bulkDeleteTransactions(
+      List<Long> ids, String userId, boolean canActOnAny) {
     var notFoundIds = new ArrayList<Long>();
     var deletedCount = 0;
 
@@ -153,7 +156,7 @@ public class TransactionService {
         notFoundIds.add(id);
       } else {
         var transaction = transactionOpt.get();
-        if (!isAdmin && !transaction.getOwnerId().equals(userId)) {
+        if (!canActOnAny && !transaction.getOwnerId().equals(userId)) {
           notFoundIds.add(id);
         } else {
           transaction.markDeleted(userId);
@@ -188,13 +191,12 @@ public class TransactionService {
    * Searches for transactions matching the filter criteria with pagination.
    *
    * <p>This method does not apply owner scoping — it returns all matching transactions regardless
-   * of owner. Access is restricted to admin users via {@code @PreAuthorize}.
+   * of owner. Authorization is enforced at the controller layer via {@code transactions:read:any}.
    *
    * @param filter the search filter criteria
    * @param pageable pagination and sorting parameters
    * @return a page of matching transactions
    */
-  @PreAuthorize("hasRole('ADMIN')")
   public Page<Transaction> search(TransactionFilter filter, Pageable pageable) {
     var spec = TransactionSpecifications.withFilter(filter);
     return transactionRepository.findAllNotDeleted(spec, pageable);
@@ -216,10 +218,11 @@ public class TransactionService {
   /**
    * Counts active transactions matching the filter criteria across all users.
    *
+   * <p>Authorization is enforced at the controller layer via {@code transactions:read:any}.
+   *
    * @param filter the search filter criteria
    * @return the count of matching transactions
    */
-  @PreAuthorize("hasRole('ADMIN')")
   public long countNotDeleted(TransactionFilter filter) {
     var spec = TransactionSpecifications.withFilter(filter);
     return transactionRepository.countNotDeleted(spec);
@@ -377,24 +380,24 @@ public class TransactionService {
   }
 
   /**
-   * Retrieves a transaction and validates ownership. Non-admin users can only access their own
-   * transactions. Ownership violations throw ResourceNotFoundException (404) rather than 403 to
-   * avoid leaking resource existence.
+   * Retrieves a transaction and validates ownership. Callers without the corresponding {@code :any}
+   * permission can only access their own transactions. Ownership violations throw
+   * ResourceNotFoundException (404) rather than 403 to avoid leaking resource existence.
    *
    * @param id the transaction ID
    * @param userId the ID of the requesting user
-   * @param isAdmin whether the requesting user has admin role
+   * @param canActOnAny whether the caller has the corresponding {@code :any} permission
    * @return the transaction
    * @throws ResourceNotFoundException if the transaction does not exist or the user is not the
    *     owner
    */
-  private Transaction getTransactionWithOwnerCheck(Long id, String userId, boolean isAdmin) {
+  private Transaction getTransactionWithOwnerCheck(Long id, String userId, boolean canActOnAny) {
     var transaction =
         transactionRepository
             .findByIdNotDeleted(id)
             .orElseThrow(
                 () -> new ResourceNotFoundException("Transaction not found with id: " + id));
-    if (!isAdmin && !transaction.getOwnerId().equals(userId)) {
+    if (!canActOnAny && !transaction.getOwnerId().equals(userId)) {
       throw new ResourceNotFoundException("Transaction not found with id: " + id);
     }
     return transaction;

@@ -21,27 +21,20 @@ import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestClaimsSecurityConfig.class)
-class AdminTransactionOpenApiIntegrationTest {
+class TransactionOpenApiIntegrationTest {
 
   @Autowired private MockMvc mockMvc;
 
   @Autowired private ObjectMapper objectMapper;
 
   @Test
-  void adminTransactionSearchOpenApiDocumentsPagedAdminResponse() throws Exception {
-    var responseBody =
-        mockMvc
-            .perform(get("/transaction-service/v3/api-docs").contextPath("/transaction-service"))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+  void crossUserSearchOpenApiDocumentsPagedTransactionResponse() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
 
-    var openApiJsonNode = objectMapper.readTree(responseBody);
-    var searchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1admin~1transactions/get");
+    var searchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1search/get");
 
     assertThat(searchOperationJsonNode.isMissingNode()).isFalse();
-    assertThat(openApiJsonNode.at("/components/schemas/AdminTransactionResponse").isMissingNode())
+    assertThat(openApiJsonNode.at("/components/schemas/TransactionResponse").isMissingNode())
         .isFalse();
     assertThat(openApiJsonNode.at("/components/schemas/PageMetadataResponse").isMissingNode())
         .isFalse();
@@ -53,9 +46,9 @@ class AdminTransactionOpenApiIntegrationTest {
     assertThat(responseSchemaJsonNode.isMissingNode()).isFalse();
     assertThat(responseSchemaJsonNode.at("/properties/content/type").asText()).isEqualTo("array");
 
-    var adminTransactionSchemaJsonNode =
+    var transactionSchemaJsonNode =
         resolveSchemaNode(openApiJsonNode, responseSchemaJsonNode.at("/properties/content/items"));
-    assertThat(adminTransactionSchemaJsonNode.at("/properties/ownerId").isMissingNode()).isFalse();
+    assertThat(transactionSchemaJsonNode.at("/properties/ownerId").isMissingNode()).isFalse();
 
     var pageMetadataSchemaJsonNode =
         resolveSchemaNode(openApiJsonNode, responseSchemaJsonNode.at("/properties/metadata"));
@@ -94,6 +87,37 @@ class AdminTransactionOpenApiIntegrationTest {
             "updatedAfter",
             "updatedBefore")
         .doesNotContain("filter");
+  }
+
+  @Test
+  void crossUserSearchCountOpenApiDocumented() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+
+    var countOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1search~1count/get");
+
+    assertThat(countOperationJsonNode.isMissingNode()).isFalse();
+  }
+
+  @Test
+  void adminTransactionsPathsAndSchemaAreGone() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+
+    assertThat(openApiJsonNode.at("/paths/~1v1~1admin~1transactions").isMissingNode()).isTrue();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1admin~1transactions~1count").isMissingNode())
+        .isTrue();
+    assertThat(openApiJsonNode.at("/components/schemas/AdminTransactionResponse").isMissingNode())
+        .isTrue();
+  }
+
+  private JsonNode readOpenApiDocument() throws Exception {
+    var responseBody =
+        mockMvc
+            .perform(get("/transaction-service/v3/api-docs").contextPath("/transaction-service"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    return objectMapper.readTree(responseBody);
   }
 
   private JsonNode resolveSchemaNode(JsonNode openApiJsonNode, JsonNode schemaJsonNode) {

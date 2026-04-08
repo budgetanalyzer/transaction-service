@@ -23,6 +23,11 @@ public record TransactionResponse(
             example = "1")
         Long id,
     @Schema(
+            description = "ID of the user who owns this transaction",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "usr_test123")
+        String ownerId,
+    @Schema(
             description = "Identifier for the account associated with the transaction",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             example = "checking-3223")
@@ -79,6 +84,7 @@ public record TransactionResponse(
     // Note: createdAt and updatedAt are inherited from AuditableEntity base class
     return new TransactionResponse(
         transaction.getId(),
+        transaction.getOwnerId(),
         transaction.getAccountId(),
         transaction.getBankName(),
         transaction.getDate(),

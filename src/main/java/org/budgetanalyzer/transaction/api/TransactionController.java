@@ -8,6 +8,10 @@ import jakarta.validation.constraints.NotNull;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,6 +37,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
+import org.budgetanalyzer.service.api.PagedResponse;
+import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
@@ -51,6 +57,19 @@ import org.budgetanalyzer.transaction.service.TransactionService;
 public class TransactionController {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionController.class);
+  private static final List<String> ALLOWED_SORT_FIELDS =
+      List.of(
+          "id",
+          "ownerId",
+          "accountId",
+          "bankName",
+          "date",
+          "currencyIsoCode",
+          "amount",
+          "type",
+          "description",
+          "createdAt",
+          "updatedAt");
 
   private final TransactionImportService transactionImportService;
   private final TransactionService transactionService;
@@ -232,6 +251,83 @@ public class TransactionController {
     return transactionService.countNotDeletedForUser(filter, userId);
   }
 
+  @PreAuthorize("hasAuthority('transactions:read:any')")
+  @Operation(summary = "Search transactions across users")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "Transactions retrieved successfully",
+            useReturnTypeSchema = true),
+        @ApiResponse(
+            responseCode = "400",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Invalid Sort Field",
+                            summary = "Unsupported sort field requested",
+                            value =
+                                """
+                        {
+                          "type": "VALIDATION_ERROR",
+                          "message": "Unsupported sort field: invalid. Allowed sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt"
+                        }
+                        """)))
+      })
+  @GetMapping(path = "/search", produces = "application/json")
+  public PagedResponse<TransactionResponse> searchTransactions(
+      @ParameterObject @Valid TransactionFilter filter,
+      @ParameterObject
+          @PageableDefault(
+              size = 50,
+              sort = {"date", "id"},
+              direction = Sort.Direction.DESC)
+          Pageable pageable) {
+    validateSortFields(pageable);
+    log.info(
+        "Cross-user transaction search request - page: {} size: {} sort: {} "
+            + "hasIdentityFilters: {} hasTextFilters: {} hasDateFilter: {} "
+            + "hasAmountFilter: {} hasTimestampFilter: {}",
+        pageable.getPageNumber(),
+        pageable.getPageSize(),
+        pageable.getSort(),
+        hasIdentityFilters(filter),
+        hasTextFilters(filter),
+        hasDateFilter(filter),
+        hasAmountFilter(filter),
+        hasTimestampFilter(filter));
+    var page = transactionService.search(filter, pageable);
+
+    return PagedResponse.from(page, TransactionResponse::from);
+  }
+
+  @PreAuthorize("hasAuthority('transactions:read:any')")
+  @Operation(summary = "Count transactions across users")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = Long.class))),
+      })
+  @GetMapping(path = "/search/count", produces = "application/json")
+  public long countTransactionsAcrossUsers(@ParameterObject @Valid TransactionFilter filter) {
+    log.info(
+        "Cross-user transaction count request - hasIdentityFilters: {} hasTextFilters: {} "
+            + "hasDateFilter: {} hasAmountFilter: {} hasTimestampFilter: {}",
+        hasIdentityFilters(filter),
+        hasTextFilters(filter),
+        hasDateFilter(filter),
+        hasAmountFilter(filter),
+        hasTimestampFilter(filter));
+    return transactionService.countNotDeleted(filter);
+  }
+
   @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(summary = "Get transaction", description = "Get transaction by id")
   @ApiResponses(
@@ -248,8 +344,8 @@ public class TransactionController {
     log.info("Received get transaction request id: {}", id);
 
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
-    var transaction = transactionService.getTransaction(id, userId, isAdmin);
+    var canActOnAny = SecurityContextUtil.hasAuthority("transactions:read:any");
+    var transaction = transactionService.getTransaction(id, userId, canActOnAny);
     return TransactionResponse.from(transaction);
   }
 
@@ -295,10 +391,10 @@ public class TransactionController {
         request.accountId());
 
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    var canActOnAny = SecurityContextUtil.hasAuthority("transactions:write:any");
     var updated =
         transactionService.updateTransaction(
-            id, userId, isAdmin, request.description(), request.accountId());
+            id, userId, canActOnAny, request.description(), request.accountId());
     return TransactionResponse.from(updated);
   }
 
@@ -311,8 +407,8 @@ public class TransactionController {
     log.info("Received delete transaction request id: {}", id);
 
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
-    transactionService.deleteTransaction(id, userId, isAdmin);
+    var canActOnAny = SecurityContextUtil.hasAuthority("transactions:delete:any");
+    transactionService.deleteTransaction(id, userId, canActOnAny);
   }
 
   @PreAuthorize("hasAuthority('transactions:delete')")
@@ -373,9 +469,9 @@ public class TransactionController {
     log.info("Received bulk delete request for {} transaction IDs", request.ids().size());
 
     var userId = getCurrentUserId();
-    var isAdmin = SecurityContextUtil.hasRole("ADMIN");
+    var canActOnAny = SecurityContextUtil.hasAuthority("transactions:delete:any");
 
-    var result = transactionService.bulkDeleteTransactions(request.ids(), userId, isAdmin);
+    var result = transactionService.bulkDeleteTransactions(request.ids(), userId, canActOnAny);
 
     log.info(
         "Bulk delete completed: {} deleted, {} not found",
@@ -388,5 +484,48 @@ public class TransactionController {
   private String getCurrentUserId() {
     return SecurityContextUtil.getCurrentUserId()
         .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
+  }
+
+  private void validateSortFields(Pageable pageable) {
+    for (var sortOrder : pageable.getSort()) {
+      if (!ALLOWED_SORT_FIELDS.contains(sortOrder.getProperty())) {
+        throw new InvalidRequestException(
+            "Unsupported sort field: "
+                + sortOrder.getProperty()
+                + ". Allowed sort fields: "
+                + String.join(", ", ALLOWED_SORT_FIELDS));
+      }
+    }
+  }
+
+  private boolean hasIdentityFilters(TransactionFilter filter) {
+    return filter.id() != null || hasText(filter.ownerId());
+  }
+
+  private boolean hasTextFilters(TransactionFilter filter) {
+    return hasText(filter.accountId())
+        || hasText(filter.bankName())
+        || hasText(filter.currencyIsoCode())
+        || hasText(filter.description())
+        || filter.type() != null;
+  }
+
+  private boolean hasDateFilter(TransactionFilter filter) {
+    return filter.dateFrom() != null || filter.dateTo() != null;
+  }
+
+  private boolean hasAmountFilter(TransactionFilter filter) {
+    return filter.minAmount() != null || filter.maxAmount() != null;
+  }
+
+  private boolean hasTimestampFilter(TransactionFilter filter) {
+    return filter.createdAfter() != null
+        || filter.createdBefore() != null
+        || filter.updatedAfter() != null
+        || filter.updatedBefore() != null;
+  }
+
+  private boolean hasText(String value) {
+    return value != null && !value.isBlank();
   }
 }

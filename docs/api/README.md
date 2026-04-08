@@ -7,7 +7,7 @@
 
 ## Overview
 
-This service provides RESTful APIs for financial transaction management, including CSV/PDF import, advanced filtering, and admin search. All endpoints follow RESTful conventions and return JSON responses.
+This service provides RESTful APIs for financial transaction management, including CSV/PDF import, advanced filtering, and cross-user search. All endpoints follow RESTful conventions and return JSON responses.
 
 ## Quick Start
 
@@ -115,24 +115,24 @@ Permission: transactions:write
 Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates (date + amount + description) are skipped.
 ```
 
-### Admin Transactions
+### Cross-User Transaction Search
 
-**Admin Search Transactions**
+**Search Transactions Across Users**
 ```
-GET /v1/admin/transactions
+GET /v1/transactions/search
 Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
-Response: PagedResponse<AdminTransactionResponse>
-Role: ADMIN
+Response: PagedResponse<TransactionResponse>
+Permission: transactions:read:any
 Notes: Default sort is date,desc then id,desc. Default page size is 50, maximum is 100. Supported sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt. Unsupported sort fields return 400.
-Contract: content contains AdminTransactionResponse items. metadata contains page, size, numberOfElements, totalElements, totalPages, first, last.
+Contract: content contains TransactionResponse items (ownerId is a first-class field on every item). metadata contains page, size, numberOfElements, totalElements, totalPages, first, last.
 ```
 
-**Admin Count Transactions**
+**Count Transactions Across Users**
 ```
-GET /v1/admin/transactions/count
+GET /v1/transactions/search/count
 Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
 Response: long
-Role: ADMIN
+Permission: transactions:read:any
 Notes: Cross-user count endpoint. Does not require transactions:read.
 ```
 
@@ -267,6 +267,7 @@ Permission: statementformats:delete
 ```json
 {
   "id": 101,
+  "ownerId": "usr_test123",
   "accountId": "checking-12345",
   "bankName": "Capital One",
   "date": "2025-11-10",
@@ -279,7 +280,7 @@ Permission: statementformats:delete
 }
 ```
 
-### Admin Transaction Search Response
+### Cross-User Transaction Search Response
 
 ```json
 {
@@ -354,21 +355,29 @@ This service uses trusted claims-header-based security from `service-common`.
 - Requests are authenticated from `X-User-Id`, `X-Permissions`, and `X-Roles` headers injected by
   the ingress auth path.
 - `GET /v1/transactions` and `GET /v1/transactions/count` require
-  `X-Permissions: transactions:read`.
+  `X-Permissions: transactions:read` and are always scoped to the requesting user.
 - Write endpoints require `transactions:write`. Delete endpoints require `transactions:delete`.
-- `GET /v1/admin/transactions` and `GET /v1/admin/transactions/count` require the
-  `ADMIN` role in `X-Roles`. They do not require `transactions:read`.
+- `GET /v1/transactions/search` and `GET /v1/transactions/search/count` require
+  `transactions:read:any` in `X-Permissions`. They do not require `transactions:read`.
+- The `:any` variants of the per-resource permissions
+  (`transactions:read:any`, `transactions:write:any`, `transactions:delete:any`)
+  relax the ownership check on `GET`, `PATCH`, `DELETE /v1/transactions/{id}` and
+  `POST /v1/transactions/bulk-delete`. The unscoped `transactions:read`,
+  `transactions:write`, or `transactions:delete` permission is still required to enter the
+  controller method; `:any` only allows the caller to act on transactions owned by other
+  users. The `ADMIN` role bundles all three `:any` permissions via `permission-service`
+  migration `V5__add_cross_user_transaction_permissions.sql`.
 - Statement format endpoints require `statementformats:read`, `statementformats:write`, or
   `statementformats:delete` respectively.
 - OpenAPI docs and health endpoints remain public.
 
-Example local admin request:
+Example local cross-user search request:
 
 ```bash
 curl \
   -H "X-User-Id: usr_admin456" \
-  -H "X-Roles: ADMIN" \
-  http://localhost:8082/v1/admin/transactions
+  -H "X-Permissions: transactions:read,transactions:read:any" \
+  http://localhost:8082/v1/transactions/search
 ```
 
 ## Rate Limiting
@@ -383,11 +392,11 @@ curl \
 ## Pagination
 
 `GET /v1/transactions` remains an unpaged user-scoped list endpoint. The stable paged response
-contract applies to admin search:
+contract applies to cross-user search:
 
 **Request:**
 ```
-GET /v1/admin/transactions?page=0&size=20&sort=date,desc&sort=id,desc
+GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 ```
 
 **Response:**
