@@ -244,13 +244,6 @@ Response: StatementFormatResponse
 Permission: statementformats:write
 ```
 
-**Delete Statement Format**
-```
-DELETE /v1/statement-formats/{formatKey}
-Response: 204 No Content
-Permission: statementformats:delete
-```
-
 ## Request/Response Examples
 
 ### TransactionUpdateRequest
@@ -368,8 +361,9 @@ This service uses trusted claims-header-based security from `service-common`.
   controller method; `:any` only allows the caller to act on transactions owned by other
   users. The `ADMIN` role bundles all three `:any` permissions in the current
   `permission-service` seed data. `views:*` intentionally has no `:any` variants yet.
-- Statement format endpoints require `statementformats:read`, `statementformats:write`, or
-  `statementformats:delete` respectively.
+- Statement format endpoints require `statementformats:read` or `statementformats:write`.
+- Disable a statement format through `PUT /v1/statement-formats/{formatKey}` with
+  `{"enabled": false}`.
 - OpenAPI docs and health endpoints remain public.
 
 Example local cross-user search request:

@@ -3,7 +3,6 @@ package org.budgetanalyzer.transaction.api;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -153,30 +152,6 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
-  // ==================== Delete permission ====================
-
-  @Test
-  void deleteEndpoint_withDeletePermission_returns204() throws Exception {
-    mockMvc
-        .perform(
-            delete("/v1/statement-formats/capital-one")
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("statementformats:delete")))
-        .andExpect(status().isNoContent());
-  }
-
-  @Test
-  void deleteEndpoint_withoutDeletePermission_returns403() throws Exception {
-    mockMvc
-        .perform(
-            delete("/v1/statement-formats/capital-one")
-                .with(
-                    ClaimsHeaderTestBuilder.user("usr_test123")
-                        .withPermissions("statementformats:read", "statementformats:write")))
-        .andExpect(status().isForbidden());
-  }
-
   // ==================== Admin with full permissions ====================
 
   @Test
@@ -195,13 +170,6 @@ class StatementFormatControllerAuthorizationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createValidFormatJson()))
         .andExpect(status().isCreated());
-  }
-
-  @Test
-  void admin_deleteEndpoint_returns204() throws Exception {
-    mockMvc
-        .perform(delete("/v1/statement-formats/capital-one").with(ClaimsHeaderTestBuilder.admin()))
-        .andExpect(status().isNoContent());
   }
 
   // ==================== Helpers ====================
