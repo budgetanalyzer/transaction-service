@@ -204,6 +204,30 @@ tree src/main/java/org/budgetanalyzer/transaction -L 2
 find src/main/java/org/budgetanalyzer/transaction -type d | sort
 ```
 
+### Layering — `TransactionFilter` crossing
+
+`TransactionFilter` lives in `api/request/` and is imported directly by
+`TransactionService`, `SavedViewService`, and `TransactionSpecifications`.
+This is an **intentional** `service → api.request` crossing: the record
+carries `@DateTimeFormat` bind annotations for Spring MVC query-parameter
+binding, and its fields map 1:1 to the JPA spec built in
+`TransactionSpecifications.withFilter(...)`. Moving it to `service/dto/`
+would require translating between two identical records on every call. All
+other service → api crossings have been eliminated (see
+`docs/plans/service-api-layering-fixes.md`).
+
+If a new `service → api` import appears outside this single exception,
+treat it as a layering violation and introduce a service-layer DTO
+instead.
+
+`ViewCriteriaApi.toDomain()` and
+`BatchImportTransactionRequest.toServiceDto()` are the current precedents for
+api-side HTTP-to-internal conversion helpers. They are allowed because the
+controller owns the call sites and performs the mapping at the boundary
+before invoking the service layer. If a new api record needs a similar `to*`
+helper, keep all call sites in controllers; do not call those helpers from
+`service/` or `repository/`.
+
 ## API Documentation
 
 **OpenAPI Specification:** Run service and access Swagger UI:

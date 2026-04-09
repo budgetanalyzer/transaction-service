@@ -26,14 +26,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.jpa.domain.Specification;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.ViewCriteriaApi;
-import org.budgetanalyzer.transaction.api.request.CreateSavedViewRequest;
-import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
 import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
+import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
 
 @ExtendWith(MockitoExtension.class)
 class SavedViewServiceTest {
@@ -64,7 +64,7 @@ class SavedViewServiceTest {
   @Test
   void createView_validRequest_createsAndReturnsView() {
     var criteria =
-        new ViewCriteriaApi(
+        new ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 31),
             null,
@@ -73,12 +73,12 @@ class SavedViewServiceTest {
             null,
             null,
             null);
-    var request = new CreateSavedViewRequest("My View", criteria, false);
+    var command = new SavedViewCommand("My View", criteria, false);
 
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    var result = savedViewService.createView(USER_ID, request);
+    var result = savedViewService.createView(USER_ID, command);
 
     assertThat(result.getName()).isEqualTo("My View");
     assertThat(result.getUserId()).isEqualTo(USER_ID);
@@ -127,8 +127,8 @@ class SavedViewServiceTest {
     when(savedViewRepository.save(any(SavedView.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    var request = new UpdateSavedViewRequest("New Name", null, null);
-    var result = savedViewService.updateView(VIEW_ID, USER_ID, request);
+    var patch = new SavedViewPatch("New Name", null, null);
+    var result = savedViewService.updateView(VIEW_ID, USER_ID, patch);
 
     assertThat(result.getName()).isEqualTo("New Name");
     verify(savedViewRepository, times(1)).save(testView);

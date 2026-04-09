@@ -45,11 +45,12 @@ import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @WebMvcTest(
     value = TransactionController.class,
@@ -347,8 +348,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
     var previewResponse =
-        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
-            "transactions.csv", "capital-one", List.of(previewDto), List.of());
+        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class)))
         .thenReturn(previewResponse);
@@ -385,8 +385,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
     var previewResponse =
-        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
-            "transactions.csv", "capital-one", List.of(previewDto), List.of());
+        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
             eq("capital-one"), eq("checking-123"), any(MultipartFile.class)))
         .thenReturn(previewResponse);
@@ -419,8 +418,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
     var previewResponse =
-        new org.budgetanalyzer.transaction.api.response.PreviewResponse(
-            "statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
+        new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
             eq("capital-one-yearly"), isNull(), any(MultipartFile.class)))
         .thenReturn(previewResponse);

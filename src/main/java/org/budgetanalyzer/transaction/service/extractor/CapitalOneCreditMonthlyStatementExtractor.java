@@ -20,11 +20,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
  * Extracts transactions from Capital One Credit Card Monthly Statements (PDF).

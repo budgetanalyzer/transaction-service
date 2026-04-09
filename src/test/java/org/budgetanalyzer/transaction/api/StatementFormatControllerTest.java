@@ -28,11 +28,11 @@ import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
-import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
-import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 @WebMvcTest(StatementFormatController.class)
 @Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
@@ -134,7 +134,7 @@ class StatementFormatControllerTest {
     @Test
     void createsFormatSuccessfully() throws Exception {
       var format = createCsvFormat("new-format", "New Bank");
-      when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
+      when(statementFormatService.createFormat(any(StatementFormatCommand.class)))
           .thenReturn(format);
 
       mockMvc
@@ -163,12 +163,12 @@ class StatementFormatControllerTest {
           .andExpect(jsonPath("$.formatKey").value("new-format"))
           .andExpect(jsonPath("$.bankName").value("New Bank"));
 
-      verify(statementFormatService).createFormat(any(CreateStatementFormatRequest.class));
+      verify(statementFormatService).createFormat(any(StatementFormatCommand.class));
     }
 
     @Test
     void returns422WhenFormatKeyExists() throws Exception {
-      when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
+      when(statementFormatService.createFormat(any(StatementFormatCommand.class)))
           .thenThrow(
               new BusinessException(
                   "Format key already exists: existing",
@@ -247,8 +247,7 @@ class StatementFormatControllerTest {
     @Test
     void updatesFormatSuccessfully() throws Exception {
       var updatedFormat = createCsvFormat("existing", "Updated Bank");
-      when(statementFormatService.updateFormat(
-              eq("existing"), any(UpdateStatementFormatRequest.class)))
+      when(statementFormatService.updateFormat(eq("existing"), any(StatementFormatPatch.class)))
           .thenReturn(updatedFormat);
 
       mockMvc
@@ -268,14 +267,12 @@ class StatementFormatControllerTest {
           .andExpect(jsonPath("$.formatKey").value("existing"))
           .andExpect(jsonPath("$.bankName").value("Updated Bank"));
 
-      verify(statementFormatService)
-          .updateFormat(eq("existing"), any(UpdateStatementFormatRequest.class));
+      verify(statementFormatService).updateFormat(eq("existing"), any(StatementFormatPatch.class));
     }
 
     @Test
     void returns404WhenFormatNotFound() throws Exception {
-      when(statementFormatService.updateFormat(
-              eq("unknown"), any(UpdateStatementFormatRequest.class)))
+      when(statementFormatService.updateFormat(eq("unknown"), any(StatementFormatPatch.class)))
           .thenThrow(new ResourceNotFoundException("Statement format not found with key: unknown"));
 
       mockMvc

@@ -9,11 +9,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
-import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
 /** Service for managing statement format configurations. */
@@ -67,19 +67,19 @@ public class StatementFormatService {
   /**
    * Creates a new statement format.
    *
-   * @param request the creation request
+   * @param command the creation command
    * @return the created format
    * @throws BusinessException if format key already exists
    */
   @Transactional
-  public StatementFormat createFormat(CreateStatementFormatRequest request) {
-    if (statementFormatRepository.existsByFormatKey(request.formatKey())) {
+  public StatementFormat createFormat(StatementFormatCommand command) {
+    if (statementFormatRepository.existsByFormatKey(command.formatKey())) {
       throw new BusinessException(
-          "Format key already exists: " + request.formatKey(),
+          "Format key already exists: " + command.formatKey(),
           BudgetAnalyzerError.FORMAT_KEY_ALREADY_EXISTS.name());
     }
 
-    var format = mapToEntity(request);
+    var format = mapToEntity(command);
     var saved = statementFormatRepository.save(format);
 
     log.info("Created statement format: {} ({})", saved.getFormatKey(), saved.getFormatType());
@@ -96,15 +96,15 @@ public class StatementFormatService {
    * Updates an existing statement format.
    *
    * @param formatKey the format key of the format to update
-   * @param request the update request
+   * @param patch the update patch
    * @return the updated format
    * @throws ResourceNotFoundException if not found
    */
   @Transactional
-  public StatementFormat updateFormat(String formatKey, UpdateStatementFormatRequest request) {
+  public StatementFormat updateFormat(String formatKey, StatementFormatPatch patch) {
     var format = getByFormatKey(formatKey);
 
-    applyUpdates(format, request);
+    applyUpdates(format, patch);
     var saved = statementFormatRepository.save(format);
 
     log.info("Updated statement format: {}", formatKey);
@@ -117,62 +117,62 @@ public class StatementFormatService {
     return saved;
   }
 
-  private StatementFormat mapToEntity(CreateStatementFormatRequest request) {
-    if (request.formatType() == FormatType.CSV) {
+  private StatementFormat mapToEntity(StatementFormatCommand command) {
+    if (command.formatType() == FormatType.CSV) {
       return StatementFormat.createCsvFormat(
-          request.formatKey(),
-          request.displayName(),
-          request.bankName(),
-          request.defaultCurrencyIsoCode(),
-          request.dateHeader(),
-          request.dateFormat(),
-          request.descriptionHeader(),
-          request.creditHeader(),
-          request.debitHeader(),
-          request.typeHeader(),
-          request.categoryHeader());
+          command.formatKey(),
+          command.displayName(),
+          command.bankName(),
+          command.defaultCurrencyIsoCode(),
+          command.dateHeader(),
+          command.dateFormat(),
+          command.descriptionHeader(),
+          command.creditHeader(),
+          command.debitHeader(),
+          command.typeHeader(),
+          command.categoryHeader());
     } else {
       return StatementFormat.createPdfFormat(
-          request.formatKey(),
-          request.displayName(),
-          request.bankName(),
-          request.defaultCurrencyIsoCode());
+          command.formatKey(),
+          command.displayName(),
+          command.bankName(),
+          command.defaultCurrencyIsoCode());
     }
   }
 
-  private void applyUpdates(StatementFormat format, UpdateStatementFormatRequest request) {
-    if (request.displayName() != null) {
-      format.setDisplayName(request.displayName());
+  private void applyUpdates(StatementFormat format, StatementFormatPatch patch) {
+    if (patch.displayName() != null) {
+      format.setDisplayName(patch.displayName());
     }
-    if (request.bankName() != null) {
-      format.setBankName(request.bankName());
+    if (patch.bankName() != null) {
+      format.setBankName(patch.bankName());
     }
-    if (request.defaultCurrencyIsoCode() != null) {
-      format.setDefaultCurrencyIsoCode(request.defaultCurrencyIsoCode());
+    if (patch.defaultCurrencyIsoCode() != null) {
+      format.setDefaultCurrencyIsoCode(patch.defaultCurrencyIsoCode());
     }
-    if (request.dateHeader() != null) {
-      format.setDateHeader(request.dateHeader());
+    if (patch.dateHeader() != null) {
+      format.setDateHeader(patch.dateHeader());
     }
-    if (request.dateFormat() != null) {
-      format.setDateFormat(request.dateFormat());
+    if (patch.dateFormat() != null) {
+      format.setDateFormat(patch.dateFormat());
     }
-    if (request.descriptionHeader() != null) {
-      format.setDescriptionHeader(request.descriptionHeader());
+    if (patch.descriptionHeader() != null) {
+      format.setDescriptionHeader(patch.descriptionHeader());
     }
-    if (request.creditHeader() != null) {
-      format.setCreditHeader(request.creditHeader());
+    if (patch.creditHeader() != null) {
+      format.setCreditHeader(patch.creditHeader());
     }
-    if (request.debitHeader() != null) {
-      format.setDebitHeader(request.debitHeader());
+    if (patch.debitHeader() != null) {
+      format.setDebitHeader(patch.debitHeader());
     }
-    if (request.typeHeader() != null) {
-      format.setTypeHeader(request.typeHeader());
+    if (patch.typeHeader() != null) {
+      format.setTypeHeader(patch.typeHeader());
     }
-    if (request.categoryHeader() != null) {
-      format.setCategoryHeader(request.categoryHeader());
+    if (patch.categoryHeader() != null) {
+      format.setCategoryHeader(patch.categoryHeader());
     }
-    if (request.enabled() != null) {
-      format.setEnabled(request.enabled());
+    if (patch.enabled() != null) {
+      format.setEnabled(patch.enabled());
     }
   }
 }

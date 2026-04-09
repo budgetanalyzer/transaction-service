@@ -13,4 +13,10 @@ public record PreviewWarning(
     @Schema(description = "Zero-based index of the transaction in the preview list", example = "12")
         int index,
     @Schema(description = "Name of the field with the warning", example = "amount") String field,
-    @Schema(description = "Warning message", example = "OCR confidence low") String message) {}
+    @Schema(description = "Warning message", example = "OCR confidence low") String message) {
+
+  /** Creates an API warning from a service-layer preview warning DTO. */
+  public static PreviewWarning from(org.budgetanalyzer.transaction.service.dto.PreviewWarning dto) {
+    return new PreviewWarning(dto.index(), dto.field(), dto.message());
+  }
+}

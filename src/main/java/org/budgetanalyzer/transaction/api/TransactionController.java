@@ -41,6 +41,7 @@ import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
+import org.budgetanalyzer.transaction.api.request.BatchImportTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
@@ -152,7 +153,8 @@ public class TransactionController {
         accountId.orElse(null),
         file.getOriginalFilename());
 
-    return transactionImportService.previewFile(format, accountId.orElse(null), file);
+    return PreviewResponse.from(
+        transactionImportService.previewFile(format, accountId.orElse(null), file));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")
@@ -199,7 +201,9 @@ public class TransactionController {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
     var userId = getCurrentUserId();
-    var result = transactionService.batchImport(request.transactions(), userId);
+    var serviceDtos =
+        request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
+    var result = transactionService.batchImport(serviceDtos, userId);
 
     return new BatchImportResponse(
         result.createdTransactions().size(),

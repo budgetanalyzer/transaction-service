@@ -32,6 +32,8 @@ import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.response.StatementFormatResponse;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 /**
  * REST controller for managing statement format configurations.
@@ -163,7 +165,21 @@ public class StatementFormatController {
         request.formatKey(),
         request.formatType());
 
-    var created = statementFormatService.createFormat(request);
+    var command =
+        new StatementFormatCommand(
+            request.formatKey(),
+            request.displayName(),
+            request.formatType(),
+            request.bankName(),
+            request.defaultCurrencyIsoCode(),
+            request.dateHeader(),
+            request.dateFormat(),
+            request.descriptionHeader(),
+            request.creditHeader(),
+            request.debitHeader(),
+            request.typeHeader(),
+            request.categoryHeader());
+    var created = statementFormatService.createFormat(command);
 
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
@@ -204,6 +220,19 @@ public class StatementFormatController {
       @Valid @RequestBody UpdateStatementFormatRequest request) {
     log.info("Received update statement format request: {}", formatKey);
 
-    return StatementFormatResponse.from(statementFormatService.updateFormat(formatKey, request));
+    var patch =
+        new StatementFormatPatch(
+            request.displayName(),
+            request.bankName(),
+            request.defaultCurrencyIsoCode(),
+            request.dateHeader(),
+            request.dateFormat(),
+            request.descriptionHeader(),
+            request.creditHeader(),
+            request.debitHeader(),
+            request.typeHeader(),
+            request.categoryHeader(),
+            request.enabled());
+    return StatementFormatResponse.from(statementFormatService.updateFormat(formatKey, patch));
   }
 }

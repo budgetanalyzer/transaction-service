@@ -14,8 +14,8 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 class CapOneBankMonthlyExtractorTest {
 

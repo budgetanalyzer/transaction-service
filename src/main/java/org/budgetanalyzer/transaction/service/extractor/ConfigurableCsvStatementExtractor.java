@@ -20,12 +20,12 @@ import org.slf4j.LoggerFactory;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.core.csv.CsvRow;
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
  * A configurable CSV statement extractor that uses database-driven format configuration.

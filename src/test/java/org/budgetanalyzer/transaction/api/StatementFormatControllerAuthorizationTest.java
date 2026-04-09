@@ -22,10 +22,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
-import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
-import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 @WebMvcTest(StatementFormatController.class)
 @Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
@@ -39,9 +39,9 @@ class StatementFormatControllerAuthorizationTest {
   void setupServiceMocks() {
     when(statementFormatService.getAllFormats()).thenReturn(List.of());
     when(statementFormatService.getByFormatKey(anyString())).thenReturn(createStubFormat());
-    when(statementFormatService.createFormat(any(CreateStatementFormatRequest.class)))
+    when(statementFormatService.createFormat(any(StatementFormatCommand.class)))
         .thenReturn(createStubFormat());
-    when(statementFormatService.updateFormat(anyString(), any(UpdateStatementFormatRequest.class)))
+    when(statementFormatService.updateFormat(anyString(), any(StatementFormatPatch.class)))
         .thenReturn(createStubFormat());
   }
 

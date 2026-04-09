@@ -12,15 +12,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.request.CreateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
-import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
 import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
+import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
+import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
 import org.budgetanalyzer.transaction.service.dto.ViewMembership;
 
 /** Service for managing saved views (smart collections) of transactions. */
@@ -48,18 +48,18 @@ public class SavedViewService {
    * Creates a new saved view for the given user.
    *
    * @param userId the user ID
-   * @param request the create request
+   * @param command the create command
    * @return the created saved view
    */
   @Transactional
-  public SavedView createView(String userId, CreateSavedViewRequest request) {
-    log.info("Creating saved view '{}' for user {}", request.name(), userId);
+  public SavedView createView(String userId, SavedViewCommand command) {
+    log.info("Creating saved view '{}' for user {}", command.name(), userId);
 
     var view = new SavedView();
     view.setUserId(userId);
-    view.setName(request.name());
-    view.setCriteria(request.criteria().toDomain());
-    view.setOpenEnded(request.openEnded());
+    view.setName(command.name());
+    view.setCriteria(command.criteria());
+    view.setOpenEnded(command.openEnded());
 
     return savedViewRepository.save(view);
   }
@@ -94,21 +94,21 @@ public class SavedViewService {
    *
    * @param viewId the view ID
    * @param userId the user ID
-   * @param request the update request
+   * @param patch the update patch
    * @return the updated saved view
    */
   @Transactional
-  public SavedView updateView(UUID viewId, String userId, UpdateSavedViewRequest request) {
+  public SavedView updateView(UUID viewId, String userId, SavedViewPatch patch) {
     var view = getView(viewId, userId);
 
-    if (request.name() != null) {
-      view.setName(request.name());
+    if (patch.name() != null) {
+      view.setName(patch.name());
     }
-    if (request.criteria() != null) {
-      view.setCriteria(request.criteria().toDomain());
+    if (patch.criteria() != null) {
+      view.setCriteria(patch.criteria());
     }
-    if (request.openEnded() != null) {
-      view.setOpenEnded(request.openEnded());
+    if (patch.openEnded() != null) {
+      view.setOpenEnded(patch.openEnded());
     }
 
     log.info("Updated saved view {} for user {}", viewId, userId);

@@ -9,18 +9,16 @@ import jakarta.validation.constraints.NotNull;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
- * Previewed transaction data before import.
+ * Previewed transaction item returned from the preview endpoint.
  *
- * <p>Unlike TransactionResponse, this record does not have an ID (not yet persisted), nor createdAt
- * or updatedAt timestamps. It includes category extracted from source data.
- *
- * <p>This record is used both as output from the preview endpoint and as input to the batch import
- * endpoint, so it includes validation annotations for required fields.
+ * <p>The field shape intentionally mirrors the batch import request item so previewed transactions
+ * can round-trip through client-side edits before import.
  */
 @Schema(description = "Previewed transaction data before import")
-public record PreviewTransaction(
+public record PreviewTransactionResponse(
     @Schema(description = "Date of the transaction", example = "2024-04-12")
         @NotNull(message = "date is required")
         LocalDate date,
@@ -45,4 +43,18 @@ public record PreviewTransaction(
         @NotBlank(message = "currencyIsoCode is required")
         String currencyIsoCode,
     @Schema(description = "Account identifier (may be null)", example = "checking-12345")
-        String accountId) {}
+        String accountId) {
+
+  /** Creates a preview response item from a service-layer preview DTO. */
+  public static PreviewTransactionResponse from(PreviewTransaction serviceDto) {
+    return new PreviewTransactionResponse(
+        serviceDto.date(),
+        serviceDto.description(),
+        serviceDto.amount(),
+        serviceDto.type(),
+        serviceDto.category(),
+        serviceDto.bankName(),
+        serviceDto.currencyIsoCode(),
+        serviceDto.accountId());
+  }
+}

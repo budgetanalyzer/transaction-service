@@ -36,6 +36,8 @@ import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.response.SavedViewResponse;
 import org.budgetanalyzer.transaction.api.response.ViewMembershipResponse;
 import org.budgetanalyzer.transaction.service.SavedViewService;
+import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
+import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
 
 /** REST controller for managing saved views (smart collections). */
 @Tag(name = "Saved Views", description = "Create and manage saved transaction views")
@@ -76,7 +78,9 @@ public class SavedViewController {
     var userId = getCurrentUserId();
     log.info("Creating saved view '{}' for user {}", request.name(), userId);
 
-    var view = savedViewService.createView(userId, request);
+    var command =
+        new SavedViewCommand(request.name(), request.criteria().toDomain(), request.openEnded());
+    var view = savedViewService.createView(userId, command);
     var transactionCount = savedViewService.countViewTransactions(view);
 
     var location =
@@ -165,7 +169,12 @@ public class SavedViewController {
     var userId = getCurrentUserId();
     log.info("Updating saved view {} for user {}", id, userId);
 
-    var view = savedViewService.updateView(id, userId, request);
+    var patch =
+        new SavedViewPatch(
+            request.name(),
+            request.criteria() != null ? request.criteria().toDomain() : null,
+            request.openEnded());
+    var view = savedViewService.updateView(id, userId, patch);
     var transactionCount = savedViewService.countViewTransactions(view);
     return SavedViewResponse.from(view, transactionCount);
   }

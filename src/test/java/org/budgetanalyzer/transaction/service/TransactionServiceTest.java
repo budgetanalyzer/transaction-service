@@ -34,10 +34,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @ExtendWith(MockitoExtension.class)
 class TransactionServiceTest {

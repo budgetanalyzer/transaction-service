@@ -2,10 +2,10 @@ package org.budgetanalyzer.transaction.service.extractor;
 
 import java.util.List;
 
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
-import org.budgetanalyzer.transaction.api.response.PreviewWarning;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
+import org.budgetanalyzer.transaction.service.dto.PreviewWarning;
 
 /**
  * Interface for extracting transactions from statement files (PDF, CSV, etc.).
