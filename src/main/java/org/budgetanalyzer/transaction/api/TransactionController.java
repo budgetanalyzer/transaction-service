@@ -272,7 +272,7 @@ public class TransactionController {
                             value =
                                 """
                         {
-                          "type": "VALIDATION_ERROR",
+                          "type": "INVALID_REQUEST",
                           "message": "Unsupported sort field: invalid. Allowed sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt"
                         }
                         """)))

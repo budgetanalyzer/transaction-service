@@ -673,7 +673,12 @@ class TransactionControllerTest {
                 .with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.type").value("INVALID_REQUEST"))
-        .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("deletedAt")));
+        .andExpect(
+            jsonPath("$.message")
+                .value(org.hamcrest.Matchers.containsString("Unsupported sort field: deletedAt")))
+        .andExpect(
+            jsonPath("$.message")
+                .value(org.hamcrest.Matchers.containsString("Allowed sort fields:")));
 
     verify(transactionService, never()).search(any(), any(Pageable.class));
   }
