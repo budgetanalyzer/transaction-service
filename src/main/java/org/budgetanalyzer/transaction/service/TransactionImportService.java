@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.api.response.PreviewResponse;
+import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
@@ -44,10 +44,10 @@ public class TransactionImportService {
    * @param format the format key (e.g., "capital-one-yearly" for PDF, "capital-one" for CSV)
    * @param accountId optional account identifier to pre-fill for all transactions
    * @param file the file to preview (PDF or CSV)
-   * @return PreviewResponse containing extracted transactions
+   * @return PreviewResult containing extracted transactions
    * @throws BusinessException if the format is not supported or parsing fails
    */
-  public PreviewResponse previewFile(String format, String accountId, MultipartFile file) {
+  public PreviewResult previewFile(String format, String accountId, MultipartFile file) {
     var extractor =
         extractorRegistry
             .findByFormat(format)
@@ -66,10 +66,10 @@ public class TransactionImportService {
    * @param extractor the extractor to use
    * @param accountId optional account identifier to pre-fill for all transactions
    * @param file the file to preview
-   * @return PreviewResponse containing extracted transactions
+   * @return PreviewResult containing extracted transactions
    * @throws BusinessException if parsing fails
    */
-  private PreviewResponse previewWithExtractor(
+  private PreviewResult previewWithExtractor(
       StatementExtractor extractor, String accountId, MultipartFile file) {
     try {
       if (file.isEmpty()) {
@@ -89,7 +89,7 @@ public class TransactionImportService {
           extractionResult.transactions().size(),
           file.getOriginalFilename());
 
-      return new PreviewResponse(
+      return new PreviewResult(
           file.getOriginalFilename(),
           extractor.getFormatKey(),
           extractionResult.transactions(),

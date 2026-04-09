@@ -50,6 +50,7 @@ import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
 @RestController
@@ -152,7 +153,8 @@ public class TransactionController {
         accountId.orElse(null),
         file.getOriginalFilename());
 
-    return transactionImportService.previewFile(format, accountId.orElse(null), file);
+    return PreviewResponse.from(
+        transactionImportService.previewFile(format, accountId.orElse(null), file));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")
@@ -199,7 +201,9 @@ public class TransactionController {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
     var userId = getCurrentUserId();
-    var result = transactionService.batchImport(request.transactions(), userId);
+    List<PreviewTransaction> serviceDtos =
+        request.transactions().stream().map(PreviewTransactionApi::toServiceDto).toList();
+    var result = transactionService.batchImport(serviceDtos, userId);
 
     return new BatchImportResponse(
         result.createdTransactions().size(),

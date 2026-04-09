@@ -4,6 +4,9 @@ import java.util.List;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import org.budgetanalyzer.transaction.api.PreviewTransactionApi;
+import org.budgetanalyzer.transaction.service.dto.PreviewResult;
+
 /**
  * Response from the preview endpoint containing extracted transactions before import.
  *
@@ -19,10 +22,20 @@ public record PreviewResponse(
             example = "capital-one-ytd")
         String detectedFormat,
     @Schema(description = "List of extracted transactions ready for review")
-        List<PreviewTransaction> transactions,
+        List<PreviewTransactionApi> transactions,
     @Schema(
             description =
                 "List of warnings for fields with potential issues. "
                     + "Empty for CSV extraction; populated for PDF extraction where OCR confidence "
                     + "may be low.")
-        List<PreviewWarning> warnings) {}
+        List<PreviewWarning> warnings) {
+
+  /** Creates a PreviewResponse from a service-layer PreviewResult. */
+  public static PreviewResponse from(PreviewResult previewResult) {
+    return new PreviewResponse(
+        previewResult.sourceFile(),
+        previewResult.detectedFormat(),
+        previewResult.transactions().stream().map(PreviewTransactionApi::from).toList(),
+        previewResult.warnings().stream().map(PreviewWarning::from).toList());
+  }
+}

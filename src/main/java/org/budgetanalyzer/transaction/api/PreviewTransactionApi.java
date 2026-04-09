@@ -1,4 +1,4 @@
-package org.budgetanalyzer.transaction.api.response;
+package org.budgetanalyzer.transaction.api;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
  * Previewed transaction data before import.
@@ -20,7 +21,7 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
  * endpoint, so it includes validation annotations for required fields.
  */
 @Schema(description = "Previewed transaction data before import")
-public record PreviewTransaction(
+public record PreviewTransactionApi(
     @Schema(description = "Date of the transaction", example = "2024-04-12")
         @NotNull(message = "date is required")
         LocalDate date,
@@ -45,4 +46,24 @@ public record PreviewTransaction(
         @NotBlank(message = "currencyIsoCode is required")
         String currencyIsoCode,
     @Schema(description = "Account identifier (may be null)", example = "checking-12345")
-        String accountId) {}
+        String accountId) {
+
+  /** Creates an API preview record from a service-layer preview DTO. */
+  public static PreviewTransactionApi from(PreviewTransaction serviceDto) {
+    return new PreviewTransactionApi(
+        serviceDto.date(),
+        serviceDto.description(),
+        serviceDto.amount(),
+        serviceDto.type(),
+        serviceDto.category(),
+        serviceDto.bankName(),
+        serviceDto.currencyIsoCode(),
+        serviceDto.accountId());
+  }
+
+  /** Converts this API record to a service-layer preview DTO. */
+  public PreviewTransaction toServiceDto() {
+    return new PreviewTransaction(
+        date, description, amount, type, category, bankName, currencyIsoCode, accountId);
+  }
+}

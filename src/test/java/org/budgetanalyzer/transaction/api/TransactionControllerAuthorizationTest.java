@@ -38,11 +38,11 @@ import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
-import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 
 @WebMvcTest(TransactionController.class)
 @Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
@@ -74,7 +74,7 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.countNotDeleted(any())).thenReturn(0L);
 
     when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
-        .thenReturn(new PreviewResponse("test.csv", "capital-one", List.of(), List.of()));
+        .thenReturn(new PreviewResult("test.csv", "capital-one", List.of(), List.of()));
   }
 
   // ==================== No authentication ====================

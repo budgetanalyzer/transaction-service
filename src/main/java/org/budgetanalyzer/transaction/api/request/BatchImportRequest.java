@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotEmpty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
+import org.budgetanalyzer.transaction.api.PreviewTransactionApi;
 
 /**
  * Request payload for batch importing transactions.
@@ -20,4 +20,4 @@ public record BatchImportRequest(
     @Schema(description = "List of transactions to import")
         @NotEmpty(message = "transactions list cannot be empty")
         @Valid
-        List<PreviewTransaction> transactions) {}
+        List<PreviewTransactionApi> transactions) {}

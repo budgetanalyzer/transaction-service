@@ -19,11 +19,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
-import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
 @ExtendWith(MockitoExtension.class)
@@ -96,7 +96,7 @@ class StatementFormatServiceTest {
 
     @Test
     void createsCsvFormatSuccessfully() {
-      var request = createCsvFormatRequest("new-format");
+      var request = createCsvFormatCommand("new-format");
       when(statementFormatRepository.existsByFormatKey("new-format")).thenReturn(false);
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
@@ -111,7 +111,7 @@ class StatementFormatServiceTest {
 
     @Test
     void createsPdfFormatSuccessfully() {
-      var request = createPdfFormatRequest("new-pdf-format");
+      var request = createPdfFormatCommand("new-pdf-format");
       when(statementFormatRepository.existsByFormatKey("new-pdf-format")).thenReturn(false);
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
@@ -125,7 +125,7 @@ class StatementFormatServiceTest {
 
     @Test
     void throwsBusinessExceptionWhenFormatKeyExists() {
-      var request = createCsvFormatRequest("existing-format");
+      var request = createCsvFormatCommand("existing-format");
       when(statementFormatRepository.existsByFormatKey("existing-format")).thenReturn(true);
 
       assertThatThrownBy(() -> statementFormatService.createFormat(request))
@@ -138,7 +138,7 @@ class StatementFormatServiceTest {
     @Test
     void savesCsvFormatWithAllFields() {
       var request =
-          new CreateStatementFormatRequest(
+          new StatementFormatCommand(
               "full-csv",
               "Full Bank - Export",
               FormatType.CSV,
@@ -179,7 +179,7 @@ class StatementFormatServiceTest {
           .thenAnswer(invocation -> invocation.getArgument(0));
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, "Updated Bank", "EUR", null, null, null, null, null, null, null, null);
 
       var result = statementFormatService.updateFormat("existing", request);
@@ -200,7 +200,7 @@ class StatementFormatServiceTest {
           .thenAnswer(invocation -> invocation.getArgument(0));
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, "New Bank", null, null, null, null, null, null, null, null, null);
 
       var result = statementFormatService.updateFormat("existing", request);
@@ -218,7 +218,7 @@ class StatementFormatServiceTest {
           .thenAnswer(invocation -> invocation.getArgument(0));
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, null, null, null, null, null, null, null, null, null, false);
 
       var result = statementFormatService.updateFormat("existing", request);
@@ -235,7 +235,7 @@ class StatementFormatServiceTest {
           .thenAnswer(invocation -> invocation.getArgument(0));
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, null, null, null, null, null, null, null, null, null, false);
 
       var result = statementFormatService.updateFormat("existing", request);
@@ -249,7 +249,7 @@ class StatementFormatServiceTest {
       when(statementFormatRepository.findByFormatKey("unknown")).thenReturn(Optional.empty());
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, "Bank", null, null, null, null, null, null, null, null, null);
 
       assertThatThrownBy(() -> statementFormatService.updateFormat("unknown", request))
@@ -267,7 +267,7 @@ class StatementFormatServiceTest {
           .thenAnswer(invocation -> invocation.getArgument(0));
 
       var request =
-          new UpdateStatementFormatRequest(
+          new StatementFormatPatch(
               null, "Updated Bank", null, null, null, null, null, null, null, null, null);
 
       statementFormatService.updateFormat("pdf-format", request);
@@ -291,8 +291,8 @@ class StatementFormatServiceTest {
         null);
   }
 
-  private CreateStatementFormatRequest createCsvFormatRequest(String formatKey) {
-    return new CreateStatementFormatRequest(
+  private StatementFormatCommand createCsvFormatCommand(String formatKey) {
+    return new StatementFormatCommand(
         formatKey,
         "Test Bank - Export",
         FormatType.CSV,
@@ -307,8 +307,8 @@ class StatementFormatServiceTest {
         null);
   }
 
-  private CreateStatementFormatRequest createPdfFormatRequest(String formatKey) {
-    return new CreateStatementFormatRequest(
+  private StatementFormatCommand createPdfFormatCommand(String formatKey) {
+    return new StatementFormatCommand(
         formatKey,
         "Test Bank - PDF",
         FormatType.PDF,

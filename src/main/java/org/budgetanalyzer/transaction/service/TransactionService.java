@@ -17,10 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
-import org.budgetanalyzer.transaction.api.response.PreviewTransaction;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /** Service for managing financial transactions. */
 @Service
