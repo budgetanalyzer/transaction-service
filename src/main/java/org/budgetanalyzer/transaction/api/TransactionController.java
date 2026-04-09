@@ -41,6 +41,7 @@ import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
+import org.budgetanalyzer.transaction.api.request.BatchImportTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
@@ -50,7 +51,6 @@ import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
-import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
 @RestController
@@ -201,8 +201,8 @@ public class TransactionController {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
     var userId = getCurrentUserId();
-    List<PreviewTransaction> serviceDtos =
-        request.transactions().stream().map(PreviewTransactionApi::toServiceDto).toList();
+    var serviceDtos =
+        request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
     var result = transactionService.batchImport(serviceDtos, userId);
 
     return new BatchImportResponse(

@@ -220,12 +220,13 @@ If a new `service → api` import appears outside this single exception,
 treat it as a layering violation and introduce a service-layer DTO
 instead.
 
-`ViewCriteriaApi.toDomain()` and `PreviewTransactionApi.toServiceDto()` are
-the current precedents for api-side HTTP-to-internal conversion helpers. They
-are allowed because the controller owns the call sites and performs the
-mapping at the boundary before invoking the service layer. If a new api record
-needs a similar `to*` helper, keep all call sites in controllers; do not call
-those helpers from `service/` or `repository/`.
+`ViewCriteriaApi.toDomain()` and
+`BatchImportTransactionRequest.toServiceDto()` are the current precedents for
+api-side HTTP-to-internal conversion helpers. They are allowed because the
+controller owns the call sites and performs the mapping at the boundary
+before invoking the service layer. If a new api record needs a similar `to*`
+helper, keep all call sites in controllers; do not call those helpers from
+`service/` or `repository/`.
 
 ## API Documentation
 

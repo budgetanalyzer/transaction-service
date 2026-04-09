@@ -9,6 +9,12 @@ in `transaction-service` because the precedent here predated it.
 
 This plan resolves F3 against `transaction-service`.
 
+Post-implementation note (2026-04-09): the shared HTTP-side
+`PreviewTransactionApi` record introduced by this plan was later split into
+`api/request/BatchImportTransactionRequest` and
+`api/response/PreviewTransactionResponse`. The service-layer
+`service/dto/PreviewTransaction` remains the internal type.
+
 ## Investigation
 
 `grep -rn 'import org.budgetanalyzer.transaction.api' src/main/java/org/budgetanalyzer/transaction/{service,repository}`
@@ -453,9 +459,10 @@ Findings:
   This is the desired ownership: the api-layer record may define the
   conversion, but the controller performs it at the HTTP boundary before
   calling the service layer.
-- `api/PreviewTransactionApi.java` defines `toServiceDto()` and its only call
-  site is `api/TransactionController.java` for `/v1/transactions/batch`. This
-  already follows the same controller-owned pattern.
+- `api/request/BatchImportTransactionRequest.java` defines `toServiceDto()`
+  and its only call site is `api/TransactionController.java` for
+  `/v1/transactions/batch`. This already follows the same controller-owned
+  pattern.
 - No other api/request/response record currently defines a downward conversion
   helper such as `toDomain()`, `toServiceDto()`, `toEntity()`, or equivalent.
 - `TransactionFilter` remains the one accepted `service -> api.request`
@@ -467,9 +474,10 @@ Findings:
 
 Follow-up plan:
 
-1. Treat `ViewCriteriaApi.toDomain()` and `PreviewTransactionApi.toServiceDto()`
-   as the repository precedent for bidirectional api records: helper methods on
-   the api record are acceptable when the controller owns every call site.
+1. Treat `ViewCriteriaApi.toDomain()` and
+   `BatchImportTransactionRequest.toServiceDto()` as the repository precedent
+   for bidirectional api records: helper methods on the api record are
+   acceptable when the controller owns every call site.
 2. Keep service and repository code free of calls to api-side conversion
    helpers. If a new request body needs conversion, map it in the controller
    and pass a domain/service DTO downstream.

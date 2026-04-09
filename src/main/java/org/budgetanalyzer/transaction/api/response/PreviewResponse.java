@@ -4,7 +4,6 @@ import java.util.List;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import org.budgetanalyzer.transaction.api.PreviewTransactionApi;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 
 /**
@@ -22,7 +21,7 @@ public record PreviewResponse(
             example = "capital-one-ytd")
         String detectedFormat,
     @Schema(description = "List of extracted transactions ready for review")
-        List<PreviewTransactionApi> transactions,
+        List<PreviewTransactionResponse> transactions,
     @Schema(
             description =
                 "List of warnings for fields with potential issues. "
@@ -35,7 +34,7 @@ public record PreviewResponse(
     return new PreviewResponse(
         previewResult.sourceFile(),
         previewResult.detectedFormat(),
-        previewResult.transactions().stream().map(PreviewTransactionApi::from).toList(),
+        previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList(),
         previewResult.warnings().stream().map(PreviewWarning::from).toList());
   }
 }
