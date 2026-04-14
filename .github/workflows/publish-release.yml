@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: "Existing release tag or commit to build"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +26,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
 
       - name: Verify release inputs
         id: release
@@ -30,9 +38,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="${GITHUB_REF_NAME#v}"
-          if [[ -z "${version}" || "${version}" == "${GITHUB_REF_NAME}" ]]; then
-            echo "Expected a v-prefixed release tag, got ${GITHUB_REF_NAME}." >&2
+          release_ref="${{ inputs.release_ref || github.ref_name }}"
+          release_name="${release_ref##refs/tags/}"
+          version="${release_name#v}"
+          if [[ -z "${version}" || "${version}" == "${release_name}" ]]; then
+            echo "Expected a v-prefixed release ref, got ${release_ref}." >&2
             exit 1
           fi
 
@@ -43,7 +53,7 @@ jobs:
           fi
 
           if [[ "${service_common_version}" != "${version}" ]]; then
-            echo "Release tag ${GITHUB_REF_NAME} does not match serviceCommon version ${service_common_version}." >&2
+            echo "Release ref ${release_ref} does not match serviceCommon version ${service_common_version}." >&2
             exit 1
           fi
 
