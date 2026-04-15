@@ -64,6 +64,15 @@ jobs:
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
+      - name: Resolve checked-out revision
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commit_sha="$(git rev-parse HEAD)"
+          echo "commit_sha=${commit_sha}" >> "${GITHUB_OUTPUT}"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
@@ -79,6 +88,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Preflight GitHub Packages access
+        shell: bash
+        env:
+          GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release.outputs.version }}"
+
+          for artifact in service-core service-web; do
+            url="https://maven.pkg.github.com/budgetanalyzer/service-common/org/budgetanalyzer/${artifact}/${version}/${artifact}-${version}.pom"
+            echo "Preflighting ${artifact} ${version} via GitHub Packages"
+            curl -fsSL \
+              -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+              -o /dev/null \
+              -w "final_http=%{http_code}\n" \
+              "${url}"
+          done
+
       - name: Build and push release image
         id: build
         uses: docker/build-push-action@v6
@@ -91,7 +120,7 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit_sha }}
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
           secrets: |
             github_actor=${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
