@@ -4,7 +4,7 @@
 
 **Archetype**: service
 **Scope**: budgetanalyzer ecosystem
-**Role**: Manages financial transactions and CSV imports
+**Role**: Manages financial transactions and file-based imports
 
 ### Relationships
 - **Consumes**: service-common (patterns)
@@ -40,12 +40,12 @@ Do not leave documentation updates as follow-up work.
 
 ## Service Purpose
 
-Manages financial transactions and CSV imports for the Budget Analyzer application.
+Manages financial transactions and file-based imports for the Budget Analyzer application.
 
 **Domain**: Transaction and budget management
 **Responsibilities**:
 - CRUD operations for financial transactions
-- Multi-bank CSV file import with configurable formats
+- Multi-bank file import (CSV, PDF) with configurable formats
 - Advanced transaction search with dynamic filtering
 - Multi-account and multi-currency transaction support
 
@@ -78,11 +78,11 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 
 ## Service-Specific Patterns
 
-### CSV Import System
+### File Import System
 
-**The most sophisticated feature of this service** - Configuration-driven CSV parsing for multiple banks.
+**The most sophisticated feature of this service** - Configuration-driven file parsing for multiple banks.
 
-**Pattern**: Database-driven format configuration via `statement_format` table. Supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). Also supports PDF statement extraction.
+**Pattern**: Database-driven format configuration via `statement_format` table. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses statement extraction (Capital One).
 
 **When to consult documentation:**
 - **Adding new bank formats** → Read [CSV Import Guide](docs/csv-import.md) for configuration examples and step-by-step instructions
@@ -346,8 +346,8 @@ truth in
 4. Complete prerequisites first, then return to the original task
 
 **Service-specific reminders:**
-- CSV import is configuration-driven (YAML) - most banks need no code changes
-- Always test CSV imports with real bank export samples
+- File import is configuration-driven - most banks need no code changes
+- Always test imports with real bank export samples (CSV or PDF)
 - JPA Specifications enable dynamic search queries - see `repository/spec/`
 - Use soft-delete pattern - never hard delete transactions
 - For code quality standards and build commands, see [service-common/AGENTS.md](../service-common/AGENTS.md)

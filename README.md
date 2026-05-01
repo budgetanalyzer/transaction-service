@@ -1,6 +1,6 @@
 # Transaction Service
 
-> "Archetype: service. Role: Manages financial transactions and CSV imports."
+> "Archetype: service. Role: Manages financial transactions and file-based imports."
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 
@@ -14,7 +14,7 @@ The Transaction Service is responsible for:
 
 - Managing financial transactions (income, expenses, transfers)
 - Tracking accounts and balances
-- Importing transactions from CSV files
+- Importing transactions from files (CSV, PDF)
 - Providing transaction history and analytics
 - Supporting multi-currency transactions
 
@@ -23,7 +23,7 @@ The Transaction Service is responsible for:
 - RESTful API for transaction management
 - PostgreSQL persistence with Flyway migrations
 - OpenAPI/Swagger documentation
-- CSV transaction import
+- CSV and PDF transaction import
 - JPA/Hibernate for data access
 - Spring Boot Actuator for health checks
 - Input validation and error handling
