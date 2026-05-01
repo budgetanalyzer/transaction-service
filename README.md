@@ -52,7 +52,7 @@ The Transaction Service is responsible for:
 
 **Database configuration**: See [database-setup.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/database-setup.md)
 
-**Service-common artifact resolution**: Local builds resolve `service-common`
+**Service-common artifact resolution**: Local builds resolve [service-common](https://github.com/budgetanalyzer/service-common)
 from `mavenLocal()` — no GitHub credentials required. Default GitHub Actions
 `build.yml` runs and release builds resolve the pinned `serviceCommon` version
 from GitHub Packages. The full contract is documented in orchestration:
@@ -117,29 +117,9 @@ This project enforces:
 - **Checkstyle** for standards
 - **Spotless** for automated formatting
 
-## Cross-User Search And Counts
+## API Documentation
 
-`GET /v1/transactions/search` is the paged cross-user transaction search endpoint. It
-requires the `transactions:read:any` permission and returns
-`PagedResponse<TransactionResponse>` with a stable `content` array and `metadata` object.
-The metadata fields are `page`, `size`, `numberOfElements`, `totalElements`, `totalPages`,
-`first`, and `last`.
-
-- Default pagination is `page=0` and `size=50`.
-- Maximum page size is `100`.
-- Default sort is `date,desc` then `id,desc`.
-- Supported sort fields are `id`, `ownerId`, `accountId`, `bankName`, `date`,
-  `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, and `updatedAt`.
-- Unsupported sort fields are rejected with HTTP `400`.
-- Each response item is a `TransactionResponse`, which always includes `ownerId`.
-
-Count behavior is split the same way:
-
-- `GET /v1/transactions/count` always counts only the requesting user's active transactions,
-  regardless of whether the caller also holds `transactions:read:any`.
-- `GET /v1/transactions/search/count` is the cross-user count endpoint, requires
-  `transactions:read:any`, and accepts the same transaction filter fields as the search
-  endpoint.
+Full endpoint reference, request/response examples, and authentication details are in [docs/api/](docs/api/README.md).
 
 ## Project Structure
 
@@ -149,7 +129,7 @@ transaction-service/
 │   ├── main/
 │   │   ├── java/              # Java source code
 │   │   └── resources/
-│   │       ├── application.properties
+│   │       ├── application.yml
 │   │       └── db/migration/  # Flyway migrations
 │   └── test/java/             # Unit and integration tests
 └── build.gradle.kts           # Build configuration
@@ -161,19 +141,19 @@ This service integrates with:
 - **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** and **Envoy ext_authz** — Session Gateway manages browser authentication and Redis-backed sessions; Envoy ext_authz validates those sessions and injects pre-validated `X-User-Id`, `X-Roles`, and `X-Permissions` headers before requests reach the service
 - **API Gateway** (Envoy + NGINX) for routing and session enforcement
 - **PostgreSQL** for data persistence
-- **Service Common** for shared utilities (including claims-header security that reads pre-validated headers from ext_authz)
+- **[Service Common](https://github.com/budgetanalyzer/service-common)** for shared utilities (including claims-header security that reads pre-validated headers from ext_authz)
 - **[Permission Service](https://github.com/budgetanalyzer/permission-service)** for fine-grained claims-header-based authorization (roles and atomic permissions like `transactions:read`, `transactions:write`)
 
 See the [orchestration repository](https://github.com/budgetanalyzer/orchestration) for full system setup.
 
 ## Related Repositories
 
-- **Orchestration**: https://github.com/budgetanalyzer/orchestration
-- **Service Common**: https://github.com/budgetanalyzer/service-common
-- **Session Gateway**: https://github.com/budgetanalyzer/session-gateway
-- **Currency Service**: https://github.com/budgetanalyzer/currency-service
-- **Permission Service**: https://github.com/budgetanalyzer/permission-service
-- **Web Frontend**: https://github.com/budgetanalyzer/budget-analyzer-web
+- [Orchestration](https://github.com/budgetanalyzer/orchestration) — infrastructure, Tilt, and deployment
+- [Service Common](https://github.com/budgetanalyzer/service-common) — shared libraries and patterns
+- [Session Gateway](https://github.com/budgetanalyzer/session-gateway) — browser authentication and session management
+- [Currency Service](https://github.com/budgetanalyzer/currency-service) — exchange rates and currency data
+- [Permission Service](https://github.com/budgetanalyzer/permission-service) — roles and fine-grained permissions
+- [Web Frontend](https://github.com/budgetanalyzer/budget-analyzer-web) — browser UI
 
 ## License
 
