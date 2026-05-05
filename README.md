@@ -57,6 +57,9 @@ from `mavenLocal()` — no GitHub credentials required. Default GitHub Actions
 `build.yml` runs and release builds resolve the pinned `serviceCommon` version
 from GitHub Packages. The full contract is documented in orchestration:
 [service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
+This service imports `org.budgetanalyzer:spring-platform` for shared Spring
+dependency management and keeps `org.budgetanalyzer:service-web` explicit for
+runtime utilities.
 
 ### Running Locally
 
@@ -141,7 +144,7 @@ This service integrates with:
 - **[Session Gateway](https://github.com/budgetanalyzer/session-gateway)** and **Envoy ext_authz** — Session Gateway manages browser authentication and Redis-backed sessions; Envoy ext_authz validates those sessions and injects pre-validated `X-User-Id`, `X-Roles`, and `X-Permissions` headers before requests reach the service
 - **API Gateway** (Envoy + NGINX) for routing and session enforcement
 - **PostgreSQL** for data persistence
-- **[Service Common](https://github.com/budgetanalyzer/service-common)** for shared utilities (including claims-header security that reads pre-validated headers from ext_authz)
+- **[Service Common](https://github.com/budgetanalyzer/service-common)** for the shared Spring platform and runtime utilities (including claims-header security that reads pre-validated headers from ext_authz)
 - **[Permission Service](https://github.com/budgetanalyzer/permission-service)** for fine-grained claims-header-based authorization (roles and atomic permissions like `transactions:read`, `transactions:write`)
 
 See the [orchestration repository](https://github.com/budgetanalyzer/orchestration) for full system setup.
@@ -149,7 +152,7 @@ See the [orchestration repository](https://github.com/budgetanalyzer/orchestrati
 ## Related Repositories
 
 - [Orchestration](https://github.com/budgetanalyzer/orchestration) — infrastructure, Tilt, and deployment
-- [Service Common](https://github.com/budgetanalyzer/service-common) — shared libraries and patterns
+- [Service Common](https://github.com/budgetanalyzer/service-common) — shared Spring platform and runtime libraries
 - [Session Gateway](https://github.com/budgetanalyzer/session-gateway) — browser authentication and session management
 - [Currency Service](https://github.com/budgetanalyzer/currency-service) — exchange rates and currency data
 - [Permission Service](https://github.com/budgetanalyzer/permission-service) — roles and fine-grained permissions
