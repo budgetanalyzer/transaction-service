@@ -30,7 +30,7 @@ The Transaction Service is responsible for:
 
 ## Technology Stack
 
-- **Java 24**
+- **Java 25**
 - **Spring Boot 3.x**
   - Spring Web (REST APIs)
   - Spring Data JPA (database access)
@@ -45,7 +45,7 @@ The Transaction Service is responsible for:
 
 ### Prerequisites
 
-- JDK 24
+- JDK 25
 - Docker and Docker Compose (for infrastructure)
 
 **Local development setup**: See [getting-started.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/getting-started.md)
