@@ -253,9 +253,9 @@ helper, keep all call sites in controllers; do not call those helpers from
 ## Running Locally
 
 **Prerequisites:**
-- JDK 24
+- JDK 25
 - PostgreSQL 15+
-- Gradle 8.11+
+- Gradle 9.5.0 wrapper
 
 **Start Infrastructure:**
 ```bash
