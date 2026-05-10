@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
@@ -43,7 +44,11 @@ public record PreviewTransactionResponse(
         @NotBlank(message = "currencyIsoCode is required")
         String currencyIsoCode,
     @Schema(description = "Account identifier (may be null)", example = "checking-12345")
-        String accountId) {
+        String accountId,
+    @Schema(description = "Whether this row appears to duplicate another transaction")
+        boolean duplicate,
+    @Schema(description = "Reason this row was marked as a duplicate", nullable = true)
+        PreviewDuplicateReason duplicateReason) {
 
   /** Creates a preview response item from a service-layer preview DTO. */
   public static PreviewTransactionResponse from(PreviewTransaction serviceDto) {
@@ -55,6 +60,8 @@ public record PreviewTransactionResponse(
         serviceDto.category(),
         serviceDto.bankName(),
         serviceDto.currencyIsoCode(),
-        serviceDto.accountId());
+        serviceDto.accountId(),
+        serviceDto.duplicate(),
+        serviceDto.duplicateReason());
   }
 }

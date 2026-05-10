@@ -1,6 +1,10 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,7 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
@@ -24,14 +31,18 @@ public class TransactionImportService {
   private static final Logger log = LoggerFactory.getLogger(TransactionImportService.class);
 
   private final StatementExtractorRegistry extractorRegistry;
+  private final TransactionRepository transactionRepository;
 
   /**
    * Constructs a new TransactionImportService.
    *
    * @param extractorRegistry the registry for looking up statement extractors
+   * @param transactionRepository the repository for owner-scoped duplicate lookup
    */
-  public TransactionImportService(StatementExtractorRegistry extractorRegistry) {
+  public TransactionImportService(
+      StatementExtractorRegistry extractorRegistry, TransactionRepository transactionRepository) {
     this.extractorRegistry = extractorRegistry;
+    this.transactionRepository = transactionRepository;
   }
 
   /**
@@ -44,10 +55,12 @@ public class TransactionImportService {
    * @param format the format key (e.g., "capital-one-yearly" for PDF, "capital-one" for CSV)
    * @param accountId optional account identifier to pre-fill for all transactions
    * @param file the file to preview (PDF or CSV)
+   * @param userId the ID of the user whose active transactions should be checked for duplicates
    * @return PreviewResult containing extracted transactions
    * @throws BusinessException if the format is not supported or parsing fails
    */
-  public PreviewResult previewFile(String format, String accountId, MultipartFile file) {
+  public PreviewResult previewFile(
+      String format, String accountId, MultipartFile file, String userId) {
     var extractor =
         extractorRegistry
             .findByFormat(format)
@@ -57,7 +70,7 @@ public class TransactionImportService {
                         "Format not supported: " + format,
                         BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name()));
 
-    return previewWithExtractor(extractor, accountId, file);
+    return previewWithExtractor(extractor, accountId, file, userId);
   }
 
   /**
@@ -66,11 +79,12 @@ public class TransactionImportService {
    * @param extractor the extractor to use
    * @param accountId optional account identifier to pre-fill for all transactions
    * @param file the file to preview
+   * @param userId the ID of the user whose active transactions should be checked for duplicates
    * @return PreviewResult containing extracted transactions
    * @throws BusinessException if parsing fails
    */
   private PreviewResult previewWithExtractor(
-      StatementExtractor extractor, String accountId, MultipartFile file) {
+      StatementExtractor extractor, String accountId, MultipartFile file, String userId) {
     try {
       if (file.isEmpty()) {
         throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
@@ -89,10 +103,12 @@ public class TransactionImportService {
           extractionResult.transactions().size(),
           file.getOriginalFilename());
 
+      var transactions = markDuplicates(extractionResult.transactions(), userId);
+
       return new PreviewResult(
           file.getOriginalFilename(),
           extractor.getFormatKey(),
-          extractionResult.transactions(),
+          transactions,
           extractionResult.warnings());
     } catch (BusinessException businessException) {
       throw businessException;
@@ -107,5 +123,37 @@ public class TransactionImportService {
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
           e);
     }
+  }
+
+  private List<PreviewTransaction> markDuplicates(
+      List<PreviewTransaction> transactions, String userId) {
+    if (transactions.isEmpty()) {
+      return transactions;
+    }
+
+    var transactionKeys =
+        transactions.stream()
+            .map(
+                previewTransaction ->
+                    TransactionDuplicateKey.from(previewTransaction).toLookupValue())
+            .collect(Collectors.toSet());
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys, userId);
+    var seenKeys = new HashSet<String>();
+    var markedTransactions = new ArrayList<PreviewTransaction>(transactions.size());
+
+    for (var previewTransaction : transactions) {
+      var transactionKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
+      if (existingKeys.contains(transactionKey)) {
+        markedTransactions.add(
+            previewTransaction.withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION));
+      } else if (seenKeys.contains(transactionKey)) {
+        markedTransactions.add(previewTransaction.withDuplicate(PreviewDuplicateReason.IN_BATCH));
+      } else {
+        markedTransactions.add(previewTransaction);
+      }
+      seenKeys.add(transactionKey);
+    }
+
+    return markedTransactions;
   }
 }

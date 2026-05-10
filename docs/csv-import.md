@@ -309,6 +309,8 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 - Consider filtering CSV to only new transactions
 - When using the preview-to-batch flow, set `allowDuplicate=true` only on rows
   that should be intentionally imported despite matching duplicate detection.
+- Preview responses mark likely duplicates before import with `duplicate=true`
+  and `duplicateReason` of `EXISTING_TRANSACTION` or `IN_BATCH`.
 - Duplicate detection uses account ID, bank name, date, amount, type, currency,
   and description. Empty account IDs are treated the same as missing account
   IDs.

@@ -191,7 +191,7 @@ Suggested response shape:
    - Skip duplicates only when `allowDuplicate` is false.
    - Track skipped duplicates and intentionally imported duplicates separately.
 
-4. Update preview import.
+4. Update preview import. **Implemented.**
    - Pass current `userId` into `TransactionImportService.previewFile(...)`.
    - Run duplicate detection after extraction.
    - Mark each preview transaction with `duplicate` and `duplicateReason`.

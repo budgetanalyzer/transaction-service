@@ -153,8 +153,9 @@ public class TransactionController {
         accountId.orElse(null),
         file.getOriginalFilename());
 
+    var userId = getCurrentUserId();
     return PreviewResponse.from(
-        transactionImportService.previewFile(format, accountId.orElse(null), file));
+        transactionImportService.previewFile(format, accountId.orElse(null), file, userId));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")

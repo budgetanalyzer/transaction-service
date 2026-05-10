@@ -49,6 +49,7 @@ import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
@@ -350,7 +351,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one"), isNull(), any(MultipartFile.class)))
+            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -373,10 +374,12 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
         .andExpect(jsonPath("$.transactions.length()").value(1))
         .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
+        .andExpect(jsonPath("$.transactions[0].duplicate").value(false))
+        .andExpect(jsonPath("$.transactions[0].duplicateReason").doesNotExist())
         .andExpect(jsonPath("$.warnings").isEmpty());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class));
+        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   @Test
@@ -387,7 +390,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one"), eq("checking-123"), any(MultipartFile.class)))
+            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -409,7 +412,38 @@ class TransactionControllerTest {
         .andExpect(status().isOk());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one"), eq("checking-123"), any(MultipartFile.class));
+        .previewFile(
+            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user"));
+  }
+
+  @Test
+  void previewTransactions_duplicateMetadata_returnsDuplicateFields() throws Exception {
+    var previewDto =
+        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
+            .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
+    var previewResponse =
+        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+        .thenReturn(previewResponse);
+
+    var csvFile =
+        new MockMultipartFile(
+            "file",
+            "transactions.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile)
+                .param("format", "capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.transactions[0].duplicate").value(true))
+        .andExpect(jsonPath("$.transactions[0].duplicateReason").value("EXISTING_TRANSACTION"));
   }
 
   @Test
@@ -420,7 +454,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one-yearly"), isNull(), any(MultipartFile.class)))
+            eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var pdfFile =
@@ -444,7 +478,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.transactions.length()").value(1));
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class));
+        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   // ==================== POST /v1/transactions/batch ====================

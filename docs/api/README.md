@@ -103,7 +103,7 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata.
 ```
 
 **Batch Import Transactions**
@@ -118,6 +118,10 @@ Notes: Imports transactions from the preview endpoint after user edits. Validate
 Duplicate detection is scoped to the authenticated owner and uses
 `accountId`, `bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and
 `description`. Empty `accountId` values are treated the same as `null`.
+Preview responses set `duplicate=true` with `duplicateReason` of
+`EXISTING_TRANSACTION` for active owner-owned database matches, or `IN_BATCH`
+for rows that duplicate an earlier row in the same preview payload. Preview
+duplicate metadata is advisory; `/batch` performs the final duplicate check.
 `allowDuplicate` defaults to `false`; when set to `true`, the row is imported
 even if it matches an existing transaction or an earlier row in the same batch.
 Batch responses include `duplicatesSkipped` and `duplicatesImported` counts.

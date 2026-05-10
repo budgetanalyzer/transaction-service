@@ -73,7 +73,8 @@ class TransactionControllerAuthorizationTest {
 
     when(transactionService.countNotDeleted(any())).thenReturn(0L);
 
-    when(transactionImportService.previewFile(anyString(), any(), any(MultipartFile.class)))
+    when(transactionImportService.previewFile(
+            anyString(), any(), any(MultipartFile.class), anyString()))
         .thenReturn(new PreviewResult("test.csv", "capital-one", List.of(), List.of()));
   }
 
