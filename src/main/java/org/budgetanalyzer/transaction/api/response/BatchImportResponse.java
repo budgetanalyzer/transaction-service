@@ -14,5 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record BatchImportResponse(
     @Schema(description = "Number of transactions created", example = "156") int created,
     @Schema(description = "Number of duplicates skipped", example = "3") int duplicatesSkipped,
+    @Schema(description = "Number of duplicates intentionally imported", example = "1")
+        int duplicatesImported,
     @Schema(description = "List of created transactions with IDs")
         List<TransactionResponse> transactions) {}

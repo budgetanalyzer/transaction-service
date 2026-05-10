@@ -456,7 +456,7 @@ class TransactionControllerTest {
         List.of(
             createTransaction(1L, "Transaction 1", BigDecimal.valueOf(10.00)),
             createTransaction(2L, "Transaction 2", BigDecimal.valueOf(20.00)));
-    var result = new TransactionService.BatchImportResult(createdTransactions, 0);
+    var result = new TransactionService.BatchImportResult(createdTransactions, 0, 0);
     when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
 
     var requestBody =
@@ -494,6 +494,7 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.created").value(2))
         .andExpect(jsonPath("$.duplicatesSkipped").value(0))
+        .andExpect(jsonPath("$.duplicatesImported").value(0))
         .andExpect(jsonPath("$.transactions.length()").value(2));
 
     verify(transactionService, times(1)).batchImport(anyList(), anyString());
@@ -502,7 +503,7 @@ class TransactionControllerTest {
   @Test
   void batchImport_duplicateTransactions_returnsSkippedCount() throws Exception {
     // Given: a batch import request where every submitted transaction is a duplicate
-    var result = new TransactionService.BatchImportResult(List.of(), 2);
+    var result = new TransactionService.BatchImportResult(List.of(), 2, 0);
     when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
 
     var requestBody =
@@ -540,9 +541,52 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.created").value(0))
         .andExpect(jsonPath("$.duplicatesSkipped").value(2))
+        .andExpect(jsonPath("$.duplicatesImported").value(0))
         .andExpect(jsonPath("$.transactions.length()").value(0));
 
     verify(transactionService, times(1)).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void batchImport_allowDuplicate_mapsFlagToServiceDto() throws Exception {
+    // Given: a batch import request with a duplicate override
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 1));
+
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "date": "2025-11-18",
+              "description": "COFFEE SHOP",
+              "amount": 9.97,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD",
+              "allowDuplicate": true
+            }
+          ]
+        }
+        """;
+
+    // When: POST imports with allowDuplicate
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.duplicatesImported").value(1));
+
+    ArgumentCaptor<List<PreviewTransaction>> transactionsCaptor =
+        ArgumentCaptor.forClass(List.class);
+    verify(transactionService).batchImport(transactionsCaptor.capture(), eq("test-user"));
+    assertThat(transactionsCaptor.getValue()).hasSize(1);
+    assertThat(transactionsCaptor.getValue().get(0).allowDuplicate()).isTrue();
   }
 
   @Test

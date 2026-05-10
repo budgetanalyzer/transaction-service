@@ -62,7 +62,7 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.getTransactions(anyString())).thenReturn(List.of());
 
     when(transactionService.batchImport(anyList(), anyString()))
-        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0));
+        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 0));
 
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));

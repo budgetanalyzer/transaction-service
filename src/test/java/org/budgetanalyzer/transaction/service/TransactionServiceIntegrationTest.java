@@ -52,7 +52,7 @@ class TransactionServiceIntegrationTest {
 
   @BeforeEach
   void cleanDatabase() {
-    transactionRepository.deleteAll();
+    transactionRepository.deleteAllInBatch();
   }
 
   @Test
@@ -67,8 +67,34 @@ class TransactionServiceIntegrationTest {
 
     assertThat(firstResult.createdTransactions()).hasSize(2);
     assertThat(firstResult.duplicatesSkipped()).isZero();
+    assertThat(firstResult.duplicatesImported()).isZero();
     assertThat(secondResult.createdTransactions()).isEmpty();
     assertThat(secondResult.duplicatesSkipped()).isEqualTo(2);
+    assertThat(secondResult.duplicatesImported()).isZero();
+    assertThat(transactionRepository.findAll()).hasSize(2);
+  }
+
+  @Test
+  void batchImport_duplicateSubmittedWithOverride_importsDuplicate() {
+    var transaction = previewTransaction(LocalDate.of(2025, 11, 18), "COFFEE SHOP", "9.97");
+    var duplicate =
+        new PreviewTransaction(
+            transaction.date(),
+            transaction.description(),
+            transaction.amount(),
+            transaction.type(),
+            transaction.category(),
+            transaction.bankName(),
+            transaction.currencyIsoCode(),
+            transaction.accountId(),
+            true);
+
+    transactionService.batchImport(List.of(transaction), USER_ID);
+    var result = transactionService.batchImport(List.of(duplicate), USER_ID);
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isEqualTo(1);
     assertThat(transactionRepository.findAll()).hasSize(2);
   }
 

@@ -185,7 +185,7 @@ Suggested response shape:
    - Update `V11__add_duplicate_detection_index.sql` follow-up migration with a
      new index that matches the expanded query shape.
 
-3. Update batch import.
+3. Update batch import. **Implemented.**
    - Extend `BatchImportTransactionRequest` and the service DTO with
      `allowDuplicate`.
    - Skip duplicates only when `allowDuplicate` is false.

@@ -109,15 +109,18 @@ Notes: Parses a CSV or PDF file and returns extracted transactions for review. N
 **Batch Import Transactions**
 ```
 POST /v1/transactions/batch
-Body: BatchImportRequest (list of PreviewTransaction objects)
-Response: BatchImportResponse (201 Created)
+Body: BatchImportRequest (list of PreviewTransaction objects, optional allowDuplicate per row)
+Response: BatchImportResponse (200 OK)
 Permission: transactions:write
-Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates are skipped.
+Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row.
 ```
 
 Duplicate detection is scoped to the authenticated owner and uses
 `accountId`, `bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and
 `description`. Empty `accountId` values are treated the same as `null`.
+`allowDuplicate` defaults to `false`; when set to `true`, the row is imported
+even if it matches an existing transaction or an earlier row in the same batch.
+Batch responses include `duplicatesSkipped` and `duplicatesImported` counts.
 
 ### Cross-User Transaction Search
 
@@ -334,8 +337,8 @@ Permission: statementformats:write
 ## Error Handling
 
 **Standard HTTP Status Codes:**
-- `200 OK` - Successful GET/PATCH/bulk operations
-- `201 Created` - Successful POST (batch import, create)
+- `200 OK` - Successful GET/PATCH/bulk/batch import operations
+- `201 Created` - Successful create operations
 - `204 No Content` - Successful DELETE
 - `400 Bad Request` - Validation error or invalid request
 - `404 Not Found` - Resource not found
@@ -440,6 +443,9 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 - `currencyIsoCode` - Required, non-blank
 - `accountId` - Optional
 - `category` - Optional
+- `allowDuplicate` - Optional, defaults to false. When true, imports the row
+  even if it duplicates an existing transaction or an earlier row in the same
+  batch.
 
 ### Transaction Update (TransactionUpdateRequest)
 

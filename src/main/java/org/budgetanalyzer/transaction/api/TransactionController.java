@@ -208,6 +208,7 @@ public class TransactionController {
     return new BatchImportResponse(
         result.createdTransactions().size(),
         result.duplicatesSkipped(),
+        result.duplicatesImported(),
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
   }
 

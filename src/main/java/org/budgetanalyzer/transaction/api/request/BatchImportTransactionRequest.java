@@ -43,11 +43,26 @@ public record BatchImportTransactionRequest(
         @NotBlank(message = "currencyIsoCode is required")
         String currencyIsoCode,
     @Schema(description = "Account identifier (may be null)", example = "checking-12345")
-        String accountId) {
+        String accountId,
+    @Schema(
+            description =
+                "Whether to import this row even when it duplicates an existing transaction or "
+                    + "earlier row in the same batch",
+            example = "false",
+            defaultValue = "false")
+        Boolean allowDuplicate) {
 
   /** Converts this request payload to the service-layer preview DTO. */
   public PreviewTransaction toServiceDto() {
     return new PreviewTransaction(
-        date, description, amount, type, category, bankName, currencyIsoCode, accountId);
+        date,
+        description,
+        amount,
+        type,
+        category,
+        bankName,
+        currencyIsoCode,
+        accountId,
+        Boolean.TRUE.equals(allowDuplicate));
   }
 }
