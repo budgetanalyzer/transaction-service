@@ -500,6 +500,52 @@ class TransactionControllerTest {
   }
 
   @Test
+  void batchImport_duplicateTransactions_returnsSkippedCount() throws Exception {
+    // Given: a batch import request where every submitted transaction is a duplicate
+    var result = new TransactionService.BatchImportResult(List.of(), 2);
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
+
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "date": "2025-11-18",
+              "description": "COFFEE SHOP",
+              "amount": 9.97,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD"
+            },
+            {
+              "date": "2025-11-19",
+              "description": "GROCERY STORE",
+              "amount": 42.30,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD"
+            }
+          ]
+        }
+        """;
+
+    // When/Then: POST returns 200 with no created transactions and the skipped duplicate count
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.created").value(0))
+        .andExpect(jsonPath("$.duplicatesSkipped").value(2))
+        .andExpect(jsonPath("$.transactions.length()").value(0));
+
+    verify(transactionService, times(1)).batchImport(anyList(), anyString());
+  }
+
+  @Test
   void batchImport_validationFailure_returns400WithFieldErrors() throws Exception {
     // Given: request with missing required fields (null amount, null date)
     var requestBody =
