@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.TransactionDuplicateKey;
 
 @DataJpaTest
 @Testcontainers
@@ -198,11 +200,93 @@ class TransactionRepositoryIntegrationTest {
     transactionRepository.save(transaction);
 
     // When: checking for duplicates for the same owner
-    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var duplicateKey = duplicateKey(transaction);
+    var keys = Set.of(duplicateKey);
     var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
 
     // Then: the duplicate key is found
-    assertThat(existingKeys).containsExactly("2024-01-15|100.00|Coffee Shop");
+    assertThat(existingKeys).containsExactly(duplicateKey);
+  }
+
+  @Test
+  void findExistingDuplicateKeys_doesNotMatchDifferentAccountId() {
+    // Given: a transaction exists for one account
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details on another account
+    var keys = Set.of(duplicateKey(transaction, "account-2", null, null, null));
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: the transaction is not considered a duplicate
+    assertThat(existingKeys).isEmpty();
+  }
+
+  @Test
+  void findExistingDuplicateKeys_doesNotMatchDifferentBankName() {
+    // Given: a transaction exists for one bank
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details at another bank
+    var keys = Set.of(duplicateKey(transaction, null, "Other Bank", null, null));
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: the transaction is not considered a duplicate
+    assertThat(existingKeys).isEmpty();
+  }
+
+  @Test
+  void findExistingDuplicateKeys_doesNotMatchDifferentCurrencyIsoCode() {
+    // Given: a transaction exists in one currency
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details in another currency
+    var keys = Set.of(duplicateKey(transaction, null, null, "THB", null));
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: the transaction is not considered a duplicate
+    assertThat(existingKeys).isEmpty();
+  }
+
+  @Test
+  void findExistingDuplicateKeys_doesNotMatchDifferentType() {
+    // Given: a debit transaction exists
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details as a credit
+    var keys = Set.of(duplicateKey(transaction, null, null, null, TransactionType.CREDIT));
+    var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
+
+    // Then: the transaction is not considered a duplicate
+    assertThat(existingKeys).isEmpty();
+  }
+
+  @Test
+  void findExistingDuplicateKeys_treatsEmptyAccountIdAsNull() {
+    // Given: a transaction exists with an empty account ID
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details with a null account ID
+    var duplicateKey = duplicateKey(transaction, null, null, null, null);
+    var existingKeys =
+        transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), "test-user");
+
+    // Then: the transaction is considered a duplicate
+    assertThat(existingKeys).containsExactly(duplicateKey);
   }
 
   @Test
@@ -214,7 +298,7 @@ class TransactionRepositoryIntegrationTest {
     transactionRepository.save(transaction);
 
     // When: checking for duplicates for a different owner
-    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var keys = Set.of(duplicateKey(transaction));
     var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "different-user");
 
     // Then: no duplicates are found (different user can import same transaction)
@@ -232,7 +316,7 @@ class TransactionRepositoryIntegrationTest {
     transactionRepository.save(transaction);
 
     // When: checking for duplicates for the same owner
-    var keys = java.util.Set.of("2024-01-15|100.00|Coffee Shop");
+    var keys = Set.of(duplicateKey(transaction));
     var existingKeys = transactionRepository.findExistingDuplicateKeys(keys, "test-user");
 
     // Then: no duplicates are found (deleted transactions don't count)
@@ -266,5 +350,26 @@ class TransactionRepositoryIntegrationTest {
     transaction.setDescription(description);
     transaction.setOwnerId("test-user");
     return transaction;
+  }
+
+  private static String duplicateKey(Transaction transaction) {
+    return duplicateKey(transaction, null, null, null, null);
+  }
+
+  private static String duplicateKey(
+      Transaction transaction,
+      String accountId,
+      String bankName,
+      String currencyIsoCode,
+      TransactionType type) {
+    return new TransactionDuplicateKey(
+            accountId == null ? transaction.getAccountId() : accountId,
+            bankName == null ? transaction.getBankName() : bankName,
+            transaction.getDate(),
+            transaction.getAmount(),
+            type == null ? transaction.getType() : type,
+            currencyIsoCode == null ? transaction.getCurrencyIsoCode() : currencyIsoCode,
+            transaction.getDescription())
+        .toLookupValue();
   }
 }

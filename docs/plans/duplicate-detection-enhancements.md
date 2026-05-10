@@ -178,7 +178,7 @@ Suggested response shape:
      `currencyIsoCode`, and `description`.
    - Make null handling explicit and testable.
 
-2. Update repository duplicate lookup.
+2. Update repository duplicate lookup. **Implemented.**
    - Replace the current `date|amount|description` lookup with the expanded
      key.
    - Ensure SQL uses the same account ID null behavior as Java.
@@ -256,3 +256,13 @@ Suggested response shape:
 - Description matching remains exact.
 
 No open behavior questions remain before implementation.
+
+## TODO
+
+- Add file content hash comparison to the preview API. The preview flow should
+  compute the uploaded file hash and check `file_import` for a prior import by
+  the current user so the UI can warn about exact-file reuploads before batch
+  import. Keep this separate from transaction-level duplicate detection:
+  transaction duplicates remain advisory in preview and authoritative in
+  `/batch`, while file hash comparison only identifies the same uploaded file
+  bytes.

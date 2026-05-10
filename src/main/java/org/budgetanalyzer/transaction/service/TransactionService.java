@@ -1,6 +1,5 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -236,7 +235,8 @@ public class TransactionService {
    * <ul>
    *   <li>Jakarta Bean Validation handles field presence/format at controller layer (400)
    *   <li>Business validation (date rules) is performed here (422 if fails)
-   *   <li>Duplicates (matching date + amount + description) are detected and skipped
+   *   <li>Duplicates are detected by account ID, bank, date, amount, type, currency, and
+   *       description, then skipped
    *   <li>Non-duplicate transactions are persisted atomically
    * </ul>
    *
@@ -348,15 +348,10 @@ public class TransactionService {
    * Builds a duplicate key from a transaction DTO.
    *
    * @param dto the transaction DTO
-   * @return composite key in format "date|amount|description"
+   * @return encoded composite duplicate key
    */
   private String buildDuplicateKey(PreviewTransaction dto) {
-    // Use setScale(2) to match PostgreSQL NUMERIC(38,2) formatting
-    return dto.date()
-        + "|"
-        + dto.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
-        + "|"
-        + dto.description();
+    return TransactionDuplicateKey.from(dto).toLookupValue();
   }
 
   /**

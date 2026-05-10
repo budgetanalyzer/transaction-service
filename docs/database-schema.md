@@ -24,47 +24,75 @@ kubectl exec -it -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
 \dt transaction_service.*
 
 # View table structure
-\d transaction_service.transactions
+\d transaction_service.transaction
 ```
 
 ## Core Tables
 
-### transactions
+### transaction
 
 **Purpose:** Stores all financial transactions
 
 ```sql
-CREATE TABLE transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id UUID NOT NULL,
-    amount DECIMAL(19,2) NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    transaction_date DATE NOT NULL,
-    description VARCHAR(500) NOT NULL,
-    category VARCHAR(100),
-    transaction_type VARCHAR(10) NOT NULL, -- 'DEBIT' or 'CREDIT'
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE transaction (
+    id BIGSERIAL PRIMARY KEY,
+    account_id VARCHAR(255),
+    bank_name VARCHAR(255) NOT NULL,
+    date DATE NOT NULL,
+    currency_iso_code VARCHAR(3) NOT NULL,
+    amount NUMERIC(38, 2) NOT NULL,
+    type VARCHAR(20) NOT NULL,
+    description TEXT NOT NULL,
+    owner_id VARCHAR(50) NOT NULL,
+    file_import_id BIGINT,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE,
+    deleted BOOLEAN NOT NULL DEFAULT false,
+    deleted_at TIMESTAMP(6) WITH TIME ZONE
 );
 
-CREATE INDEX idx_transactions_account_id ON transactions(account_id);
-CREATE INDEX idx_transactions_date ON transactions(transaction_date);
-CREATE INDEX idx_transactions_category ON transactions(category);
+CREATE INDEX idx_transaction_account_id ON transaction(account_id);
+CREATE INDEX idx_transaction_bank_name ON transaction(bank_name);
+CREATE INDEX idx_transaction_date ON transaction(date);
+CREATE INDEX idx_transaction_currency_iso_code ON transaction(currency_iso_code);
+CREATE INDEX idx_transaction_type ON transaction(type);
+CREATE INDEX idx_transaction_deleted ON transaction(deleted);
+CREATE INDEX idx_transaction_owner_id ON transaction(owner_id);
+CREATE INDEX idx_transaction_file_import_id ON transaction(file_import_id);
+CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
+    ON transaction (
+        owner_id,
+        deleted,
+        account_id,
+        bank_name,
+        date,
+        amount,
+        type,
+        currency_iso_code,
+        description
+    );
 ```
 
 **Key Columns:**
-- `id` - UUID primary key
-- `account_id` - Reference to account (foreign key future)
+- `id` - BIGSERIAL primary key
+- `account_id` - Optional account identifier
+- `bank_name` - Bank where the transaction occurred
+- `date` - Business date (not creation timestamp)
 - `amount` - Always positive, type indicates direction
-- `currency` - ISO 4217 currency code
-- `transaction_date` - Business date (not creation timestamp)
-- `transaction_type` - DEBIT (outflow) or CREDIT (inflow)
+- `currency_iso_code` - ISO 4217 currency code
+- `type` - DEBIT (outflow) or CREDIT (inflow)
+- `description` - Bank-provided transaction description
+- `owner_id` - User that owns the transaction
+- `file_import_id` - Optional file import source
+- `deleted` - Soft-delete marker
 
 **Indexes:**
 - Primary key on `id`
-- Account lookup: `account_id`
-- Date range queries: `transaction_date`
-- Category filtering: `category`
+- Single-column indexes for account, bank, date, currency, type, deleted, owner,
+  and file import lookups
+- `idx_transaction_owner_deleted_duplicate_fields` supports owner-scoped
+  duplicate detection across `account_id`, `bank_name`, `date`, `amount`,
+  `type`, `currency_iso_code`, and `description`
 
 ### budgets
 

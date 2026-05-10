@@ -306,9 +306,10 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 **Cause:** CSV contains transactions already in database.
 
 **Solution:**
-- Current implementation doesn't check for duplicates
 - Consider filtering CSV to only new transactions
-- Or implement duplicate detection (requires unique business key)
+- Duplicate detection uses account ID, bank name, date, amount, type, currency,
+  and description. Empty account IDs are treated the same as missing account
+  IDs.
 
 ### Empty amounts parsed as zero
 

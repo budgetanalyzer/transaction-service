@@ -112,8 +112,12 @@ POST /v1/transactions/batch
 Body: BatchImportRequest (list of PreviewTransaction objects)
 Response: BatchImportResponse (201 Created)
 Permission: transactions:write
-Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates (date + amount + description) are skipped.
+Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates are skipped.
 ```
+
+Duplicate detection is scoped to the authenticated owner and uses
+`accountId`, `bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and
+`description`. Empty `accountId` values are treated the same as `null`.
 
 ### Cross-User Transaction Search
 

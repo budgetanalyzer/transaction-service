@@ -671,7 +671,7 @@ class TransactionServiceTest {
             null);
 
     // Simulate that dto1's key already exists
-    var existingKey = "2024-01-15|100.00|Existing Transaction";
+    var existingKey = TransactionDuplicateKey.from(dto1).toLookupValue();
     when(transactionRepository.findExistingDuplicateKeys(any(), any()))
         .thenReturn(Set.of(existingKey));
     when(transactionRepository.saveAll(any()))

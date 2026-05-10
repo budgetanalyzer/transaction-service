@@ -163,7 +163,7 @@ public class TransactionController {
       description =
           "Imports transactions from a batch request (typically from the preview endpoint after "
               + "user edits). Validates all transactions upfront and rejects the entire batch if "
-              + "any fail. Duplicates (matching date + amount + description) are skipped.")
+              + "any fail. Duplicates matching the owner-scoped transaction key are skipped.")
   @ApiResponses(
       value = {
         @ApiResponse(
