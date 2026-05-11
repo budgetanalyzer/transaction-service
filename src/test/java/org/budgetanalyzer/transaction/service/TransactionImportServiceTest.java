@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockMultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
@@ -144,6 +145,37 @@ class TransactionImportServiceTest {
 
     assertThat(result.transactions()).isEmpty();
     verify(transactionRepository, never()).findExistingDuplicateKeys(any(), any());
+  }
+
+  @Test
+  void previewFile_duplicateLookupFailure_surfacesInfrastructureException() {
+    var previewTransaction = previewTransaction("Coffee Shop");
+    var duplicateKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
+    var multipartFile = multipartFile();
+    var dataAccessException = new DataAccessResourceFailureException("database unavailable");
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(previewTransaction));
+    when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
+        .thenThrow(dataAccessException);
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFile(
+                    "capital-one", "checking", multipartFile, USER_ID))
+        .isSameAs(dataAccessException);
   }
 
   @Test

@@ -95,51 +95,47 @@ public class TransactionImportService {
    */
   private PreviewResult previewWithExtractor(
       StatementExtractor extractor, String accountId, MultipartFile file, String userId) {
+    var originalFilename = requireOriginalFilename(file);
+    if (file.isEmpty()) {
+      throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+    }
+
+    log.info("Previewing file with extractor '{}': {}", extractor.getFormatKey(), originalFilename);
+
+    var fileContent = readFileContent(file);
+    var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
+    var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
+    var previewImportToken =
+        previewImportTokenService.createToken(
+            userId,
+            fileCheckResult.hash(),
+            originalFilename,
+            extractor.getFormatKey(),
+            accountId,
+            file.getSize());
+    var extractedTransactions = extractor.extract(fileContent, accountId);
+
+    log.info(
+        "Successfully previewed {} transactions from file {}",
+        extractedTransactions.size(),
+        originalFilename);
+
+    var transactions = markDuplicates(extractedTransactions, userId);
+
+    return new PreviewResult(
+        originalFilename,
+        extractor.getFormatKey(),
+        previewImportToken,
+        fileImportStatus,
+        transactions);
+  }
+
+  private byte[] readFileContent(MultipartFile file) {
     try {
-      var originalFilename = requireOriginalFilename(file);
-      if (file.isEmpty()) {
-        throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
-      }
-
-      log.info(
-          "Previewing file with extractor '{}': {}", extractor.getFormatKey(), originalFilename);
-
-      var fileContent = file.getBytes();
-      var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
-      var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
-      var previewImportToken =
-          previewImportTokenService.createToken(
-              userId,
-              fileCheckResult.hash(),
-              originalFilename,
-              extractor.getFormatKey(),
-              accountId,
-              file.getSize());
-      var extractedTransactions = extractor.extract(fileContent, accountId);
-
-      log.info(
-          "Successfully previewed {} transactions from file {}",
-          extractedTransactions.size(),
-          originalFilename);
-
-      var transactions = markDuplicates(extractedTransactions, userId);
-
-      return new PreviewResult(
-          originalFilename,
-          extractor.getFormatKey(),
-          previewImportToken,
-          fileImportStatus,
-          transactions);
-    } catch (BusinessException businessException) {
-      throw businessException;
+      return file.getBytes();
     } catch (IOException e) {
       throw new BusinessException(
           "Failed to read file: " + e.getMessage(),
-          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          e);
-    } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to preview file: " + e.getMessage(),
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
           e);
     }

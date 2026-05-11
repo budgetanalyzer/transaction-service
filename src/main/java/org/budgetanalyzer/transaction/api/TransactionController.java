@@ -250,9 +250,9 @@ public class TransactionController {
     var fileImportSource =
         BatchFileImportSource.from(
             previewImportTokenService.verifyToken(previewImportToken, userId));
-    var serviceDtos =
+    var previewTransactions =
         request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
-    var result = transactionService.batchImport(serviceDtos, userId, fileImportSource);
+    var result = transactionService.batchImport(previewTransactions, userId, fileImportSource);
 
     return new BatchImportResponse(
         result.createdTransactions().size(),

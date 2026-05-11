@@ -356,9 +356,11 @@ class TransactionControllerTest {
   @Test
   void previewTransactions_csvFile_returns200WithPreviewResponse() throws Exception {
     // Given: a CSV file to preview
-    var previewDto =
-        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewTransaction =
+        createPreviewTransaction(
+            LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
+    var previewResponse =
+        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -397,9 +399,11 @@ class TransactionControllerTest {
   @Test
   void previewTransactions_withAccountId_passesAccountIdToService() throws Exception {
     // Given: preview request with accountId
-    var previewDto =
-        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewTransaction =
+        createPreviewTransaction(
+            LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
+    var previewResponse =
+        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
     when(transactionImportService.previewFile(
             eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -429,10 +433,11 @@ class TransactionControllerTest {
 
   @Test
   void previewTransactions_duplicateMetadata_returnsDuplicateFields() throws Exception {
-    var previewDto =
-        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
+    var previewTransaction =
+        createPreviewTransaction(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
             .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
-    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewResponse =
+        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -459,9 +464,11 @@ class TransactionControllerTest {
   @Test
   void previewTransactions_pdfFile_returns200WithExplicitFormat() throws Exception {
     // Given: a PDF file to preview with explicit format
-    var previewDto =
-        createPreviewDto(LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
-    var previewResponse = previewResult("statement.pdf", "capital-one-yearly", List.of(previewDto));
+    var previewTransaction =
+        createPreviewTransaction(
+            LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
+    var previewResponse =
+        previewResult("statement.pdf", "capital-one-yearly", List.of(previewTransaction));
     when(transactionImportService.previewFile(
             eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -1214,7 +1221,7 @@ class TransactionControllerTest {
     return transaction;
   }
 
-  private PreviewTransaction createPreviewDto(
+  private PreviewTransaction createPreviewTransaction(
       LocalDate date, String description, BigDecimal amount) {
     return new PreviewTransaction(
         date,
