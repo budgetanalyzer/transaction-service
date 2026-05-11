@@ -1,10 +1,13 @@
 package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -20,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
@@ -179,6 +183,108 @@ class TransactionImportServiceTest {
     assertThat(result.fileImport().previousImport().transactionCount()).isEqualTo(12);
   }
 
+  @Test
+  void previewFile_nullOriginalFilename_rejectsBeforeReadingFile() throws Exception {
+    var multipartFile = spy(multipartFile(null));
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFile(
+                    "capital-one", "checking", multipartFile, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+            });
+
+    verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
+    verify(multipartFile, never()).getBytes();
+    verify(statementExtractor, never()).extract(any(byte[].class), any());
+  }
+
+  @Test
+  void previewFile_blankOriginalFilename_rejectsBeforeReadingFile() throws Exception {
+    var multipartFile = spy(multipartFile("   "));
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFile(
+                    "capital-one", "checking", multipartFile, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+            });
+
+    verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
+    verify(multipartFile, never()).getBytes();
+    verify(statementExtractor, never()).extract(any(byte[].class), any());
+  }
+
+  @Test
+  void previewFile_emptyOriginalFilename_rejectsBeforeReadingFile() throws Exception {
+    var multipartFile = spy(multipartFile(""));
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFile(
+                    "capital-one", "checking", multipartFile, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+            });
+
+    verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
+    verify(multipartFile, never()).getBytes();
+    verify(statementExtractor, never()).extract(any(byte[].class), any());
+  }
+
+  @Test
+  void previewFile_originalFilenameWithWhitespace_trimsFilenameForTokenAndResult() {
+    var multipartFile = multipartFile(" transactions.csv ");
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking"))).thenReturn(List.of());
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.sourceFile()).isEqualTo("transactions.csv");
+    assertThat(result.previewImportToken()).isEqualTo("preview-token");
+    verify(previewImportTokenService)
+        .createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any());
+  }
+
   private static PreviewTransaction previewTransaction(String description) {
     return new PreviewTransaction(
         LocalDate.of(2024, 1, 15),
@@ -192,9 +298,13 @@ class TransactionImportServiceTest {
   }
 
   private static MockMultipartFile multipartFile() {
+    return multipartFile("transactions.csv");
+  }
+
+  private static MockMultipartFile multipartFile(String originalFilename) {
     return new MockMultipartFile(
         "file",
-        "transactions.csv",
+        originalFilename,
         "text/csv",
         "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
   }

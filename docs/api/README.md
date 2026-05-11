@@ -103,7 +103,7 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata. The response also includes fileImport status for exact file reuploads by the authenticated user and an opaque previewImportToken for token-backed batch import recording.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. The multipart file part must include a non-blank filename. Each preview transaction includes advisory duplicate metadata. The response also includes fileImport status for exact file reuploads by the authenticated user and an opaque previewImportToken for token-backed batch import recording.
 ```
 
 **Batch Import Transactions**
@@ -144,6 +144,9 @@ wrong-owner tokens fail before service-layer batch validation, duplicate checks,
 or persistence. If duplicate filtering leaves no rows to create, `/batch`
 returns `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` as a 422 response; set
 `allowDuplicate=true` only for rows that should be intentionally imported.
+Preview rejects multipart uploads whose `file` part omits the filename
+parameter or supplies only whitespace, returning `MISSING_ORIGINAL_FILENAME`
+as a 422 response before parsing the file or issuing a preview token.
 
 ### Cross-User Transaction Search
 
@@ -471,6 +474,15 @@ submitted rows are skipped by duplicate filtering, the request fails with
   "type": "APPLICATION_ERROR",
   "message": "Format not supported: fake-bank",
   "code": "FORMAT_NOT_SUPPORTED"
+}
+```
+
+**Preview upload error:**
+```json
+{
+  "type": "APPLICATION_ERROR",
+  "message": "Uploaded file must include an original filename.",
+  "code": "MISSING_ORIGINAL_FILENAME"
 }
 ```
 

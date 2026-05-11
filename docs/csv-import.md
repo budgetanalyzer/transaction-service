@@ -188,6 +188,9 @@ record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
 Keep `previewImportToken` as opaque client state. The token identifies the
 uploaded source file without exposing the raw content hash or client-decodable
 payload fields and must be sent back with the reviewed batch request.
+The multipart `file` part must include a non-blank filename. Preview rejects
+uploads with a missing or whitespace-only original filename before parsing the
+file or returning `previewImportToken`.
 
 ### Step 5: Batch Import
 
@@ -244,7 +247,8 @@ Verify:
 **POST** `/v1/transactions/preview`
 
 **Parameters:**
-- `file` (multipart file, required) - CSV or PDF file to parse
+- `file` (multipart file, required) - CSV or PDF file to parse; must include a
+  non-blank multipart filename
 - `format` (string, required) - Format key from configuration
 - `accountId` (string, optional) - Account to associate with previewed transactions
 
@@ -286,14 +290,21 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 }
 ```
 
-**Error Response:** `400 Bad Request`
+**Missing Filename Error Response:** `422 Unprocessable Entity`
 ```json
 {
-  "timestamp": "2024-11-15T10:30:00Z",
-  "status": 400,
-  "error": "Bad Request",
+  "type": "APPLICATION_ERROR",
+  "message": "Uploaded file must include an original filename.",
+  "code": "MISSING_ORIGINAL_FILENAME"
+}
+```
+
+**Parsing Error Response:** `422 Unprocessable Entity`
+```json
+{
+  "type": "APPLICATION_ERROR",
   "message": "CSV parsing error in file 'statement.csv' at line 12: Invalid date format",
-  "path": "/v1/transactions/preview"
+  "code": "CSV_PARSING_ERROR"
 }
 ```
 

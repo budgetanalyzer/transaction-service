@@ -7,7 +7,9 @@ preview tokens use the `v2.<base64url(iv)>.<base64url(ciphertext)>` AES-GCM
 format described below, and legacy `v1` signed-cleartext tokens are rejected.
 The service now uses the `encryption-secret` configuration property. The value
 is normalized with SHA-256 and used as AES-GCM key material. Filename validation
-remains tracked by the separate section below.
+is also implemented as of 2026-05-11: preview now rejects missing or blank
+multipart original filenames before reading file bytes, checking file import
+history, parsing, or creating a preview token.
 
 ## Context
 
@@ -122,6 +124,10 @@ Validation requirements:
 
 ## Filename Validation Plan
 
+Implemented as of 2026-05-11 with the `MISSING_ORIGINAL_FILENAME` business
+error code. The validated filename is trimmed and reused for logging,
+`PreviewImportTokenService.createToken(...)`, and `PreviewResult.sourceFile`.
+
 1. Add a small helper in `TransactionImportService.previewWithExtractor(...)`
    or a private method called by it:
    `requireOriginalFilename(MultipartFile file)`.
@@ -174,23 +180,24 @@ Run:
 
 ## Documentation Updates
 
-Update the affected docs in the same implementation change:
+Implemented as of 2026-05-11. The affected docs were updated in the same
+implementation change:
 
 - `docs/api/README.md`
   - Describe `previewImportToken` as encrypted, time-limited, and opaque.
   - Keep saying the raw `contentHash` is not exposed.
-  - Document missing original filename behavior if a specific API error is
-    introduced.
+  - Document `MISSING_ORIGINAL_FILENAME` behavior for uploads without a
+    non-blank original filename.
 - `docs/csv-import.md`
   - Keep client guidance to treat `previewImportToken` as opaque client state.
-  - Mention that uploads must include a filename if the service rejects missing
-    filenames.
+  - Mention that uploads must include a filename and document the 422 error
+    shape for missing or whitespace-only filenames.
 - `docs/plans/preview-warning-removal-and-file-reupload-warning.md`
   - Replace wording that says "opaque signed token" with "opaque encrypted
     token" or cross-reference this corrective plan.
 - `README.md`
-  - Update only if local setup/configuration changes, such as a renamed preview
-    token secret environment variable.
+  - Document `PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET`,
+    `PREVIEW_IMPORT_TOKEN_TTL`, and secret rotation behavior.
 
 ## Rollout Notes
 

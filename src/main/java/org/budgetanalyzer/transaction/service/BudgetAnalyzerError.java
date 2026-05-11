@@ -11,6 +11,8 @@ public enum BudgetAnalyzerError {
   FORMAT_NOT_SUPPORTED,
   @Schema(description = "Error encountered parsing csv file")
   CSV_PARSING_ERROR,
+  @Schema(description = "The uploaded statement file is missing its original filename")
+  MISSING_ORIGINAL_FILENAME,
   @Schema(
       description =
           "Transaction date is prior to year 2000. Transactions before 2000 are not supported due"

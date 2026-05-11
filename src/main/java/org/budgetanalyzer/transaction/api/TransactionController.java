@@ -133,6 +133,17 @@ public class TransactionController {
                         "message": "Missing value for required column 'Description' at line 1",
                         "code": "CSV_PARSING_ERROR"
                       }
+                      """),
+                      @ExampleObject(
+                          name = "Missing Original Filename",
+                          summary = "Multipart file part omitted the filename parameter",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Uploaded file must include an original filename.",
+                        "code": "MISSING_ORIGINAL_FILENAME"
+                      }
                       """)
                     }))
       })

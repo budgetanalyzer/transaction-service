@@ -67,12 +67,9 @@ class PreviewImportTokenServiceTest {
 
     assertThat(tokenSegments).hasSize(3);
     assertThat(tokenSegments[0]).isEqualTo("v2");
-    assertThat(decodedString(tokenSegments[1]))
-        .doesNotContain("hash-123", "usr_test123", "statement.csv", "contentHash");
-    assertThat(decodedString(tokenSegments[2]))
-        .doesNotContain("hash-123", "usr_test123", "statement.csv", "contentHash");
-    assertThatThrownBy(() -> OBJECT_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegments[2])))
-        .isInstanceOf(JsonProcessingException.class);
+    assertDecodedSegmentDoesNotRevealPayload(tokenSegments[1]);
+    assertDecodedSegmentDoesNotRevealPayload(tokenSegments[2]);
+    assertThatDecodedSegmentIsNotValidJson(tokenSegments[2]);
   }
 
   @Test
@@ -222,6 +219,26 @@ class PreviewImportTokenServiceTest {
 
   private static String decodedString(String tokenSegment) {
     return new String(BASE64_URL_DECODER.decode(tokenSegment), StandardCharsets.UTF_8);
+  }
+
+  private static void assertDecodedSegmentDoesNotRevealPayload(String tokenSegment) {
+    assertThat(decodedString(tokenSegment))
+        .doesNotContain(
+            "hash-123",
+            "usr_test123",
+            "statement.csv",
+            "capital-one",
+            "checking-12345",
+            "contentHash",
+            "ownerId",
+            "originalFilename",
+            "detectedFormat",
+            "accountId");
+  }
+
+  private static void assertThatDecodedSegmentIsNotValidJson(String tokenSegment) {
+    assertThatThrownBy(() -> OBJECT_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegment)))
+        .isInstanceOf(JsonProcessingException.class);
   }
 
   private static void assertInvalidToken(

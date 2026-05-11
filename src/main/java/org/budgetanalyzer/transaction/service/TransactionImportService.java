@@ -96,14 +96,13 @@ public class TransactionImportService {
   private PreviewResult previewWithExtractor(
       StatementExtractor extractor, String accountId, MultipartFile file, String userId) {
     try {
+      var originalFilename = requireOriginalFilename(file);
       if (file.isEmpty()) {
         throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
       }
 
       log.info(
-          "Previewing file with extractor '{}': {}",
-          extractor.getFormatKey(),
-          file.getOriginalFilename());
+          "Previewing file with extractor '{}': {}", extractor.getFormatKey(), originalFilename);
 
       var fileContent = file.getBytes();
       var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
@@ -112,7 +111,7 @@ public class TransactionImportService {
           previewImportTokenService.createToken(
               userId,
               fileCheckResult.hash(),
-              file.getOriginalFilename(),
+              originalFilename,
               extractor.getFormatKey(),
               accountId,
               file.getSize());
@@ -121,12 +120,12 @@ public class TransactionImportService {
       log.info(
           "Successfully previewed {} transactions from file {}",
           extractedTransactions.size(),
-          file.getOriginalFilename());
+          originalFilename);
 
       var transactions = markDuplicates(extractedTransactions, userId);
 
       return new PreviewResult(
-          file.getOriginalFilename(),
+          originalFilename,
           extractor.getFormatKey(),
           previewImportToken,
           fileImportStatus,
@@ -144,6 +143,22 @@ public class TransactionImportService {
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
           e);
     }
+  }
+
+  private String requireOriginalFilename(MultipartFile file) {
+    var originalFilename = file.getOriginalFilename();
+    if (originalFilename == null) {
+      throw new BusinessException(
+          "Uploaded file must include an original filename.",
+          BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+    }
+    var trimmedOriginalFilename = originalFilename.trim();
+    if (trimmedOriginalFilename.isBlank()) {
+      throw new BusinessException(
+          "Uploaded file must include an original filename.",
+          BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+    }
+    return trimmedOriginalFilename;
   }
 
   private List<PreviewTransaction> markDuplicates(
