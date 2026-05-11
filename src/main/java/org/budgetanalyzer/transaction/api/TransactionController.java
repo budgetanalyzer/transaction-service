@@ -87,9 +87,9 @@ public class TransactionController {
       description =
           "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
               + "before batch import. No data is persisted. The format parameter is required and "
-              + "determines which parser to use. The response includes parsing warnings and "
-              + "advisory duplicate metadata for existing owner-scoped transactions or earlier "
-              + "rows in the same preview payload.")
+              + "determines which parser to use. The response includes advisory duplicate "
+              + "metadata for existing owner-scoped transactions or earlier rows in the same "
+              + "preview payload.")
   @ApiResponses(
       value = {
         @ApiResponse(

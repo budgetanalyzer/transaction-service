@@ -262,8 +262,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
       "duplicate": false,
       "duplicateReason": null
     }
-  ],
-  "warnings": []
+  ]
 }
 ```
 

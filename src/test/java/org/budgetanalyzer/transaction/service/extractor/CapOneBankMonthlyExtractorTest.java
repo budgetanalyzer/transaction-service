@@ -56,21 +56,20 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    assertNotNull(result);
-    assertNotNull(result.transactions());
-    assertFalse(result.transactions().isEmpty());
+    assertNotNull(transactions);
+    assertFalse(transactions.isEmpty());
 
     // November 2025 fixture has 6 transactions (excluding opening/closing balance)
-    assertEquals(6, result.transactions().size());
+    assertEquals(6, transactions.size());
   }
 
   @Test
   void extract_withSamplePdf_setsCorrectBankAndCurrency() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals("Capital One", transaction.bankName());
       assertEquals("USD", transaction.currencyIsoCode());
     }
@@ -79,29 +78,29 @@ class CapOneBankMonthlyExtractorTest {
   @Test
   void extract_withAccountId_setsAccountIdOnAllTransactions() {
     String accountId = "test-account-123";
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, accountId);
+    var transactions = extractor.extract(pdfContent, accountId);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals(accountId, transaction.accountId());
     }
   }
 
   @Test
   void extract_withSamplePdf_parsesYear2025Correctly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals(2025, transaction.date().getYear());
     }
   }
 
   @Test
   void extract_withSamplePdf_extractsBillPayTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the ONLINE BILL PAY transaction
     PreviewTransaction billPay =
-        result.transactions().stream()
+        transactions.stream()
             .filter(t -> t.description().contains("ONLINE BILL PAY"))
             .findFirst()
             .orElse(null);
@@ -114,11 +113,11 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsDepositTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the EMPLOYER DIRECT DEPOSIT
     PreviewTransaction deposit =
-        result.transactions().stream()
+        transactions.stream()
             .filter(t -> t.description().contains("EMPLOYER DIRECT DEPOSIT"))
             .findFirst()
             .orElse(null);
@@ -131,11 +130,11 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void extract_withSamplePdf_handlesCreditsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find credit transactions
     long creditCount =
-        result.transactions().stream().filter(t -> t.type() == TransactionType.CREDIT).count();
+        transactions.stream().filter(t -> t.type() == TransactionType.CREDIT).count();
 
     // Fixture has 2 credits: EMPLOYER DIRECT DEPOSIT and Monthly Interest Paid
     assertEquals(2, creditCount);
@@ -143,11 +142,10 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void extract_withSamplePdf_handlesDebitsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find debit transactions
-    long debitCount =
-        result.transactions().stream().filter(t -> t.type() == TransactionType.DEBIT).count();
+    long debitCount = transactions.stream().filter(t -> t.type() == TransactionType.DEBIT).count();
 
     // Fixture has 4 debits: ELECTRIC COMPANY, ONLINE BILL PAY, 2x ATM WITHDRAWAL
     assertEquals(4, debitCount);
@@ -155,11 +153,11 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsInterestTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the Monthly Interest Paid transaction
     PreviewTransaction interest =
-        result.transactions().stream()
+        transactions.stream()
             .filter(t -> t.description().contains("Monthly Interest"))
             .findFirst()
             .orElse(null);

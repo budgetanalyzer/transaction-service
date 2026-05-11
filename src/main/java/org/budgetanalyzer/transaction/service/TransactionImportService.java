@@ -96,20 +96,16 @@ public class TransactionImportService {
           file.getOriginalFilename());
 
       var fileContent = file.getBytes();
-      var extractionResult = extractor.extract(fileContent, accountId);
+      var extractedTransactions = extractor.extract(fileContent, accountId);
 
       log.info(
           "Successfully previewed {} transactions from file {}",
-          extractionResult.transactions().size(),
+          extractedTransactions.size(),
           file.getOriginalFilename());
 
-      var transactions = markDuplicates(extractionResult.transactions(), userId);
+      var transactions = markDuplicates(extractedTransactions, userId);
 
-      return new PreviewResult(
-          file.getOriginalFilename(),
-          extractor.getFormatKey(),
-          transactions,
-          extractionResult.warnings());
+      return new PreviewResult(file.getOriginalFilename(), extractor.getFormatKey(), transactions);
     } catch (BusinessException businessException) {
       throw businessException;
     } catch (IOException e) {

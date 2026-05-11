@@ -348,8 +348,7 @@ class TransactionControllerTest {
     // Given: a CSV file to preview
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse =
-        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
+    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -376,7 +375,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
         .andExpect(jsonPath("$.transactions[0].duplicate").value(false))
         .andExpect(jsonPath("$.transactions[0].duplicateReason").doesNotExist())
-        .andExpect(jsonPath("$.warnings").isEmpty());
+        .andExpect(jsonPath("$.warnings").doesNotExist());
 
     verify(transactionImportService, times(1))
         .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user"));
@@ -387,8 +386,7 @@ class TransactionControllerTest {
     // Given: preview request with accountId
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse =
-        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
+    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -421,8 +419,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
             .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
-    var previewResponse =
-        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
+    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -452,7 +449,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
     var previewResponse =
-        new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
+        new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);

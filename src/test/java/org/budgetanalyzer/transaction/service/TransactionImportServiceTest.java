@@ -49,8 +49,7 @@ class TransactionImportServiceTest {
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
-        .thenReturn(
-            new StatementExtractor.ExtractionResult(List.of(previewTransaction), List.of()));
+        .thenReturn(List.of(previewTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
         .thenReturn(Set.of(duplicateKey));
 
@@ -74,9 +73,7 @@ class TransactionImportServiceTest {
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
-        .thenReturn(
-            new StatementExtractor.ExtractionResult(
-                List.of(firstTransaction, secondTransaction), List.of()));
+        .thenReturn(List.of(firstTransaction, secondTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
         .thenReturn(Set.of());
 
@@ -97,8 +94,7 @@ class TransactionImportServiceTest {
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
-    when(statementExtractor.extract(any(byte[].class), eq("checking")))
-        .thenReturn(new StatementExtractor.ExtractionResult(List.of(), List.of()));
+    when(statementExtractor.extract(any(byte[].class), eq("checking"))).thenReturn(List.of());
 
     var result =
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);

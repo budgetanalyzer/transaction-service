@@ -5,7 +5,6 @@ import java.util.List;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
-import org.budgetanalyzer.transaction.service.dto.PreviewWarning;
 
 /**
  * Interface for extracting transactions from statement files (PDF, CSV, etc.).
@@ -29,9 +28,9 @@ public interface StatementExtractor {
    *
    * @param fileContent the raw file bytes
    * @param accountId optional account ID to pre-fill for all transactions
-   * @return extraction result containing transactions and any warnings
+   * @return extracted preview transactions
    */
-  ExtractionResult extract(byte[] fileContent, String accountId);
+  List<PreviewTransaction> extract(byte[] fileContent, String accountId);
 
   /**
    * Extracts transactions as entities for batch import.
@@ -49,7 +48,4 @@ public interface StatementExtractor {
    * @return format key (e.g., "capital-one-yearly")
    */
   String getFormatKey();
-
-  /** Result of statement extraction containing transactions and metadata. */
-  record ExtractionResult(List<PreviewTransaction> transactions, List<PreviewWarning> warnings) {}
 }

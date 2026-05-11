@@ -29,21 +29,13 @@ public record PreviewResponse(
                 "List of extracted transactions ready for review, including advisory duplicate "
                     + "metadata for each row",
             requiredMode = Schema.RequiredMode.REQUIRED)
-        List<PreviewTransactionResponse> transactions,
-    @Schema(
-            description =
-                "List of warnings for fields with potential issues. "
-                    + "Empty for CSV extraction; populated for PDF extraction where OCR confidence "
-                    + "may be low.",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        List<PreviewWarning> warnings) {
+        List<PreviewTransactionResponse> transactions) {
 
   /** Creates a PreviewResponse from a service-layer PreviewResult. */
   public static PreviewResponse from(PreviewResult previewResult) {
     return new PreviewResponse(
         previewResult.sourceFile(),
         previewResult.detectedFormat(),
-        previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList(),
-        previewResult.warnings().stream().map(PreviewWarning::from).toList());
+        previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList());
   }
 }

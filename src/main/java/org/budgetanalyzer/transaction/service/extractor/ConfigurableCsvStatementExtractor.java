@@ -7,7 +7,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -81,15 +80,13 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
   }
 
   @Override
-  public ExtractionResult extract(byte[] fileContent, String accountId) {
+  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
       var csvData =
           csvParser.parseCsvInputStream(
               new ByteArrayInputStream(fileContent), "preview.csv", format.getFormatKey());
 
-      var transactions = csvData.rows().stream().map(row -> mapToPreview(row, accountId)).toList();
-
-      return new ExtractionResult(transactions, Collections.emptyList());
+      return csvData.rows().stream().map(row -> mapToPreview(row, accountId)).toList();
     } catch (BusinessException e) {
       throw e;
     } catch (Exception e) {

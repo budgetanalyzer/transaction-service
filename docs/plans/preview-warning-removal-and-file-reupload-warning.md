@@ -41,20 +41,22 @@ metadata, not a warning about a parsed transaction row or field.
 - Do not expose matching transaction IDs from duplicate detection.
 - Do not expose the file content hash unless there is a clear client need.
 
-## Clarifying Questions
+## Decisions
 
-1. Is it acceptable for the preview response contract to remove `warnings`
-   outright, or do any deployed clients still expect the field to exist as an
-   empty array?
-2. Should exact-file reupload remain preview-only advisory, or should the batch
-   import path also reject or require override for a file that preview reported
-   as already imported?
-3. Should the UI receive previous import metadata such as original filename,
-   imported timestamp, format, account ID, and transaction count, or only a
-   stable code and boolean?
-4. Is the preview-to-batch flow allowed to grow source-file metadata, such as a
-   preview token or file hash reference, so successful batch imports can record
-   `file_import` rows for future exact-file detection?
+- Remove the existing `warnings` field outright. Keeping an always-empty field
+  would preserve a misleading contract for a feature direction that is no
+  longer active.
+- Use enum plus metadata for exact-file reupload information.
+- Do not include backend-owned display text in the preview response. The UI
+  should map stable enum codes and structured metadata to copy.
+- Keep exact-file reupload detection advisory in preview. `/batch` should not
+  reject solely because the same file was previously imported.
+- Return previous import metadata: original filename, imported timestamp,
+  format, account ID, and transaction count.
+- Do not return the raw content hash.
+- Add source identity to the preview-to-batch flow so successful batch imports
+  can record `file_import` rows. Use an opaque signed token rather than exposing
+  the file hash.
 
 ## Current Code Impact
 
@@ -104,10 +106,10 @@ Recommended shape:
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "previewImportToken": "opaque-signed-token",
   "fileImport": {
     "alreadyImported": true,
     "warningCode": "FILE_ALREADY_IMPORTED",
-    "message": "This exact file was previously imported.",
     "previousImport": {
       "originalFilename": "statement.csv",
       "importedAt": "2026-05-01T12:34:56Z",
@@ -127,7 +129,6 @@ If no previous import exists:
   "fileImport": {
     "alreadyImported": false,
     "warningCode": null,
-    "message": null,
     "previousImport": null
   }
 }
@@ -170,8 +171,8 @@ Cons:
 - Message changes become accidental API changes.
 - Does not carry structured previous import metadata.
 
-Text-only is acceptable only if the UI will never branch on the warning and
-only displays whatever the service sends.
+Text-only would be acceptable only if the UI never branched on the warning and
+only displayed whatever the service sent. That is not the desired contract here.
 
 ### Enum-only field
 
@@ -195,8 +196,8 @@ Cons:
   was called.
 - Requires clients to map every code to text.
 
-Enum-only is better than text-only, but incomplete if previous import context is
-useful to users.
+Enum-only is better than text-only, but incomplete because previous import
+context is useful to users.
 
 ### Enum plus metadata
 
@@ -228,7 +229,8 @@ Cons:
 - More DTOs and OpenAPI schema surface.
 - Requires a decision about how much previous import metadata to expose.
 
-This is the recommended approach.
+This is the selected approach. Do not include a backend `message` field; clients
+should use `warningCode` for behavior and `previousImport` for display context.
 
 ## Is This Warning Shape Unique?
 
@@ -260,13 +262,13 @@ Use these API DTOs:
 public record PreviewResponse(
     String sourceFile,
     String detectedFormat,
+    String previewImportToken,
     PreviewFileImportStatus fileImport,
     List<PreviewTransactionResponse> transactions) {}
 
 public record PreviewFileImportStatus(
     boolean alreadyImported,
     PreviewFileWarningCode warningCode,
-    String message,
     PreviousFileImportResponse previousImport) {}
 
 public enum PreviewFileWarningCode {
@@ -281,8 +283,9 @@ public record PreviousFileImportResponse(
     Integer transactionCount) {}
 ```
 
-`message` is optional. If included, clients should treat it as display copy, not
-as a behavior switch. The stable switch is `warningCode`.
+`warningCode` is nullable when `alreadyImported` is `false`.
+`previewImportToken` is submitted back to `/batch` so the service can record a
+successful file-backed batch import without exposing the raw content hash.
 
 ## Service Design
 
@@ -293,8 +296,12 @@ Preview flow:
    that accepts `byte[]` to avoid reading the multipart stream twice.
 3. Query `file_import` by `(content_hash, imported_by)` using the current user.
 4. Build `PreviewFileImportStatus`.
-5. Extract transactions and mark transaction duplicates exactly as today.
-6. Return the file import status alongside preview transactions.
+5. Build an opaque signed `previewImportToken` containing the current user ID,
+   content hash, original filename, detected format, account ID, file size,
+   issued time, and expiration time.
+6. Extract transactions and mark transaction duplicates exactly as today.
+7. Return the file import status, preview import token, and preview
+   transactions.
 
 Existing support:
 
@@ -303,7 +310,7 @@ Existing support:
 - `FileImportRepository.findByContentHashAndImportedBy(...)` already supports
   the lookup.
 
-Gap:
+Current gap:
 
 - Current `/batch` imports do not record `file_import` rows. `TransactionService`
   maps batch imports with `fileImport = null`, and `BatchImportRequest` does not
@@ -312,97 +319,131 @@ Gap:
 
 ## Recording File Imports
 
-There are two viable paths.
+Use the preview-to-batch source identity path.
 
-### Option A: Preview warning only
+Rejected alternatives:
 
-Implement the preview lookup against existing `file_import` rows and do not
-change `/batch`.
+- Preview warning only: too weak, because the normal preview-to-batch flow would
+  not populate `file_import`.
+- Direct file import endpoint: does not match the current review/edit/batch
+  workflow and would duplicate import behavior.
+- Raw content hash in API: technically simple, but exposes implementation
+  detail with no user-facing value.
 
-Pros:
+Recommended batch behavior:
 
-- Smallest implementation.
-- Satisfies the response-shape part of the TODO.
+- Add optional `previewImportToken` to `BatchImportRequest`.
+- If the token is absent, keep current batch behavior and do not record
+  `file_import`.
+- If the token is present, verify signature, expiration, and owner before
+  import.
+- The exact-file check remains advisory. If a previous `file_import` already
+  exists for the token hash and user, do not reject the batch solely for that
+  reason. Continue to rely on transaction duplicate detection and
+  `allowDuplicate`.
+- If no previous `file_import` exists, create a `file_import` row for the
+  successful batch and link newly created transactions to it.
+- If all rows are skipped as transaction duplicates, do not create a
+  `file_import` row because no transactions were imported. This keeps
+  `transaction_count` meaningful.
 
-Cons:
+## Future Implementation Steps
 
-- Incomplete if the normal preview-to-batch flow never records `file_import`.
-- The warning may never trigger for newly imported files unless another import
-  path writes `file_import`.
+### Phase 1: Remove Legacy Preview Warnings
 
-This option is weak unless production data already contains `file_import`
-records from an older path.
+1. Read `../service-common/docs/code-quality-standards.md` before changing Java
+   code.
+2. Delete `api/response/PreviewWarning.java`.
+3. Delete `service/dto/PreviewWarning.java`.
+4. Change `PreviewResult` to contain only `sourceFile`, `detectedFormat`, and
+   `transactions` for this phase. Later phases add file import status and the
+   preview import token.
+5. Change `PreviewResponse` to remove `warnings`.
+6. Change `StatementExtractor.extract(...)` to return
+   `List<PreviewTransaction>` directly.
+7. Remove `StatementExtractor.ExtractionResult` if it has no remaining fields.
+8. Update all extractor implementations to return transaction lists directly:
+   `ConfigurableCsvStatementExtractor`,
+   `CapitalOneBankMonthlyStatementExtractor`,
+   `CapitalOneCreditMonthlyStatementExtractor`, and
+   `CapitalOneCreditYearlySummaryExtractor`.
+9. Update `TransactionImportService.previewWithExtractor(...)` to stop carrying
+   extractor warnings.
+10. Update tests that construct `ExtractionResult` or assert `$.warnings`.
+11. Update `TransactionController` operation text to remove "parsing warnings".
+12. Update `docs/api/README.md` and `docs/csv-import.md` examples to remove
+    `warnings`.
 
-### Option B: Add preview source identity to batch import
+### Phase 2: Add File Import Preview Status
 
-Have preview return a short-lived source identity, then require batch import to
-submit it back. On successful batch import, record `file_import`.
+1. Add service DTOs for file import preview status:
+   `PreviewFileImportStatus`, `PreviewFileWarningCode`, and
+   `PreviousFileImport`.
+2. Add API response DTOs for the same contract:
+   `PreviewFileImportStatusResponse`, `PreviewFileWarningCode`, and
+   `PreviousFileImportResponse`, or use names consistent with existing response
+   DTO conventions.
+3. Add a `FileHashService.computeHash(byte[] fileContent)` overload so preview
+   can hash the bytes it already read.
+4. Inject the file import lookup dependency into `TransactionImportService`.
+   Prefer using `FileImportTrackingService` if its API is adjusted to accept a
+   precomputed hash or `byte[]`; otherwise inject `FileImportRepository` and
+   `FileHashService`.
+5. During preview, query `file_import` by content hash and current user.
+6. Populate `fileImport.alreadyImported=false` with null `warningCode` and null
+   `previousImport` when no prior import exists.
+7. Populate `fileImport.alreadyImported=true`,
+   `warningCode=FILE_ALREADY_IMPORTED`, and previous import metadata when a
+   prior import exists.
+8. Keep transaction duplicate marking unchanged.
 
-Possible response addition:
+### Phase 3: Add Opaque Preview Import Token
 
-```json
-{
-  "previewSource": {
-    "contentHash": "server-managed-or-tokenized-value",
-    "sourceFile": "statement.csv",
-    "fileSizeBytes": 12345
-  }
-}
-```
+1. Add `PreviewImportTokenService`.
+2. Use Java standard crypto (`HmacSHA256`) and Base64 URL encoding unless an
+   existing service-common token utility is available.
+3. Add configuration for token signing secret and token TTL. Document the env
+   vars or properties in `README.md` or the nearest configuration doc.
+4. Token payload should include owner ID, content hash, original filename,
+   detected format, account ID, file size, issued time, and expiration time.
+5. Token verification must reject invalid signature, expired token, missing
+   required fields, and owner mismatch.
+6. Return `previewImportToken` on `PreviewResponse`.
+7. Do not include the raw content hash anywhere in the API response.
 
-A raw content hash would work technically, but exposing hashes can create
-unnecessary API surface. A server-side preview token is cleaner if token storage
-already exists. Without storage, returning the hash is simpler but should be
-treated as an implementation detail, not user-facing data.
+### Phase 4: Record File Imports During Batch
 
-Pros:
+1. Add optional `previewImportToken` to `BatchImportRequest`.
+2. Convert the verified token to a service-layer file import source DTO before
+   calling service logic.
+3. Add a `TransactionService.batchImport(...)` overload or command object that
+   accepts transactions, user ID, and optional file import source.
+4. Keep existing no-token batch behavior unchanged for manual or non-file batch
+   imports.
+5. During batch import, perform existing business validation and transaction
+   duplicate filtering first.
+6. If the token is present and at least one transaction will be created, check
+   whether `file_import` already has a row for the token hash and user.
+7. If a prior file import exists, continue without creating another
+   `file_import` row; transaction duplicate rules remain authoritative.
+8. If no prior file import exists, call `FileImportTrackingService.recordImport`
+   with token metadata and the number of transactions that will be created.
+9. Set the returned `FileImport` on newly created `Transaction` entities before
+   `saveAll`.
+10. Keep all batch persistence in one transaction.
 
-- Makes exact-file warning reliable for the normal workflow.
-- Preserves traceability through `file_import_id` if transaction creation is
-  later linked to file imports.
+### Phase 5: Documentation Cleanup
 
-Cons:
-
-- Larger API change.
-- Requires deciding how long preview source identity is valid.
-- Requires batch import to validate that submitted source metadata matches the
-  authenticated user and imported rows.
-
-### Option C: Reintroduce direct file import
-
-Add or restore a direct file-import endpoint that parses and persists in one
-request, records `file_import`, and rejects exact reuploads.
-
-Pros:
-
-- File import tracking is straightforward because the file and created
-  transactions are in one request.
-
-Cons:
-
-- Does not match the current preview-edit-batch workflow.
-- Duplicates import behavior across endpoints.
-
-This is not recommended unless the product wants direct import again.
-
-## Implementation Steps
-
-1. Remove preview warnings from DTOs and extractor contracts.
-2. Update all extractors to return only preview transactions.
-3. Update `TransactionImportService` to stop carrying extractor warnings.
-4. Update `PreviewResponse` and API examples to remove `warnings`.
-5. Update tests that construct extraction results or assert `warnings`.
-6. Introduce `PreviewFileImportStatus`, `PreviewFileWarningCode`, and
-   `PreviousFileImportResponse`.
-7. Inject file import tracking or repository/hash services into preview flow.
-8. Compute the uploaded file hash during preview and query previous imports for
-   the current user.
-9. Populate `fileImport` in the preview response.
-10. Add service and controller tests for both prior-import and no-prior-import
-    preview responses.
-11. Update OpenAPI schema tests and docs.
-12. Decide and implement a recording strategy for `file_import`; prefer Option B
-    if the warning is expected to work for the normal preview-to-batch flow.
+1. Update `docs/api/README.md` preview and batch sections with the new response
+   and request fields.
+2. Update `docs/csv-import.md` to describe the advisory exact-file reupload
+   status and the preview token round trip.
+3. Update `docs/database-schema.md` to document when `file_import` rows are
+   created and how `file_import_id` is populated.
+4. Update `docs/plans/duplicate-detection-enhancements.md` to replace the TODO
+   with a link to this plan or mark the TODO implemented after code lands.
+5. Update `README.md` if token signing configuration or preview token TTL is
+   added.
 
 ## Test Plan
 
@@ -410,21 +451,34 @@ This is not recommended unless the product wants direct import again.
 - Unit test each extractor returns preview transactions directly.
 - Controller test verifies preview response has no `warnings` field.
 - Controller/OpenAPI test verifies `fileImport` schema.
+- Controller/OpenAPI test verifies `previewImportToken` is documented and
+  `contentHash` is not exposed.
 - Service test verifies `fileImport.alreadyImported=false` when no prior record
   exists.
 - Service test verifies `fileImport.alreadyImported=true` and previous import
   metadata when the same user previously imported the exact file bytes.
 - Service test verifies another user's matching file hash does not trigger a
   warning.
-- If batch recording is implemented, integration test that a successful batch
-  import records `file_import` and a later preview of the same bytes reports the
-  warning.
+- Token service tests cover valid token, bad signature, expiration, missing
+  fields, and owner mismatch.
+- Batch service test verifies no-token requests keep current behavior.
+- Batch service/integration test verifies a token-backed successful batch
+  import records `file_import`, links created transactions to it, and a later
+  preview of the same bytes reports `FILE_ALREADY_IMPORTED`.
+- Batch service test verifies token-backed batch import with all rows skipped
+  as transaction duplicates does not create a `file_import` row.
+- Batch service test verifies a previously imported exact file does not fail
+  solely because of file import history; transaction duplicate handling remains
+  the deciding behavior.
 
 ## Documentation Updates
 
-- `docs/api/README.md`: remove `warnings`, document `fileImport`.
-- `docs/csv-import.md`: remove `warnings`, document exact-file reupload status.
+- `docs/api/README.md`: remove `warnings`, document `fileImport` and
+  `previewImportToken`.
+- `docs/csv-import.md`: remove `warnings`, document exact-file reupload status
+  and the preview token round trip.
 - `docs/database-schema.md`: confirm how `file_import` is populated and queried.
 - `docs/plans/duplicate-detection-enhancements.md`: replace the TODO with a
   link to this plan once implementation begins or completes.
-
+- `README.md`: document token signing configuration if new configuration is
+  introduced.

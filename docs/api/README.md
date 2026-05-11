@@ -347,8 +347,7 @@ Permission: statementformats:write
       "duplicate": false,
       "duplicateReason": null
     }
-  ],
-  "warnings": []
+  ]
 }
 ```
 

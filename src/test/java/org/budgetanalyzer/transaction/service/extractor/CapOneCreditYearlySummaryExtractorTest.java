@@ -54,23 +54,22 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    assertNotNull(result);
-    assertNotNull(result.transactions());
-    assertFalse(result.transactions().isEmpty());
+    assertNotNull(transactions);
+    assertFalse(transactions.isEmpty());
 
     // Fixture contains 15 transactions across 7 categories
     assertTrue(
-        result.transactions().size() > 10,
-        "Expected more than 10 transactions but got " + result.transactions().size());
+        transactions.size() > 10,
+        "Expected more than 10 transactions but got " + transactions.size());
   }
 
   @Test
   void extract_withSamplePdf_setsCorrectBankAndCurrency() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals("Capital One", transaction.bankName());
       assertEquals("USD", transaction.currencyIsoCode());
     }
@@ -79,29 +78,29 @@ class CapOneCreditYearlySummaryExtractorTest {
   @Test
   void extract_withAccountId_setsAccountIdOnAllTransactions() {
     String accountId = "test-account-123";
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, accountId);
+    var transactions = extractor.extract(pdfContent, accountId);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals(accountId, transaction.accountId());
     }
   }
 
   @Test
   void extract_withSamplePdf_parsesYear2024Correctly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
+    for (PreviewTransaction transaction : transactions) {
       assertEquals(2024, transaction.date().getYear());
     }
   }
 
   @Test
   void extract_withSamplePdf_extractsKnownTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the TAQUERIA DEL SOL transaction from the dining category
     PreviewTransaction taqueriaTransaction =
-        result.transactions().stream()
+        transactions.stream()
             .filter(t -> t.description().contains("TAQUERIA DEL SOL"))
             .findFirst()
             .orElse(null);
@@ -115,11 +114,11 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_handlesCreditsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the REFUND FROM ONLINE SHOP credit (-$37.27)
     PreviewTransaction creditTransaction =
-        result.transactions().stream()
+        transactions.stream()
             .filter(
                 t ->
                     t.description().contains("REFUND FROM ONLINE SHOP")
@@ -134,11 +133,11 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsCategories() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Verify we have multiple categories
     long categoryCount =
-        result.transactions().stream()
+        transactions.stream()
             .map(PreviewTransaction::category)
             .filter(c -> c != null)
             .distinct()

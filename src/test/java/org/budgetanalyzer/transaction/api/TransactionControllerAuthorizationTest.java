@@ -75,7 +75,7 @@ class TransactionControllerAuthorizationTest {
 
     when(transactionImportService.previewFile(
             anyString(), any(), any(MultipartFile.class), anyString()))
-        .thenReturn(new PreviewResult("test.csv", "capital-one", List.of(), List.of()));
+        .thenReturn(new PreviewResult("test.csv", "capital-one", List.of()));
   }
 
   // ==================== No authentication ====================
