@@ -27,6 +27,5 @@ spring:
 budgetanalyzer:
   transaction:
     preview-import-token:
-      signing-secret: test-preview-import-token-signing-secret
+      encryption-secret: test-preview-import-token-encryption-secret
       ttl: PT30M
-

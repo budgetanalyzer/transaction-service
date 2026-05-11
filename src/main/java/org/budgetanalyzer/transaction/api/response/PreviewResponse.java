@@ -25,9 +25,10 @@ public record PreviewResponse(
             example = "capital-one-ytd")
         String detectedFormat,
     @Schema(
-            description = "Opaque signed source-file token reserved for token-backed batch import",
+            description =
+                "Opaque encrypted source-file token required for token-backed batch import",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7")
+            example = "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg")
         String previewImportToken,
     @Schema(
             description =

@@ -2,13 +2,14 @@ package org.budgetanalyzer.transaction.service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.Base64;
 
-import javax.crypto.Mac;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.stereotype.Service;
@@ -24,19 +25,25 @@ import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 @Service
 public class PreviewImportTokenService {
 
-  private static final String TOKEN_VERSION = "v1";
-  private static final String SIGNING_ALGORITHM = "HmacSHA256";
+  private static final String TOKEN_VERSION = "v2";
+  private static final String ENCRYPTION_ALGORITHM = "AES";
+  private static final String CIPHER_TRANSFORMATION = "AES/GCM/NoPadding";
+  private static final int AUTHENTICATION_TAG_BITS = 128;
+  private static final int INITIALIZATION_VECTOR_SIZE_BYTES = 12;
   private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
   private static final Base64.Decoder BASE64_URL_DECODER = Base64.getUrlDecoder();
+  private static final byte[] TOKEN_VERSION_AUTHENTICATED_DATA =
+      TOKEN_VERSION.getBytes(StandardCharsets.UTF_8);
 
   private final PreviewImportTokenProperties previewImportTokenProperties;
   private final ObjectMapper objectMapper;
   private final Clock clock;
+  private final SecureRandom secureRandom = new SecureRandom();
 
   /**
    * Constructs a new PreviewImportTokenService.
    *
-   * @param previewImportTokenProperties token signing and expiration configuration
+   * @param previewImportTokenProperties token encryption and expiration configuration
    * @param objectMapper the JSON mapper used for token payloads
    * @param clock the clock used for issued and expiration timestamps
    */
@@ -50,7 +57,7 @@ public class PreviewImportTokenService {
   }
 
   /**
-   * Creates a signed preview import token for an uploaded source file.
+   * Creates an encrypted preview import token for an uploaded source file.
    *
    * @param ownerId the authenticated owner ID
    * @param contentHash the SHA-256 file content hash
@@ -58,7 +65,7 @@ public class PreviewImportTokenService {
    * @param detectedFormat the format key used to parse the file
    * @param accountId optional account ID applied during preview
    * @param fileSizeBytes uploaded file size in bytes
-   * @return opaque signed preview import token
+   * @return opaque encrypted preview import token
    */
   public String createToken(
       String ownerId,
@@ -84,7 +91,7 @@ public class PreviewImportTokenService {
   }
 
   /**
-   * Verifies a signed preview import token for the authenticated owner.
+   * Verifies an encrypted preview import token for the authenticated owner.
    *
    * @param token the token to verify
    * @param ownerId the authenticated owner ID expected in the token
@@ -111,11 +118,14 @@ public class PreviewImportTokenService {
   private String encode(PreviewImportToken previewImportToken) {
     try {
       var payloadJson = objectMapper.writeValueAsBytes(previewImportToken);
-      var payload = BASE64_URL_ENCODER.encodeToString(payloadJson);
-      var signedContent = TOKEN_VERSION + "." + payload;
-      var signature = BASE64_URL_ENCODER.encodeToString(sign(signedContent));
-      return signedContent + "." + signature;
-    } catch (JsonProcessingException e) {
+      var initializationVector = newInitializationVector();
+      var ciphertext = encrypt(payloadJson, initializationVector);
+      return TOKEN_VERSION
+          + "."
+          + BASE64_URL_ENCODER.encodeToString(initializationVector)
+          + "."
+          + BASE64_URL_ENCODER.encodeToString(ciphertext);
+    } catch (GeneralSecurityException | JsonProcessingException e) {
       throw invalidToken("Failed to create preview import token.", e);
     }
   }
@@ -126,37 +136,60 @@ public class PreviewImportTokenService {
     }
 
     var parts = token.split("\\.", -1);
-    if (parts.length != 3 || !TOKEN_VERSION.equals(parts[0]) || parts[1].isBlank()) {
+    if (parts.length != 3
+        || !TOKEN_VERSION.equals(parts[0])
+        || parts[1].isBlank()
+        || parts[2].isBlank()) {
       throw invalidToken("Preview import token format is invalid.");
     }
 
-    var signedContent = parts[0] + "." + parts[1];
-    var expectedSignature = sign(signedContent);
-    var actualSignature = decodeBase64(parts[2]);
-    if (!MessageDigest.isEqual(expectedSignature, actualSignature)) {
-      throw invalidToken("Preview import token signature is invalid.");
-    }
-
     try {
-      var payloadJson = decodeBase64(parts[1]);
+      var initializationVector = decodeBase64(parts[1]);
+      if (initializationVector.length != INITIALIZATION_VECTOR_SIZE_BYTES) {
+        throw invalidToken("Preview import token initialization vector is invalid.");
+      }
+      var ciphertext = decodeBase64(parts[2]);
+      var payloadJson = decrypt(ciphertext, initializationVector);
       return objectMapper.readValue(payloadJson, PreviewImportToken.class);
-    } catch (IOException e) {
+    } catch (GeneralSecurityException | IOException e) {
       throw invalidToken("Preview import token payload is invalid.", e);
     }
   }
 
-  private byte[] sign(String signedContent) {
-    try {
-      var mac = Mac.getInstance(SIGNING_ALGORITHM);
-      var secretKeySpec =
-          new SecretKeySpec(
-              previewImportTokenProperties.signingSecret().getBytes(StandardCharsets.UTF_8),
-              SIGNING_ALGORITHM);
-      mac.init(secretKeySpec);
-      return mac.doFinal(signedContent.getBytes(StandardCharsets.UTF_8));
-    } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-      throw invalidToken("Failed to sign preview import token.", e);
-    }
+  private byte[] encrypt(byte[] payloadJson, byte[] initializationVector)
+      throws GeneralSecurityException {
+    var cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+    cipher.init(
+        Cipher.ENCRYPT_MODE,
+        encryptionKey(),
+        new GCMParameterSpec(AUTHENTICATION_TAG_BITS, initializationVector));
+    cipher.updateAAD(TOKEN_VERSION_AUTHENTICATED_DATA);
+    return cipher.doFinal(payloadJson);
+  }
+
+  private byte[] decrypt(byte[] ciphertext, byte[] initializationVector)
+      throws GeneralSecurityException {
+    var cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+    cipher.init(
+        Cipher.DECRYPT_MODE,
+        encryptionKey(),
+        new GCMParameterSpec(AUTHENTICATION_TAG_BITS, initializationVector));
+    cipher.updateAAD(TOKEN_VERSION_AUTHENTICATED_DATA);
+    return cipher.doFinal(ciphertext);
+  }
+
+  private SecretKeySpec encryptionKey() throws GeneralSecurityException {
+    var normalizedKey =
+        MessageDigest.getInstance("SHA-256")
+            .digest(
+                previewImportTokenProperties.encryptionSecret().getBytes(StandardCharsets.UTF_8));
+    return new SecretKeySpec(normalizedKey, ENCRYPTION_ALGORITHM);
+  }
+
+  private byte[] newInitializationVector() {
+    var initializationVector = new byte[INITIALIZATION_VECTOR_SIZE_BYTES];
+    secureRandom.nextBytes(initializationVector);
+    return initializationVector;
   }
 
   private byte[] decodeBase64(String value) {

@@ -25,6 +25,6 @@ public record BatchImportRequest(
                 "Opaque token returned by the preview endpoint. Required when importing "
                     + "reviewed transactions so the service can record file import metadata.",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7")
+            example = "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg")
         @NotBlank(message = "previewImportToken is required")
         String previewImportToken) {}

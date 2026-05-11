@@ -51,7 +51,7 @@ spring:
 budgetanalyzer:
   transaction:
     preview-import-token:
-      signing-secret: ${PREVIEW_IMPORT_TOKEN_SIGNING_SECRET:}
+      encryption-secret: ${PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET:}
       ttl: ${PREVIEW_IMPORT_TOKEN_TTL:PT30M}
   service:
     http-logging:

@@ -136,12 +136,13 @@ legacy top-level `warnings` array has been removed; file reupload status is
 reported only through `fileImport`, while row-level transaction duplicates stay
 on each preview transaction.
 
-The `previewImportToken` is a signed, time-limited source-file token required by
-`/batch` to record successful file-backed imports. Treat it as opaque client
-state; the API never returns the raw content hash. Missing, invalid, expired,
-or wrong-owner tokens fail before service-layer batch validation, duplicate
-checks, or persistence. If duplicate filtering leaves no rows to create,
-`/batch` returns `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` as a 422 response; set
+The `previewImportToken` is an encrypted, time-limited source-file token
+required by `/batch` to record successful file-backed imports. Treat it as
+opaque client state; the API never returns the raw content hash, and token
+payload fields are not client-decodable. Missing, invalid, expired, or
+wrong-owner tokens fail before service-layer batch validation, duplicate checks,
+or persistence. If duplicate filtering leaves no rows to create, `/batch`
+returns `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` as a 422 response; set
 `allowDuplicate=true` only for rows that should be intentionally imported.
 
 ### Cross-User Transaction Search
@@ -338,7 +339,7 @@ Permission: statementformats:write
 Fields:
 - `sourceFile` - Original uploaded filename.
 - `detectedFormat` - Statement format key used for parsing.
-- `previewImportToken` - Opaque signed source-file token required by `/batch`.
+- `previewImportToken` - Opaque encrypted source-file token required by `/batch`.
 - `fileImport` - Exact-file reupload status for the authenticated user.
 - `transactions` - Editable preview rows with advisory duplicate metadata.
 
@@ -346,7 +347,7 @@ Fields:
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
-  "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": true,
     "warningCode": "FILE_ALREADY_IMPORTED",
@@ -396,8 +397,10 @@ IDs.
 `fileImport` is file-level metadata, separate from per-row duplicate detection.
 It compares the uploaded file bytes with previous `file_import` records for the
 authenticated owner and does not expose the raw content hash.
-`previewImportToken` is signed with the transaction service preview token secret
-and expires according to service configuration.
+`previewImportToken` is encrypted with the configured transaction service
+preview token encryption secret and expires according to service configuration.
+The token is opaque: clients must not inspect or derive source-file metadata
+from it.
 The preview response does not include a `warnings` field.
 
 ### BatchImportRequest
@@ -409,7 +412,7 @@ Fields:
 
 ```json
 {
-  "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "transactions": [
     {
       "date": "2026-04-28",

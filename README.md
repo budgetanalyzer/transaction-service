@@ -71,7 +71,7 @@ tilt up
 # In another terminal, run the service directly
 cd ../transaction-service
 export SPRING_DATASOURCE_PASSWORD=your_transaction_database_password
-export PREVIEW_IMPORT_TOKEN_SIGNING_SECRET=replace_with_a_long_random_secret
+export PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET=replace_with_a_long_random_secret
 ./gradlew bootRun
 ```
 
@@ -81,14 +81,16 @@ host defaults to `localhost:5432`. If you are reusing values from
 `SPRING_DATASOURCE_PASSWORD`. This service has no RabbitMQ dependency in the
 Phase 1 local baseline.
 
-Preview import tokens are signed by the transaction service. Configure
-`PREVIEW_IMPORT_TOKEN_SIGNING_SECRET` with a non-empty secret before startup.
-`PREVIEW_IMPORT_TOKEN_TTL` defaults to `PT30M` and accepts any Spring `Duration`
-value, such as `PT15M` or `1h`.
+Preview import tokens are encrypted by the transaction service. Configure
+`PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET` with a non-empty text secret before
+startup. The service normalizes the UTF-8 secret with SHA-256 and uses the
+result as deterministic AES-GCM key material; changing it invalidates
+outstanding preview tokens. `PREVIEW_IMPORT_TOKEN_TTL` defaults to `PT30M` and
+accepts any Spring `Duration` value, such as `PT15M` or `1h`.
 
 | Environment variable | Property | Required | Default |
 | --- | --- | --- | --- |
-| `PREVIEW_IMPORT_TOKEN_SIGNING_SECRET` | `budgetanalyzer.transaction.preview-import-token.signing-secret` | Yes | none |
+| `PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET` | `budgetanalyzer.transaction.preview-import-token.encryption-secret` | Yes | none |
 | `PREVIEW_IMPORT_TOKEN_TTL` | `budgetanalyzer.transaction.preview-import-token.ttl` | No | `PT30M` |
 
 The service runs on port 8082 for development/debugging.

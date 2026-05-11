@@ -164,7 +164,7 @@ No restart required - formats are loaded from database.
 Use the preview endpoint with your format key. Preview parses the file, returns
 editable transactions, includes advisory duplicate indicators, and reports
 whether the exact file bytes match a previous import record for the current user
-without persisting anything. It also returns a signed, time-limited
+without persisting anything. It also returns an encrypted, time-limited
 `previewImportToken` for token-backed batch import recording:
 
 ```bash
@@ -186,8 +186,8 @@ Review the returned `fileImport` object before batch import. If
 `alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
 record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
 Keep `previewImportToken` as opaque client state. The token identifies the
-uploaded source file without exposing the raw content hash and must be sent
-back with the reviewed batch request.
+uploaded source file without exposing the raw content hash or client-decodable
+payload fields and must be sent back with the reviewed batch request.
 
 ### Step 5: Batch Import
 
@@ -203,7 +203,7 @@ curl -X POST http://localhost:8082/v1/transactions/batch \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:write" \
   -d '{
-    "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
+    "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
     "transactions": [
       {
         "date": "2026-04-28",
@@ -263,7 +263,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
-  "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": false,
     "warningCode": null,
@@ -354,7 +354,7 @@ sets `fileImport.alreadyImported=true` only when the exact uploaded bytes match 
 previous `file_import` record for the authenticated user. The response includes
 `warningCode=FILE_ALREADY_IMPORTED` plus previous import metadata
 (`originalFilename`, `importedAt`, `format`, `accountId`, and
-`transactionCount`) and never exposes the raw content hash. The signed
+`transactionCount`) and never exposes the raw content hash. The encrypted
 `previewImportToken` is returned on every successful preview and expires based
 on transaction service configuration. Batch import requires the token and
 verifies it before service-layer validation, duplicate checks, or persistence.

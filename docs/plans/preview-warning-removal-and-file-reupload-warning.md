@@ -55,8 +55,8 @@ metadata, not a warning about a parsed transaction row or field.
   format, account ID, and transaction count.
 - Do not return the raw content hash.
 - Add source identity to the preview-to-batch flow so successful batch imports
-  can record `file_import` rows. Use an opaque signed token rather than exposing
-  the file hash.
+  can record `file_import` rows. Use an opaque encrypted token rather than
+  exposing the file hash.
 
 ## Current Code Impact
 
@@ -106,7 +106,7 @@ Recommended shape:
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
-  "previewImportToken": "opaque-signed-token",
+  "previewImportToken": "opaque-encrypted-token",
   "fileImport": {
     "alreadyImported": true,
     "warningCode": "FILE_ALREADY_IMPORTED",
@@ -296,9 +296,11 @@ Preview flow:
    that accepts `byte[]` to avoid reading the multipart stream twice.
 3. Query `file_import` by `(content_hash, imported_by)` using the current user.
 4. Build `PreviewFileImportStatus`.
-5. Build an opaque signed `previewImportToken` containing the current user ID,
-   content hash, original filename, detected format, account ID, file size,
-   issued time, and expiration time.
+5. Build an opaque encrypted `previewImportToken` containing the current user
+   ID, content hash, original filename, detected format, account ID, file size,
+   issued time, and expiration time. See
+   `docs/plans/opaque-preview-token-and-filename-validation.md` for the v2
+   encrypted token correction.
 6. Extract transactions and mark transaction duplicates exactly as today.
 7. Return the file import status, preview import token, and preview
    transactions.
@@ -335,7 +337,7 @@ Original batch behavior:
 - Add optional `previewImportToken` to `BatchImportRequest`.
 - If the token is absent, keep current batch behavior and do not record
   `file_import`.
-- If the token is present, verify signature, expiration, and owner before
+- If the token is present, verify encryption integrity, expiration, and owner before
   import.
 - The exact-file check remains advisory. If a previous `file_import` already
   exists for the token hash and user, do not reject the batch solely for that
@@ -411,13 +413,15 @@ documented in the affected repository docs.
 ### Phase 3: Add Opaque Preview Import Token
 
 1. Add `PreviewImportTokenService`.
-2. Use Java standard crypto (`HmacSHA256`) and Base64 URL encoding unless an
-   existing service-common token utility is available.
-3. Add configuration for token signing secret and token TTL. Document the env
-   vars or properties in `README.md` or the nearest configuration doc.
+2. Use Java standard authenticated encryption (`AES/GCM/NoPadding`) and
+   Base64 URL encoding unless an existing service-common token utility is
+   available.
+3. Add configuration for token encryption secret material and token TTL.
+   Document the env vars or properties in `README.md` or the nearest
+   configuration doc.
 4. Token payload should include owner ID, content hash, original filename,
    detected format, account ID, file size, issued time, and expiration time.
-5. Token verification must reject invalid signature, expired token, missing
+5. Token verification must reject failed authentication, expired token, missing
    required fields, and owner mismatch.
 6. Return `previewImportToken` on `PreviewResponse`.
 7. Do not include the raw content hash anywhere in the API response.
@@ -502,8 +506,8 @@ Status: Implemented on 2026-05-11.
 4. Not applicable in this repository: `docs/plans/duplicate-detection-enhancements.md`
    is not present, so there is no active duplicate-detection enhancements plan
    to update.
-5. Done: Updated `README.md` with preview import token signing and TTL
-   configuration.
+5. Done: Updated `README.md` with preview import token encryption secret and
+   TTL configuration.
 
 ## Test Plan
 
@@ -519,8 +523,8 @@ Status: Implemented on 2026-05-11.
   metadata when the same user previously imported the exact file bytes.
 - Service test verifies another user's matching file hash does not trigger a
   warning.
-- Token service tests cover valid token, bad signature, expiration, missing
-  fields, and owner mismatch.
+- Token service tests cover valid token, ciphertext/IV tampering, expiration,
+  missing fields, and owner mismatch.
 - Controller test verifies no-token batch requests fail before service-layer
   batch import work starts.
 - Batch service/integration test verifies a token-backed successful batch
@@ -541,5 +545,5 @@ Status: Implemented on 2026-05-11.
 - `docs/database-schema.md`: confirm how `file_import` is populated and queried.
 - `docs/plans/duplicate-detection-enhancements.md`: no file exists in this
   repository, and no external duplicate-detection TODO remains to update.
-- `README.md`: document token signing configuration if new configuration is
+- `README.md`: document token encryption configuration if new configuration is
   introduced.
