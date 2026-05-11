@@ -42,6 +42,7 @@ import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 
 @WebMvcTest(TransactionController.class)
@@ -75,7 +76,12 @@ class TransactionControllerAuthorizationTest {
 
     when(transactionImportService.previewFile(
             anyString(), any(), any(MultipartFile.class), anyString()))
-        .thenReturn(new PreviewResult("test.csv", "capital-one", List.of()));
+        .thenReturn(
+            new PreviewResult(
+                "test.csv",
+                "capital-one",
+                PreviewFileImportStatus.notPreviouslyImported(),
+                List.of()));
   }
 
   // ==================== No authentication ====================

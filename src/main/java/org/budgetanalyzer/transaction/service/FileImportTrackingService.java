@@ -43,6 +43,22 @@ public class FileImportTrackingService {
    */
   public FileCheckResult checkFile(MultipartFile file, String userId) throws IOException {
     var hash = fileHashService.computeHash(file);
+    return checkHash(hash, userId);
+  }
+
+  /**
+   * Checks if already-read file content has already been imported by the specified user.
+   *
+   * @param fileContent the file content to check
+   * @param userId the user ID to check against
+   * @return file hash and existing import record (if any)
+   */
+  public FileCheckResult checkFile(byte[] fileContent, String userId) {
+    var hash = fileHashService.computeHash(fileContent);
+    return checkHash(hash, userId);
+  }
+
+  private FileCheckResult checkHash(String hash, String userId) {
     var existingImport = fileImportRepository.findByContentHashAndImportedBy(hash, userId);
     return new FileCheckResult(hash, existingImport);
   }

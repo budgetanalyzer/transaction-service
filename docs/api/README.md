@@ -103,7 +103,7 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata. The response also includes fileImport status for exact file reuploads by the authenticated user.
 ```
 
 **Batch Import Transactions**
@@ -126,6 +126,12 @@ row in the same preview payload. Preview duplicate metadata is advisory;
 `false`; when set to `true`, the row is imported even if it matches an existing
 transaction or an earlier row in the same batch. Batch responses include
 `duplicatesSkipped` and `duplicatesImported` counts.
+
+Preview responses also include a file-level `fileImport` object. When
+`alreadyImported=true`, `warningCode` is `FILE_ALREADY_IMPORTED` and
+`previousImport` contains the matching file import metadata for the current
+user. When the uploaded bytes do not match a prior `file_import` row for the
+current user, `alreadyImported=false` and the other fields are `null`.
 
 ### Cross-User Transaction Search
 
@@ -322,6 +328,17 @@ Permission: statementformats:write
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "fileImport": {
+    "alreadyImported": true,
+    "warningCode": "FILE_ALREADY_IMPORTED",
+    "previousImport": {
+      "originalFilename": "statement.csv",
+      "importedAt": "2026-05-01T12:34:56Z",
+      "format": "capital-one",
+      "accountId": "checking-12345",
+      "transactionCount": 42
+    }
+  },
   "transactions": [
     {
       "date": "2026-04-28",
@@ -356,6 +373,10 @@ transaction already stored for the authenticated owner. It is `IN_BATCH` when
 the row duplicates an earlier row in the same preview response. The preview
 endpoint does not persist transactions and does not return matching transaction
 IDs.
+
+`fileImport` is file-level metadata, separate from per-row duplicate detection.
+It compares the uploaded file bytes with previous `file_import` records for the
+authenticated owner and does not expose the raw content hash.
 
 ### BatchImportRequest
 

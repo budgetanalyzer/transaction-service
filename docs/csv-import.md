@@ -162,8 +162,9 @@ No restart required - formats are loaded from database.
 ### Step 4: Preview Import
 
 Use the preview endpoint with your format key. Preview parses the file, returns
-editable transactions, and includes advisory duplicate indicators without
-persisting anything:
+editable transactions, includes advisory duplicate indicators, and reports
+whether the exact file bytes match a previous import record for the current user
+without persisting anything:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
@@ -177,6 +178,10 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 Review the returned `transactions` array. Rows with `duplicate=true` are likely
 duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
 `IN_BATCH`.
+
+Review the returned `fileImport` object before batch import. If
+`alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
+record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
 
 ### Step 5: Batch Import
 
@@ -249,6 +254,11 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "fileImport": {
+    "alreadyImported": false,
+    "warningCode": null,
+    "previousImport": null
+  },
   "transactions": [
     {
       "date": "2026-04-28",
@@ -323,6 +333,13 @@ Duplicate reasons:
 - `EXISTING_TRANSACTION` - The preview row matches an active transaction
   already stored for the owner.
 - `IN_BATCH` - The row duplicates an earlier row in the same preview payload.
+
+File reupload status is separate from transaction duplicate detection. Preview
+sets `fileImport.alreadyImported=true` only when the exact uploaded bytes match a
+previous `file_import` record for the authenticated user. The response includes
+`warningCode=FILE_ALREADY_IMPORTED` plus previous import metadata
+(`originalFilename`, `importedAt`, `format`, `accountId`, and
+`transactionCount`) and never exposes the raw content hash.
 
 ## Implementation Details
 
@@ -435,7 +452,6 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 Potential improvements (not yet implemented):
 
-- File-content hash warning during preview for exact reuploads
 - Column order flexibility (currently order-dependent)
 - Optional column support
 - Custom data transformations

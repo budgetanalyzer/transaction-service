@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
@@ -32,17 +33,22 @@ public class TransactionImportService {
 
   private final StatementExtractorRegistry extractorRegistry;
   private final TransactionRepository transactionRepository;
+  private final FileImportTrackingService fileImportTrackingService;
 
   /**
    * Constructs a new TransactionImportService.
    *
    * @param extractorRegistry the registry for looking up statement extractors
    * @param transactionRepository the repository for owner-scoped duplicate lookup
+   * @param fileImportTrackingService the service for file import history lookup
    */
   public TransactionImportService(
-      StatementExtractorRegistry extractorRegistry, TransactionRepository transactionRepository) {
+      StatementExtractorRegistry extractorRegistry,
+      TransactionRepository transactionRepository,
+      FileImportTrackingService fileImportTrackingService) {
     this.extractorRegistry = extractorRegistry;
     this.transactionRepository = transactionRepository;
+    this.fileImportTrackingService = fileImportTrackingService;
   }
 
   /**
@@ -96,6 +102,8 @@ public class TransactionImportService {
           file.getOriginalFilename());
 
       var fileContent = file.getBytes();
+      var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
+      var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
       var extractedTransactions = extractor.extract(fileContent, accountId);
 
       log.info(
@@ -105,7 +113,8 @@ public class TransactionImportService {
 
       var transactions = markDuplicates(extractedTransactions, userId);
 
-      return new PreviewResult(file.getOriginalFilename(), extractor.getFormatKey(), transactions);
+      return new PreviewResult(
+          file.getOriginalFilename(), extractor.getFormatKey(), fileImportStatus, transactions);
     } catch (BusinessException businessException) {
       throw businessException;
     } catch (IOException e) {

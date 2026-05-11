@@ -50,8 +50,11 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileWarningCode;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
+import org.budgetanalyzer.transaction.service.dto.PreviousFileImport;
 
 @WebMvcTest(
     value = TransactionController.class,
@@ -348,7 +351,7 @@ class TransactionControllerTest {
     // Given: a CSV file to preview
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -371,6 +374,9 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceFile").value("transactions.csv"))
         .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
+        .andExpect(jsonPath("$.fileImport.alreadyImported").value(false))
+        .andExpect(jsonPath("$.fileImport.warningCode").doesNotExist())
+        .andExpect(jsonPath("$.fileImport.previousImport").doesNotExist())
         .andExpect(jsonPath("$.transactions.length()").value(1))
         .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
         .andExpect(jsonPath("$.transactions[0].duplicate").value(false))
@@ -386,7 +392,7 @@ class TransactionControllerTest {
     // Given: preview request with accountId
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -419,7 +425,7 @@ class TransactionControllerTest {
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
             .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
-    var previewResponse = new PreviewResult("transactions.csv", "capital-one", List.of(previewDto));
+    var previewResponse = previewResult("transactions.csv", "capital-one", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -448,8 +454,7 @@ class TransactionControllerTest {
     // Given: a PDF file to preview with explicit format
     var previewDto =
         createPreviewDto(LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
-    var previewResponse =
-        new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto));
+    var previewResponse = previewResult("statement.pdf", "capital-one-yearly", List.of(previewDto));
     when(transactionImportService.previewFile(
             eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
@@ -476,6 +481,48 @@ class TransactionControllerTest {
 
     verify(transactionImportService, times(1))
         .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user"));
+  }
+
+  @Test
+  void previewTransactions_previouslyImportedFile_returnsFileImportStatus() throws Exception {
+    var previousFileImport =
+        new PreviousFileImport(
+            "statement.csv",
+            Instant.parse("2026-05-01T12:34:56Z"),
+            "capital-one",
+            "checking-12345",
+            42);
+    var fileImportStatus =
+        new PreviewFileImportStatus(
+            true, PreviewFileWarningCode.FILE_ALREADY_IMPORTED, previousFileImport);
+    var previewResponse =
+        new PreviewResult("statement.csv", "capital-one", fileImportStatus, List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+        .thenReturn(previewResponse);
+
+    var csvFile =
+        new MockMultipartFile(
+            "file",
+            "statement.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile)
+                .param("format", "capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.fileImport.alreadyImported").value(true))
+        .andExpect(jsonPath("$.fileImport.warningCode").value("FILE_ALREADY_IMPORTED"))
+        .andExpect(jsonPath("$.fileImport.previousImport.originalFilename").value("statement.csv"))
+        .andExpect(jsonPath("$.fileImport.previousImport.importedAt").value("2026-05-01T12:34:56Z"))
+        .andExpect(jsonPath("$.fileImport.previousImport.format").value("capital-one"))
+        .andExpect(jsonPath("$.fileImport.previousImport.accountId").value("checking-12345"))
+        .andExpect(jsonPath("$.fileImport.previousImport.transactionCount").value(42));
   }
 
   // ==================== POST /v1/transactions/batch ====================
@@ -1026,5 +1073,11 @@ class TransactionControllerTest {
         "Test Bank",
         "USD",
         null); // accountId
+  }
+
+  private PreviewResult previewResult(
+      String sourceFile, String detectedFormat, List<PreviewTransaction> transactions) {
+    return new PreviewResult(
+        sourceFile, detectedFormat, PreviewFileImportStatus.notPreviouslyImported(), transactions);
   }
 }

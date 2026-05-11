@@ -100,6 +100,41 @@ Duplicate detection treats empty `account_id` values as equivalent to `NULL` in
 the lookup query. Only active rows (`deleted = false`) for the same `owner_id`
 are considered duplicates.
 
+### file_import
+
+**Purpose:** Tracks imported source files by content hash and user.
+
+```sql
+CREATE TABLE file_import (
+    id BIGSERIAL PRIMARY KEY,
+    content_hash VARCHAR(64) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL,
+    format VARCHAR(50) NOT NULL,
+    account_id VARCHAR(255),
+    file_size_bytes BIGINT NOT NULL,
+    transaction_count INTEGER NOT NULL,
+    imported_by VARCHAR(50) NOT NULL,
+    imported_at TIMESTAMP(6) WITH TIME ZONE NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_file_import_hash_user
+    ON file_import(content_hash, imported_by);
+CREATE INDEX idx_file_import_imported_at ON file_import(imported_at);
+```
+
+**Key Columns:**
+- `content_hash` - SHA-256 hash of the uploaded file bytes
+- `original_filename` - Filename supplied with the import
+- `format` - Statement format key used for parsing
+- `account_id` - Optional account identifier supplied during import
+- `transaction_count` - Number of transactions recorded for the import
+- `imported_by` - User that imported the file
+- `imported_at` - Import completion timestamp
+
+Preview uses `content_hash` and `imported_by` to populate the file-level
+`fileImport` status for exact file reuploads by the authenticated user. The API
+returns previous import metadata but does not expose `content_hash`.
+
 ### budgets
 
 **Purpose:** Stores budget definitions

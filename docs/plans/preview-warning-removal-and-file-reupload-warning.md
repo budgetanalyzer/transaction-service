@@ -349,6 +349,10 @@ Recommended batch behavior:
 
 ## Future Implementation Steps
 
+Implementation status: Phase 1 and Phase 2 are implemented. Phase 3 and Phase
+4 remain planned work; Phase 5 remains partially complete until token-backed
+batch recording lands.
+
 ### Phase 1: Remove Legacy Preview Warnings
 
 1. Read `../service-common/docs/code-quality-standards.md` before changing Java

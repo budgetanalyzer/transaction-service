@@ -89,7 +89,8 @@ public class TransactionController {
               + "before batch import. No data is persisted. The format parameter is required and "
               + "determines which parser to use. The response includes advisory duplicate "
               + "metadata for existing owner-scoped transactions or earlier rows in the same "
-              + "preview payload.")
+              + "preview payload, plus file-level import history status for exact reuploads "
+              + "by the authenticated user.")
   @ApiResponses(
       value = {
         @ApiResponse(

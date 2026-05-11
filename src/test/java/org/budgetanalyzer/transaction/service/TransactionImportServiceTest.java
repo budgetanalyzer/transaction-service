@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
+import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
@@ -38,6 +39,8 @@ class TransactionImportServiceTest {
 
   @Mock private TransactionRepository transactionRepository;
 
+  @Mock private FileImportTrackingService fileImportTrackingService;
+
   @InjectMocks private TransactionImportService transactionImportService;
 
   @Test
@@ -48,6 +51,8 @@ class TransactionImportServiceTest {
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
@@ -56,6 +61,9 @@ class TransactionImportServiceTest {
     var result =
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
 
+    assertThat(result.fileImport().alreadyImported()).isFalse();
+    assertThat(result.fileImport().warningCode()).isNull();
+    assertThat(result.fileImport().previousImport()).isNull();
     assertThat(result.transactions()).hasSize(1);
     assertThat(result.transactions().getFirst().duplicate()).isTrue();
     assertThat(result.transactions().getFirst().duplicateReason())
@@ -72,6 +80,8 @@ class TransactionImportServiceTest {
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(firstTransaction, secondTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
@@ -94,6 +104,8 @@ class TransactionImportServiceTest {
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
     when(statementExtractor.extract(any(byte[].class), eq("checking"))).thenReturn(List.of());
 
     var result =
@@ -101,6 +113,35 @@ class TransactionImportServiceTest {
 
     assertThat(result.transactions()).isEmpty();
     verify(transactionRepository, never()).findExistingDuplicateKeys(any(), any());
+  }
+
+  @Test
+  void previewFile_existingFileImport_populatesFileImportWarning() {
+    var previewTransaction = previewTransaction("Coffee Shop");
+    var fileImport =
+        FileImport.create("hash", "transactions.csv", "capital-one", "checking", 64L, 12, USER_ID);
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.of(fileImport)));
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(previewTransaction));
+    when(transactionRepository.findExistingDuplicateKeys(any(), eq(USER_ID))).thenReturn(Set.of());
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.fileImport().alreadyImported()).isTrue();
+    assertThat(result.fileImport().warningCode().name()).isEqualTo("FILE_ALREADY_IMPORTED");
+    assertThat(result.fileImport().previousImport().originalFilename())
+        .isEqualTo("transactions.csv");
+    assertThat(result.fileImport().previousImport().importedAt())
+        .isEqualTo(fileImport.getImportedAt());
+    assertThat(result.fileImport().previousImport().format()).isEqualTo("capital-one");
+    assertThat(result.fileImport().previousImport().accountId()).isEqualTo("checking");
+    assertThat(result.fileImport().previousImport().transactionCount()).isEqualTo(12);
   }
 
   private static PreviewTransaction previewTransaction(String description) {

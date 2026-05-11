@@ -123,6 +123,37 @@ class TransactionOpenApiIntegrationTest {
 
     var previewTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/PreviewTransactionResponse");
+    var previewResponseSchemaJsonNode = openApiJsonNode.at("/components/schemas/PreviewResponse");
+    assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode())
+        .isFalse();
+    assertThat(previewResponseSchemaJsonNode.at("/properties/contentHash").isMissingNode())
+        .isTrue();
+
+    var fileImportStatusSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, previewResponseSchemaJsonNode.at("/properties/fileImport"));
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/alreadyImported").isMissingNode())
+        .isFalse();
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/warningCode").isMissingNode())
+        .isFalse();
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/previousImport").isMissingNode())
+        .isFalse();
+    var fileWarningCodeSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, fileImportStatusSchemaJsonNode.at("/properties/warningCode"));
+    assertThat(enumValues(fileWarningCodeSchemaJsonNode)).containsExactly("FILE_ALREADY_IMPORTED");
+
+    var previousImportSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, fileImportStatusSchemaJsonNode.at("/properties/previousImport"));
+    assertThat(previousImportSchemaJsonNode.at("/properties/originalFilename").isMissingNode())
+        .isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/importedAt").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/format").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/accountId").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/transactionCount").isMissingNode())
+        .isFalse();
+
     assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicate").isMissingNode())
         .isFalse();
     assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicateReason").isMissingNode())
