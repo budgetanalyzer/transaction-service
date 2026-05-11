@@ -126,6 +126,8 @@ class TransactionOpenApiIntegrationTest {
     var previewResponseSchemaJsonNode = openApiJsonNode.at("/components/schemas/PreviewResponse");
     assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode())
         .isFalse();
+    assertThat(previewResponseSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
+        .isFalse();
     assertThat(previewResponseSchemaJsonNode.at("/properties/contentHash").isMissingNode())
         .isTrue();
 
@@ -172,6 +174,15 @@ class TransactionOpenApiIntegrationTest {
 
     var batchImportTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
+    var batchImportRequestSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/BatchImportRequest");
+    assertThat(
+            batchImportRequestSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
+        .isFalse();
+    assertThat(batchImportRequestSchemaJsonNode.at("/required").toString())
+        .contains("previewImportToken");
+    assertThat(batchImportRequestSchemaJsonNode.at("/properties/contentHash").isMissingNode())
+        .isTrue();
     assertThat(
             batchImportTransactionSchemaJsonNode.at("/properties/allowDuplicate").isMissingNode())
         .isFalse();

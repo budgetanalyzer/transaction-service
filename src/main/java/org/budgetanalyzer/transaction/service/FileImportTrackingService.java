@@ -58,7 +58,14 @@ public class FileImportTrackingService {
     return checkHash(hash, userId);
   }
 
-  private FileCheckResult checkHash(String hash, String userId) {
+  /**
+   * Checks if a content hash has already been imported by the specified user.
+   *
+   * @param hash the SHA-256 file content hash
+   * @param userId the user ID to check against
+   * @return file hash and existing import record (if any)
+   */
+  public FileCheckResult checkHash(String hash, String userId) {
     var existingImport = fileImportRepository.findByContentHashAndImportedBy(hash, userId);
     return new FileCheckResult(hash, existingImport);
   }

@@ -83,7 +83,8 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
 - `type` - DEBIT (outflow) or CREDIT (inflow)
 - `description` - Bank-provided transaction description
 - `owner_id` - User that owns the transaction
-- `file_import_id` - Optional file import source
+- `file_import_id` - File import source for token-backed batch imports; nullable
+  only for legacy or service-created transactions without an uploaded source
 - `deleted` - Soft-delete marker
 
 **Indexes:**
@@ -134,6 +135,21 @@ CREATE INDEX idx_file_import_imported_at ON file_import(imported_at);
 Preview uses `content_hash` and `imported_by` to populate the file-level
 `fileImport` status for exact file reuploads by the authenticated user. The API
 returns previous import metadata but does not expose `content_hash`.
+
+Batch import requires a valid `previewImportToken` from the preview endpoint.
+The token carries the source-file identity verified during preview, including
+the content hash, original filename, format, account ID, file size, and owner.
+When at least one transaction is created, the service records source-file
+identity in `file_import`. If the same `(content_hash, imported_by)` already
+exists, the batch is not rejected and no duplicate `file_import` row is created;
+transaction duplicate rules remain authoritative.
+
+Newly created token-backed batch transactions are linked through
+`transaction.file_import_id` to either the new `file_import` row or the existing
+matching row. `transaction.file_import_id` remains nullable only for legacy or
+service-created transactions that did not originate from an uploaded source
+file. If duplicate filtering leaves no rows to create, the batch fails with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no file import row is recorded.
 
 ### budgets
 

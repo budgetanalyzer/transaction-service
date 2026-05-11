@@ -24,4 +24,9 @@ spring:
       shutdown:
         await-termination: false
 
+budgetanalyzer:
+  transaction:
+    preview-import-token:
+      signing-secret: test-preview-import-token-signing-secret
+      ttl: PT30M
 

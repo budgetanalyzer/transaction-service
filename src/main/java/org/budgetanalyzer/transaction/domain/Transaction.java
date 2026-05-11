@@ -53,7 +53,12 @@ public class Transaction extends SoftDeletableEntity {
   @Column(name = "owner_id", length = 50, nullable = false)
   private String ownerId;
 
-  /** The file import this transaction came from (nullable for manually created transactions). */
+  /**
+   * The file import this transaction came from.
+   *
+   * <p>Required for token-backed batch imports; nullable only for legacy or service-created
+   * transactions that do not come from an uploaded source file.
+   */
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "file_import_id")
   private FileImport fileImport;

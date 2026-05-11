@@ -41,6 +41,8 @@ class TransactionImportServiceTest {
 
   @Mock private FileImportTrackingService fileImportTrackingService;
 
+  @Mock private PreviewImportTokenService previewImportTokenService;
+
   @InjectMocks private TransactionImportService transactionImportService;
 
   @Test
@@ -53,6 +55,14 @@ class TransactionImportServiceTest {
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
@@ -62,6 +72,7 @@ class TransactionImportServiceTest {
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
 
     assertThat(result.fileImport().alreadyImported()).isFalse();
+    assertThat(result.previewImportToken()).isEqualTo("preview-token");
     assertThat(result.fileImport().warningCode()).isNull();
     assertThat(result.fileImport().previousImport()).isNull();
     assertThat(result.transactions()).hasSize(1);
@@ -82,6 +93,14 @@ class TransactionImportServiceTest {
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(firstTransaction, secondTransaction));
     when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
@@ -106,6 +125,14 @@ class TransactionImportServiceTest {
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking"))).thenReturn(List.of());
 
     var result =
@@ -126,6 +153,14 @@ class TransactionImportServiceTest {
     when(statementExtractor.getFormatKey()).thenReturn("capital-one");
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.of(fileImport)));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
     when(transactionRepository.findExistingDuplicateKeys(any(), eq(USER_ID))).thenReturn(Set.of());

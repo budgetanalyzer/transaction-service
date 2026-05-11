@@ -330,7 +330,7 @@ Rejected alternatives:
 - Raw content hash in API: technically simple, but exposes implementation
   detail with no user-facing value.
 
-Recommended batch behavior:
+Original batch behavior:
 
 - Add optional `previewImportToken` to `BatchImportRequest`.
 - If the token is absent, keep current batch behavior and do not record
@@ -347,11 +347,18 @@ Recommended batch behavior:
   `file_import` row because no transactions were imported. This keeps
   `transaction_count` meaningful.
 
+Phase 4.b tightened this behavior: `previewImportToken` is now required, created
+transactions link to a new or existing `file_import` row, and a batch where
+duplicate filtering leaves no rows to create is rejected with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
+
 ## Future Implementation Steps
 
-Implementation status: Phase 1 and Phase 2 are implemented. Phase 3 and Phase
-4 remain planned work; Phase 5 remains partially complete until token-backed
-batch recording lands.
+Implementation status: Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.b, and
+Phase 5 are implemented in this repository as of 2026-05-11. The removed
+top-level `warnings` contract, advisory `fileImport` status, mandatory
+`previewImportToken` batch flow, and `file_import` persistence lifecycle are
+documented in the affected repository docs.
 
 ### Phase 1: Remove Legacy Preview Warnings
 
@@ -436,18 +443,67 @@ batch recording lands.
    `saveAll`.
 10. Keep all batch persistence in one transaction.
 
+### Phase 4.b: Remove No-Token Batch Import Flow
+
+1. Make `previewImportToken` required on `BatchImportRequest`; remove the
+   nullable/no-token branch from `TransactionController.batchImportTransactions`.
+2. Replace the optional service-layer file import source path with a required
+   command object or required parameter. Do not keep a two-argument
+   `TransactionService.batchImport(...)` overload for manual or non-file batch
+   imports.
+3. Verify the preview token before any service-layer batch import work starts.
+   Invalid, expired, missing, or wrong-owner tokens should fail the request and
+   prevent transaction validation, duplicate checks, and persistence.
+4. During batch import, continue to perform business validation and transaction
+   duplicate filtering before creating any `file_import` row.
+5. If all rows are skipped as transaction duplicates, reject the batch or return
+   a response that clearly indicates no import was recorded; do not allow a
+   successful no-source import path to remain. Pick one behavior and document it
+   before implementation.
+
+   Implemented behavior: reject the batch with
+   `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` after business validation and
+   duplicate filtering, before file import lookup or persistence.
+6. Update migrations and entity mappings so file import data is not nullable for
+   persisted file-backed imports:
+   - Change the `transaction.file_import_id` column migration from nullable to
+     `NOT NULL` once legacy/manual transaction requirements are removed or split
+     into a separate creation path.
+   - Ensure any `file_import` metadata columns required by the token-backed flow
+     are `NOT NULL`, including `content_hash`, `original_filename`, `format`,
+     `file_size_bytes`, `transaction_count`, `imported_by`, and `imported_at`.
+   - Add or adjust data backfill/migration steps for existing rows before
+     applying `NOT NULL` constraints, or document that the migration only applies
+     to fresh development databases if historical data is intentionally dropped.
+
+   Implemented constraint boundary: `file_import` metadata columns are
+   `NOT NULL`, and token-backed batch imports link created transactions to a new
+   or existing `file_import` row. `transaction.file_import_id` remains nullable
+   for legacy/service-created transactions that do not originate from an
+   uploaded source file.
+7. Update tests that call `TransactionService.batchImport(transactions, userId)`
+   or post `/batch` without `previewImportToken`; they should now assert
+   required-token behavior. Implemented.
+8. Update `docs/api/README.md`, `docs/csv-import.md`, and
+   `docs/database-schema.md` to remove manual/no-file batch import language and
+   describe `previewImportToken` as mandatory. Implemented.
+
 ### Phase 5: Documentation Cleanup
 
-1. Update `docs/api/README.md` preview and batch sections with the new response
-   and request fields.
-2. Update `docs/csv-import.md` to describe the advisory exact-file reupload
-   status and the preview token round trip.
-3. Update `docs/database-schema.md` to document when `file_import` rows are
-   created and how `file_import_id` is populated.
-4. Update `docs/plans/duplicate-detection-enhancements.md` to replace the TODO
-   with a link to this plan or mark the TODO implemented after code lands.
-5. Update `README.md` if token signing configuration or preview token TTL is
-   added.
+Status: Implemented on 2026-05-11.
+
+1. Done: Updated `docs/api/README.md` preview and batch sections with the new
+   response and request fields, and explicitly documented that the legacy
+   top-level `warnings` field is removed.
+2. Done: Updated `docs/csv-import.md` to describe the advisory exact-file
+   reupload status and the preview token round trip.
+3. Done: Updated `docs/database-schema.md` to document when `file_import` rows
+   are created and how `file_import_id` is populated.
+4. Not applicable in this repository: `docs/plans/duplicate-detection-enhancements.md`
+   is not present, so there is no active duplicate-detection enhancements plan
+   to update.
+5. Done: Updated `README.md` with preview import token signing and TTL
+   configuration.
 
 ## Test Plan
 
@@ -465,7 +521,8 @@ batch recording lands.
   warning.
 - Token service tests cover valid token, bad signature, expiration, missing
   fields, and owner mismatch.
-- Batch service test verifies no-token requests keep current behavior.
+- Controller test verifies no-token batch requests fail before service-layer
+  batch import work starts.
 - Batch service/integration test verifies a token-backed successful batch
   import records `file_import`, links created transactions to it, and a later
   preview of the same bytes reports `FILE_ALREADY_IMPORTED`.
@@ -482,7 +539,7 @@ batch recording lands.
 - `docs/csv-import.md`: remove `warnings`, document exact-file reupload status
   and the preview token round trip.
 - `docs/database-schema.md`: confirm how `file_import` is populated and queried.
-- `docs/plans/duplicate-detection-enhancements.md`: replace the TODO with a
-  link to this plan once implementation begins or completes.
+- `docs/plans/duplicate-detection-enhancements.md`: no file exists in this
+  repository, and no external duplicate-detection TODO remains to update.
 - `README.md`: document token signing configuration if new configuration is
   introduced.

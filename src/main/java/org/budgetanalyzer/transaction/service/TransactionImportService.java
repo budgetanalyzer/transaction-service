@@ -34,6 +34,7 @@ public class TransactionImportService {
   private final StatementExtractorRegistry extractorRegistry;
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
+  private final PreviewImportTokenService previewImportTokenService;
 
   /**
    * Constructs a new TransactionImportService.
@@ -41,14 +42,17 @@ public class TransactionImportService {
    * @param extractorRegistry the registry for looking up statement extractors
    * @param transactionRepository the repository for owner-scoped duplicate lookup
    * @param fileImportTrackingService the service for file import history lookup
+   * @param previewImportTokenService the service for preview import token creation
    */
   public TransactionImportService(
       StatementExtractorRegistry extractorRegistry,
       TransactionRepository transactionRepository,
-      FileImportTrackingService fileImportTrackingService) {
+      FileImportTrackingService fileImportTrackingService,
+      PreviewImportTokenService previewImportTokenService) {
     this.extractorRegistry = extractorRegistry;
     this.transactionRepository = transactionRepository;
     this.fileImportTrackingService = fileImportTrackingService;
+    this.previewImportTokenService = previewImportTokenService;
   }
 
   /**
@@ -104,6 +108,14 @@ public class TransactionImportService {
       var fileContent = file.getBytes();
       var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
       var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
+      var previewImportToken =
+          previewImportTokenService.createToken(
+              userId,
+              fileCheckResult.hash(),
+              file.getOriginalFilename(),
+              extractor.getFormatKey(),
+              accountId,
+              file.getSize());
       var extractedTransactions = extractor.extract(fileContent, accountId);
 
       log.info(
@@ -114,7 +126,11 @@ public class TransactionImportService {
       var transactions = markDuplicates(extractedTransactions, userId);
 
       return new PreviewResult(
-          file.getOriginalFilename(), extractor.getFormatKey(), fileImportStatus, transactions);
+          file.getOriginalFilename(),
+          extractor.getFormatKey(),
+          previewImportToken,
+          fileImportStatus,
+          transactions);
     } catch (BusinessException businessException) {
       throw businessException;
     } catch (IOException e) {

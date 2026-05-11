@@ -25,6 +25,11 @@ public record PreviewResponse(
             example = "capital-one-ytd")
         String detectedFormat,
     @Schema(
+            description = "Opaque signed source-file token reserved for token-backed batch import",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7")
+        String previewImportToken,
+    @Schema(
             description =
                 "File-level import history status for the uploaded bytes and authenticated user",
             requiredMode = Schema.RequiredMode.REQUIRED)
@@ -41,6 +46,7 @@ public record PreviewResponse(
     return new PreviewResponse(
         previewResult.sourceFile(),
         previewResult.detectedFormat(),
+        previewResult.previewImportToken(),
         PreviewFileImportStatusResponse.from(previewResult.fileImport()),
         previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList());
   }

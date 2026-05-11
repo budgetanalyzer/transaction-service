@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -14,11 +15,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.budgetanalyzer.service.api.FieldError;
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
+import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
+import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /** Service for managing financial transactions. */
@@ -28,14 +32,19 @@ public class TransactionService {
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
   private final TransactionRepository transactionRepository;
+  private final FileImportTrackingService fileImportTrackingService;
 
   /**
    * Constructs a new TransactionService.
    *
    * @param transactionRepository the transaction repository
+   * @param fileImportTrackingService the file import tracking service
    */
-  public TransactionService(TransactionRepository transactionRepository) {
+  public TransactionService(
+      TransactionRepository transactionRepository,
+      FileImportTrackingService fileImportTrackingService) {
     this.transactionRepository = transactionRepository;
+    this.fileImportTrackingService = fileImportTrackingService;
   }
 
   /**
@@ -228,7 +237,7 @@ public class TransactionService {
   }
 
   /**
-   * Imports a batch of transactions from preview DTOs, assigning ownership to the specified user.
+   * Imports a batch of transactions with required source file metadata.
    *
    * <p>This method implements the batch import with all-or-nothing semantics:
    *
@@ -237,19 +246,30 @@ public class TransactionService {
    *   <li>Business validation (date rules) is performed here (422 if fails)
    *   <li>Duplicates are detected by account ID, bank, date, amount, type, currency, and
    *       description, then skipped unless explicitly allowed on the row
-   *   <li>Non-duplicate transactions are persisted atomically
+   *   <li>Non-duplicate transactions are persisted atomically and linked to file import metadata
    * </ul>
    *
    * <p>Duplicate detection is scoped per-owner, allowing different users to import the same
    * transactions independently.
    *
+   * <p>When at least one transaction is created, the method records a {@code file_import} row if
+   * the same file hash has not already been recorded for the user. Newly created transactions are
+   * linked to either the new file import row or the existing matching row. Existing file import
+   * rows remain advisory and do not block transaction import.
+   *
    * @param transactions the list of transaction DTOs to import
    * @param userId the ID of the user who will own the imported transactions
+   * @param fileImportSource required source file metadata verified from a preview import token
    * @return result containing created transactions and duplicate count
    * @throws BatchValidationException if any transaction fails business validation
    */
   @Transactional
-  public BatchImportResult batchImport(List<PreviewTransaction> transactions, String userId) {
+  public BatchImportResult batchImport(
+      List<PreviewTransaction> transactions,
+      String userId,
+      BatchFileImportSource fileImportSource) {
+    final var requiredFileImportSource =
+        Objects.requireNonNull(fileImportSource, "fileImportSource is required");
     log.info("Starting batch import of {} transactions", transactions.size());
 
     // Phase 1: Business validation (beyond Jakarta Bean Validation)
@@ -287,6 +307,11 @@ public class TransactionService {
       toCreate.add(entity);
     }
 
+    rejectEmptyImport(toCreate, duplicatesSkipped);
+
+    var fileImport = resolveFileImport(requiredFileImportSource, userId, toCreate.size());
+    toCreate.forEach(transaction -> transaction.setFileImport(fileImport));
+
     var created = transactionRepository.saveAll(toCreate);
 
     log.info(
@@ -296,6 +321,41 @@ public class TransactionService {
         duplicatesImported);
 
     return new BatchImportResult(created, duplicatesSkipped, duplicatesImported);
+  }
+
+  private FileImport resolveFileImport(
+      BatchFileImportSource fileImportSource, String userId, int createdTransactionCount) {
+    var fileCheckResult =
+        fileImportTrackingService.checkHash(fileImportSource.contentHash(), userId);
+    if (fileCheckResult.existingImport().isPresent()) {
+      log.info(
+          "Linking batch import to previously imported source file hash '{}'",
+          fileImportSource.contentHash().substring(0, 8) + "...");
+      return fileCheckResult.existingImport().get();
+    }
+
+    return fileImportTrackingService.recordImport(
+        fileImportSource.contentHash(),
+        fileImportSource.originalFilename(),
+        fileImportSource.detectedFormat(),
+        fileImportSource.accountId(),
+        fileImportSource.fileSizeBytes(),
+        createdTransactionCount,
+        userId);
+  }
+
+  private void rejectEmptyImport(List<Transaction> toCreate, int duplicatesSkipped) {
+    if (!toCreate.isEmpty()) {
+      return;
+    }
+
+    var reason =
+        duplicatesSkipped > 0
+            ? "All submitted rows were skipped as duplicates. Set allowDuplicate=true only for "
+                + "rows that should be intentionally imported."
+            : "No transactions were available to import.";
+    throw new BusinessException(
+        reason, BudgetAnalyzerError.BATCH_IMPORT_NO_TRANSACTIONS_CREATED.name());
   }
 
   /**
@@ -377,7 +437,6 @@ public class TransactionService {
     transaction.setCurrencyIsoCode(dto.currencyIsoCode());
     transaction.setAccountId(dto.accountId());
     // Note: category from preview DTO is not stored (Transaction entity doesn't have this field)
-    // Note: fileImport is null for batch imports (not file-based)
     return transaction;
   }
 

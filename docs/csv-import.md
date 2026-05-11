@@ -164,7 +164,8 @@ No restart required - formats are loaded from database.
 Use the preview endpoint with your format key. Preview parses the file, returns
 editable transactions, includes advisory duplicate indicators, and reports
 whether the exact file bytes match a previous import record for the current user
-without persisting anything:
+without persisting anything. It also returns a signed, time-limited
+`previewImportToken` for token-backed batch import recording:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
@@ -177,17 +178,24 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 
 Review the returned `transactions` array. Rows with `duplicate=true` are likely
 duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
-`IN_BATCH`.
+`IN_BATCH`. The preview response no longer contains a top-level `warnings`
+array; exact-file reupload status is represented by `fileImport`, and
+transaction duplicate status is represented on each transaction row.
 
 Review the returned `fileImport` object before batch import. If
 `alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
 record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
+Keep `previewImportToken` as opaque client state. The token identifies the
+uploaded source file without exposing the raw content hash and must be sent
+back with the reviewed batch request.
 
 ### Step 5: Batch Import
 
 Submit the reviewed transactions to the batch endpoint. Omit `allowDuplicate`
 or set it to `false` for normal imports. Set it to `true` only for duplicate
-rows that should be intentionally imported:
+rows that should be intentionally imported. Include the `previewImportToken`
+from the preview response so the service can record `file_import` metadata and
+link newly created transactions to that import:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/batch \
@@ -195,6 +203,7 @@ curl -X POST http://localhost:8082/v1/transactions/batch \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:write" \
   -d '{
+    "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
     "transactions": [
       {
         "date": "2026-04-28",
@@ -254,6 +263,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "previewImportToken": "v1.eyJvd25lcklkIjoidXNyX3Rlc3QxMjMifQ.Yxq2s9d2xqk7",
   "fileImport": {
     "alreadyImported": false,
     "warningCode": null,
@@ -292,8 +302,13 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 **POST** `/v1/transactions/batch`
 
 **Request Body:**
+- `previewImportToken` (string, required) - Opaque token returned by preview
 - `transactions` (array, required) - Reviewed transactions from preview
 - `allowDuplicate` (boolean, optional per row) - Defaults to `false`
+
+The batch endpoint is token-backed. There is no manual no-file batch import
+path for file preview results: clients must submit the `previewImportToken`
+returned by the preview endpoint.
 
 **Response:** `200 OK`
 ```json
@@ -339,7 +354,17 @@ sets `fileImport.alreadyImported=true` only when the exact uploaded bytes match 
 previous `file_import` record for the authenticated user. The response includes
 `warningCode=FILE_ALREADY_IMPORTED` plus previous import metadata
 (`originalFilename`, `importedAt`, `format`, `accountId`, and
-`transactionCount`) and never exposes the raw content hash.
+`transactionCount`) and never exposes the raw content hash. The signed
+`previewImportToken` is returned on every successful preview and expires based
+on transaction service configuration. Batch import requires the token and
+verifies it before service-layer validation, duplicate checks, or persistence.
+Missing, invalid, expired, or wrong-owner tokens fail the request. If all
+submitted rows are skipped as transaction duplicates, the request fails with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no `file_import` row is recorded.
+When rows are created, each token-backed batch transaction is linked to file
+import metadata. If the exact file was already recorded for the user, created
+rows link to the existing `file_import` row instead of creating a duplicate file
+import record.
 
 ## Implementation Details
 
