@@ -197,7 +197,7 @@ Suggested response shape:
    - Mark each preview transaction with `duplicate` and `duplicateReason`.
    - Detect both database duplicates and duplicates within the preview payload.
 
-5. Update API DTOs and OpenAPI schemas.
+5. Update API DTOs and OpenAPI schemas. **Implemented.**
    - Add preview duplicate fields.
    - Add batch `allowDuplicate`.
    - Add any new batch response count fields.

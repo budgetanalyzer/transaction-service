@@ -12,9 +12,23 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "Response from batch transaction import")
 public record BatchImportResponse(
-    @Schema(description = "Number of transactions created", example = "156") int created,
-    @Schema(description = "Number of duplicates skipped", example = "3") int duplicatesSkipped,
-    @Schema(description = "Number of duplicates intentionally imported", example = "1")
+    @Schema(
+            description = "Number of transactions created",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "156")
+        int created,
+    @Schema(
+            description =
+                "Number of duplicate rows skipped because allowDuplicate was false or omitted",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "3")
+        int duplicatesSkipped,
+    @Schema(
+            description = "Number of duplicate rows intentionally imported with allowDuplicate",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "1")
         int duplicatesImported,
-    @Schema(description = "List of created transactions with IDs")
+    @Schema(
+            description = "List of created transactions with IDs",
+            requiredMode = Schema.RequiredMode.REQUIRED)
         List<TransactionResponse> transactions) {}
