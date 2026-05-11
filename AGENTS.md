@@ -93,8 +93,8 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 - Currently supported: Capital One (PDF), Bangkok Bank (CSV format)
 - Configuration: `statement_format` table (see `StatementFormatService`)
 - API: `GET /v1/statement-formats` to list formats, `POST` to create new formats
-- Endpoint: `POST /v1/transactions/import`
-- Multi-file support with transactional rollback
+- Endpoints: `POST /v1/transactions/preview`, then `POST /v1/transactions/batch`
+- Single-file preview plus transactional batch import
 - No code changes needed for new CSV banks
 
 **Discovery:**

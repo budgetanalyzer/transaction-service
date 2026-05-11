@@ -14,19 +14,28 @@ import org.budgetanalyzer.transaction.service.dto.PreviewResult;
  */
 @Schema(description = "Response from transaction preview containing extracted transactions")
 public record PreviewResponse(
-    @Schema(description = "Original filename of the uploaded file", example = "cap-one-2024.csv")
+    @Schema(
+            description = "Original filename of the uploaded file",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "cap-one-2024.csv")
         String sourceFile,
     @Schema(
             description = "Detected format key used for parsing (informational)",
+            requiredMode = Schema.RequiredMode.REQUIRED,
             example = "capital-one-ytd")
         String detectedFormat,
-    @Schema(description = "List of extracted transactions ready for review")
+    @Schema(
+            description =
+                "List of extracted transactions ready for review, including advisory duplicate "
+                    + "metadata for each row",
+            requiredMode = Schema.RequiredMode.REQUIRED)
         List<PreviewTransactionResponse> transactions,
     @Schema(
             description =
                 "List of warnings for fields with potential issues. "
                     + "Empty for CSV extraction; populated for PDF extraction where OCR confidence "
-                    + "may be low.")
+                    + "may be low.",
+            requiredMode = Schema.RequiredMode.REQUIRED)
         List<PreviewWarning> warnings) {
 
   /** Creates a PreviewResponse from a service-layer PreviewResult. */

@@ -1,6 +1,5 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -236,7 +235,8 @@ public class TransactionService {
    * <ul>
    *   <li>Jakarta Bean Validation handles field presence/format at controller layer (400)
    *   <li>Business validation (date rules) is performed here (422 if fails)
-   *   <li>Duplicates (matching date + amount + description) are detected and skipped
+   *   <li>Duplicates are detected by account ID, bank, date, amount, type, currency, and
+   *       description, then skipped unless explicitly allowed on the row
    *   <li>Non-duplicate transactions are persisted atomically
    * </ul>
    *
@@ -266,13 +266,19 @@ public class TransactionService {
     var toCreate = new ArrayList<Transaction>();
     var seenKeys = new HashSet<String>(); // Track duplicates within the batch too
     var duplicatesSkipped = 0;
+    var duplicatesImported = 0;
 
     for (var dto : transactions) {
       var key = buildDuplicateKey(dto);
+      var duplicate = existingKeys.contains(key) || seenKeys.contains(key);
 
-      if (existingKeys.contains(key) || seenKeys.contains(key)) {
+      if (duplicate && !dto.allowDuplicate()) {
         duplicatesSkipped++;
         continue;
+      }
+
+      if (duplicate) {
+        duplicatesImported++;
       }
 
       seenKeys.add(key);
@@ -284,11 +290,12 @@ public class TransactionService {
     var created = transactionRepository.saveAll(toCreate);
 
     log.info(
-        "Batch import completed: {} created, {} duplicates skipped",
+        "Batch import completed: {} created, {} duplicates skipped, {} duplicates imported",
         created.size(),
-        duplicatesSkipped);
+        duplicatesSkipped,
+        duplicatesImported);
 
-    return new BatchImportResult(created, duplicatesSkipped);
+    return new BatchImportResult(created, duplicatesSkipped, duplicatesImported);
   }
 
   /**
@@ -348,15 +355,10 @@ public class TransactionService {
    * Builds a duplicate key from a transaction DTO.
    *
    * @param dto the transaction DTO
-   * @return composite key in format "date|amount|description"
+   * @return encoded composite duplicate key
    */
   private String buildDuplicateKey(PreviewTransaction dto) {
-    // Use setScale(2) to match PostgreSQL NUMERIC(38,2) formatting
-    return dto.date()
-        + "|"
-        + dto.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
-        + "|"
-        + dto.description();
+    return TransactionDuplicateKey.from(dto).toLookupValue();
   }
 
   /**
@@ -408,6 +410,8 @@ public class TransactionService {
    *
    * @param createdTransactions the list of transactions that were created
    * @param duplicatesSkipped the count of transactions that were skipped as duplicates
+   * @param duplicatesImported the count of duplicate transactions intentionally imported
    */
-  public record BatchImportResult(List<Transaction> createdTransactions, int duplicatesSkipped) {}
+  public record BatchImportResult(
+      List<Transaction> createdTransactions, int duplicatesSkipped, int duplicatesImported) {}
 }

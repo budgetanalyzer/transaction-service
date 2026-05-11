@@ -49,6 +49,7 @@ import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
@@ -350,7 +351,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one"), isNull(), any(MultipartFile.class)))
+            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -373,10 +374,12 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
         .andExpect(jsonPath("$.transactions.length()").value(1))
         .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
+        .andExpect(jsonPath("$.transactions[0].duplicate").value(false))
+        .andExpect(jsonPath("$.transactions[0].duplicateReason").doesNotExist())
         .andExpect(jsonPath("$.warnings").isEmpty());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class));
+        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   @Test
@@ -387,7 +390,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one"), eq("checking-123"), any(MultipartFile.class)))
+            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -409,7 +412,38 @@ class TransactionControllerTest {
         .andExpect(status().isOk());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one"), eq("checking-123"), any(MultipartFile.class));
+        .previewFile(
+            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user"));
+  }
+
+  @Test
+  void previewTransactions_duplicateMetadata_returnsDuplicateFields() throws Exception {
+    var previewDto =
+        createPreviewDto(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
+            .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
+    var previewResponse =
+        new PreviewResult("transactions.csv", "capital-one", List.of(previewDto), List.of());
+    when(transactionImportService.previewFile(
+            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+        .thenReturn(previewResponse);
+
+    var csvFile =
+        new MockMultipartFile(
+            "file",
+            "transactions.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile)
+                .param("format", "capital-one")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.transactions[0].duplicate").value(true))
+        .andExpect(jsonPath("$.transactions[0].duplicateReason").value("EXISTING_TRANSACTION"));
   }
 
   @Test
@@ -420,7 +454,7 @@ class TransactionControllerTest {
     var previewResponse =
         new PreviewResult("statement.pdf", "capital-one-yearly", List.of(previewDto), List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one-yearly"), isNull(), any(MultipartFile.class)))
+            eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var pdfFile =
@@ -444,7 +478,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.transactions.length()").value(1));
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class));
+        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   // ==================== POST /v1/transactions/batch ====================
@@ -456,7 +490,7 @@ class TransactionControllerTest {
         List.of(
             createTransaction(1L, "Transaction 1", BigDecimal.valueOf(10.00)),
             createTransaction(2L, "Transaction 2", BigDecimal.valueOf(20.00)));
-    var result = new TransactionService.BatchImportResult(createdTransactions, 0);
+    var result = new TransactionService.BatchImportResult(createdTransactions, 0, 0);
     when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
 
     var requestBody =
@@ -494,9 +528,99 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.created").value(2))
         .andExpect(jsonPath("$.duplicatesSkipped").value(0))
+        .andExpect(jsonPath("$.duplicatesImported").value(0))
         .andExpect(jsonPath("$.transactions.length()").value(2));
 
     verify(transactionService, times(1)).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  void batchImport_duplicateTransactions_returnsSkippedCount() throws Exception {
+    // Given: a batch import request where every submitted transaction is a duplicate
+    var result = new TransactionService.BatchImportResult(List.of(), 2, 0);
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
+
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "date": "2025-11-18",
+              "description": "COFFEE SHOP",
+              "amount": 9.97,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD"
+            },
+            {
+              "date": "2025-11-19",
+              "description": "GROCERY STORE",
+              "amount": 42.30,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD"
+            }
+          ]
+        }
+        """;
+
+    // When/Then: POST returns 200 with no created transactions and the skipped duplicate count
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.created").value(0))
+        .andExpect(jsonPath("$.duplicatesSkipped").value(2))
+        .andExpect(jsonPath("$.duplicatesImported").value(0))
+        .andExpect(jsonPath("$.transactions.length()").value(0));
+
+    verify(transactionService, times(1)).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void batchImport_allowDuplicate_mapsFlagToServiceDto() throws Exception {
+    // Given: a batch import request with a duplicate override
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 1));
+
+    var requestBody =
+        """
+        {
+          "transactions": [
+            {
+              "date": "2025-11-18",
+              "description": "COFFEE SHOP",
+              "amount": 9.97,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD",
+              "allowDuplicate": true
+            }
+          ]
+        }
+        """;
+
+    // When: POST imports with allowDuplicate
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.duplicatesImported").value(1));
+
+    ArgumentCaptor<List<PreviewTransaction>> transactionsCaptor =
+        ArgumentCaptor.forClass(List.class);
+    verify(transactionService).batchImport(transactionsCaptor.capture(), eq("test-user"));
+    assertThat(transactionsCaptor.getValue()).hasSize(1);
+    assertThat(transactionsCaptor.getValue().get(0).allowDuplicate()).isTrue();
   }
 
   @Test

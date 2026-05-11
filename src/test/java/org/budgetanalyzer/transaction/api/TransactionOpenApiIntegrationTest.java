@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.stream.StreamSupport;
 
 import org.junit.jupiter.api.Test;
@@ -109,6 +110,57 @@ class TransactionOpenApiIntegrationTest {
         .isTrue();
   }
 
+  @Test
+  void duplicateDetectionEnhancementOpenApiSchemasAreDocumented() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+
+    var previewOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1preview/post");
+    var batchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1batch/post");
+    assertThat(previewOperationJsonNode.path("description").asText())
+        .contains("advisory duplicate metadata");
+    assertThat(batchOperationJsonNode.path("description").asText())
+        .contains("allowDuplicate", "duplicates intentionally imported");
+
+    var previewTransactionSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/PreviewTransactionResponse");
+    assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicate").isMissingNode())
+        .isFalse();
+    assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicateReason").isMissingNode())
+        .isFalse();
+    assertThat(
+            previewTransactionSchemaJsonNode
+                .at("/properties/duplicate")
+                .path("description")
+                .asText())
+        .contains("existing", "same preview payload");
+    var duplicateReasonSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, previewTransactionSchemaJsonNode.at("/properties/duplicateReason"));
+    assertThat(enumValues(duplicateReasonSchemaJsonNode))
+        .containsExactlyInAnyOrder("EXISTING_TRANSACTION", "IN_BATCH");
+
+    var batchImportTransactionSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
+    assertThat(
+            batchImportTransactionSchemaJsonNode.at("/properties/allowDuplicate").isMissingNode())
+        .isFalse();
+    assertThat(
+            batchImportTransactionSchemaJsonNode
+                .at("/properties/allowDuplicate")
+                .path("description")
+                .asText())
+        .contains("existing transaction", "same batch");
+
+    var batchImportResponseSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/BatchImportResponse");
+    assertThat(
+            batchImportResponseSchemaJsonNode.at("/properties/duplicatesSkipped").isMissingNode())
+        .isFalse();
+    assertThat(
+            batchImportResponseSchemaJsonNode.at("/properties/duplicatesImported").isMissingNode())
+        .isFalse();
+  }
+
   private JsonNode readOpenApiDocument() throws Exception {
     var responseBody =
         mockMvc
@@ -132,6 +184,12 @@ class TransactionOpenApiIntegrationTest {
 
     var schemaName = schemaReference.substring("#/components/schemas/".length());
     return openApiJsonNode.at("/components/schemas/" + escapeJsonPointerToken(schemaName));
+  }
+
+  private List<String> enumValues(JsonNode schemaJsonNode) {
+    return StreamSupport.stream(schemaJsonNode.path("enum").spliterator(), false)
+        .map(JsonNode::asText)
+        .toList();
   }
 
   private String escapeJsonPointerToken(String value) {

@@ -87,7 +87,9 @@ public class TransactionController {
       description =
           "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
               + "before batch import. No data is persisted. The format parameter is required and "
-              + "determines which parser to use. The response includes any parsing warnings.")
+              + "determines which parser to use. The response includes parsing warnings and "
+              + "advisory duplicate metadata for existing owner-scoped transactions or earlier "
+              + "rows in the same preview payload.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -153,8 +155,9 @@ public class TransactionController {
         accountId.orElse(null),
         file.getOriginalFilename());
 
+    var userId = getCurrentUserId();
     return PreviewResponse.from(
-        transactionImportService.previewFile(format, accountId.orElse(null), file));
+        transactionImportService.previewFile(format, accountId.orElse(null), file, userId));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")
@@ -163,7 +166,9 @@ public class TransactionController {
       description =
           "Imports transactions from a batch request (typically from the preview endpoint after "
               + "user edits). Validates all transactions upfront and rejects the entire batch if "
-              + "any fail. Duplicates (matching date + amount + description) are skipped.")
+              + "any fail. Duplicates matching the owner-scoped transaction key are skipped unless "
+              + "allowDuplicate is true on the row. The response reports skipped duplicates and "
+              + "duplicates intentionally imported.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -208,6 +213,7 @@ public class TransactionController {
     return new BatchImportResponse(
         result.createdTransactions().size(),
         result.duplicatesSkipped(),
+        result.duplicatesImported(),
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
   }
 

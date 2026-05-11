@@ -103,17 +103,29 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata.
 ```
 
 **Batch Import Transactions**
 ```
 POST /v1/transactions/batch
-Body: BatchImportRequest (list of PreviewTransaction objects)
-Response: BatchImportResponse (201 Created)
+Body: BatchImportRequest (list of BatchImportTransactionRequest objects, optional allowDuplicate per row)
+Response: BatchImportResponse (200 OK)
 Permission: transactions:write
-Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates (date + amount + description) are skipped.
+Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row.
 ```
+
+Duplicate detection is scoped to the authenticated owner and uses
+`accountId`, `bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and
+`description`. Empty `accountId` values are treated the same as `null`, amounts
+are compared at scale 2, and descriptions are matched exactly. Preview responses
+set `duplicate=true` with `duplicateReason` of `EXISTING_TRANSACTION` for active
+owner-owned database matches, or `IN_BATCH` for rows that duplicate an earlier
+row in the same preview payload. Preview duplicate metadata is advisory;
+`/batch` performs the final duplicate check. `allowDuplicate` defaults to
+`false`; when set to `true`, the row is imported even if it matches an existing
+transaction or an earlier row in the same batch. Batch responses include
+`duplicatesSkipped` and `duplicatesImported` counts.
 
 ### Cross-User Transaction Search
 
@@ -304,6 +316,97 @@ Permission: statementformats:write
 }
 ```
 
+### PreviewResponse
+
+```json
+{
+  "sourceFile": "statement.csv",
+  "detectedFormat": "capital-one",
+  "transactions": [
+    {
+      "date": "2026-04-28",
+      "description": "TAQUERIA DEL SOL #3",
+      "amount": 55.12,
+      "type": "DEBIT",
+      "category": "Dining",
+      "bankName": "Capital One",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-12345",
+      "duplicate": true,
+      "duplicateReason": "EXISTING_TRANSACTION"
+    },
+    {
+      "date": "2026-04-29",
+      "description": "PAYROLL",
+      "amount": 2500.00,
+      "type": "CREDIT",
+      "category": null,
+      "bankName": "Capital One",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-12345",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "warnings": []
+}
+```
+
+`duplicateReason` is `EXISTING_TRANSACTION` when the row matches an active
+transaction already stored for the authenticated owner. It is `IN_BATCH` when
+the row duplicates an earlier row in the same preview response. The preview
+endpoint does not persist transactions and does not return matching transaction
+IDs.
+
+### BatchImportRequest
+
+```json
+{
+  "transactions": [
+    {
+      "date": "2026-04-28",
+      "description": "TAQUERIA DEL SOL #3",
+      "amount": 55.12,
+      "type": "DEBIT",
+      "category": "Dining",
+      "bankName": "Capital One",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-12345",
+      "allowDuplicate": true
+    }
+  ]
+}
+```
+
+Omit `allowDuplicate` or set it to `false` to skip rows that match duplicate
+detection. Set it to `true` only for rows that should be intentionally imported
+despite matching an existing transaction or an earlier row in the same batch.
+
+### BatchImportResponse
+
+```json
+{
+  "created": 1,
+  "duplicatesSkipped": 0,
+  "duplicatesImported": 1,
+  "transactions": [
+    {
+      "id": 102,
+      "ownerId": "usr_test123",
+      "accountId": "checking-12345",
+      "bankName": "Capital One",
+      "date": "2026-04-28",
+      "currencyIsoCode": "USD",
+      "amount": 55.12,
+      "type": "DEBIT",
+      "description": "TAQUERIA DEL SOL #3",
+      "createdAt": "2026-04-28T18:30:00Z",
+      "updatedAt": "2026-04-28T18:30:00Z"
+    }
+  ]
+}
+```
+
 ### Error Responses
 
 **Application error:**
@@ -330,8 +433,8 @@ Permission: statementformats:write
 ## Error Handling
 
 **Standard HTTP Status Codes:**
-- `200 OK` - Successful GET/PATCH/bulk operations
-- `201 Created` - Successful POST (batch import, create)
+- `200 OK` - Successful GET/PATCH/bulk/batch import operations
+- `201 Created` - Successful create operations
 - `204 No Content` - Successful DELETE
 - `400 Bad Request` - Validation error or invalid request
 - `404 Not Found` - Resource not found
@@ -436,6 +539,9 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 - `currencyIsoCode` - Required, non-blank
 - `accountId` - Optional
 - `category` - Optional
+- `allowDuplicate` - Optional, defaults to false. When true, imports the row
+  even if it duplicates an existing transaction or an earlier row in the same
+  batch.
 
 ### Transaction Update (TransactionUpdateRequest)
 

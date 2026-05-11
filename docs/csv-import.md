@@ -159,58 +159,111 @@ curl http://localhost:8082/v1/statement-formats/new-bank-format
 
 No restart required - formats are loaded from database.
 
-### Step 4: Test Import
+### Step 4: Preview Import
 
-Use the import endpoint with your format key:
+Use the preview endpoint with your format key. Preview parses the file, returns
+editable transactions, and includes advisory duplicate indicators without
+persisting anything:
 
 ```bash
-curl -X POST http://localhost:8082/v1/transactions/import \
-  -F "files=@sample.csv" \
-  -F "csvFormat=new-bank-format" \
+curl -X POST http://localhost:8082/v1/transactions/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: transactions:read" \
+  -F "file=@sample.csv" \
+  -F "format=new-bank-format" \
   -F "accountId=test-account"
 ```
 
-### Step 5: Validate Results
+Review the returned `transactions` array. Rows with `duplicate=true` are likely
+duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
+`IN_BATCH`.
+
+### Step 5: Batch Import
+
+Submit the reviewed transactions to the batch endpoint. Omit `allowDuplicate`
+or set it to `false` for normal imports. Set it to `true` only for duplicate
+rows that should be intentionally imported:
+
+```bash
+curl -X POST http://localhost:8082/v1/transactions/batch \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: transactions:write" \
+  -d '{
+    "transactions": [
+      {
+        "date": "2026-04-28",
+        "description": "Coffee Shop",
+        "amount": 150.00,
+        "type": "DEBIT",
+        "category": null,
+        "bankName": "New Bank Name",
+        "currencyIsoCode": "USD",
+        "accountId": "test-account",
+        "allowDuplicate": false
+      }
+    ]
+  }'
+```
+
+### Step 6: Validate Results
 
 Check database for imported transactions:
 
 ```sql
 SELECT * FROM transaction
 WHERE account_id = 'test-account'
-ORDER BY transaction_date DESC;
+ORDER BY date DESC;
 ```
 
 Verify:
 - Correct number of transactions
 - Accurate dates
-- Correct amounts (positive for credits, negative for debits)
+- Correct amounts (positive values, with `type` indicating credit or debit)
 - Proper descriptions
 - Correct currency code
 
 ## API Usage
 
-### Import Endpoint
+### Preview Endpoint
 
-**POST** `/v1/transactions/import`
+**POST** `/v1/transactions/preview`
 
 **Parameters:**
-- `files` (multipart file, required, multiple) - CSV files to import
-- `csvFormat` (string, required) - Format key from configuration
-- `accountId` (string, required) - Account to associate transactions with
+- `file` (multipart file, required) - CSV or PDF file to parse
+- `format` (string, required) - Format key from configuration
+- `accountId` (string, optional) - Account to associate with previewed transactions
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8082/v1/transactions/import \
-  -F "files=@statement1.csv" \
-  -F "files=@statement2.csv" \
-  -F "csvFormat=capital-one" \
+curl -X POST http://localhost:8082/v1/transactions/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: transactions:read" \
+  -F "file=@statement.csv" \
+  -F "format=capital-one" \
   -F "accountId=checking-001"
 ```
 
 **Response:** `200 OK`
 ```json
 {
-  "message": "Successfully imported 45 transactions from 2 files"
+  "sourceFile": "statement.csv",
+  "detectedFormat": "capital-one",
+  "transactions": [
+    {
+      "date": "2026-04-28",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Capital One",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "warnings": []
 }
 ```
 
@@ -220,10 +273,57 @@ curl -X POST http://localhost:8082/v1/transactions/import \
   "timestamp": "2024-11-15T10:30:00Z",
   "status": 400,
   "error": "Bad Request",
-  "message": "CSV parsing error in file 'statement1.csv' at line 12: Invalid date format",
-  "path": "/v1/transactions/import"
+  "message": "CSV parsing error in file 'statement.csv' at line 12: Invalid date format",
+  "path": "/v1/transactions/preview"
 }
 ```
+
+### Batch Import Endpoint
+
+**POST** `/v1/transactions/batch`
+
+**Request Body:**
+- `transactions` (array, required) - Reviewed transactions from preview
+- `allowDuplicate` (boolean, optional per row) - Defaults to `false`
+
+**Response:** `200 OK`
+```json
+{
+  "created": 1,
+  "duplicatesSkipped": 0,
+  "duplicatesImported": 0,
+  "transactions": [
+    {
+      "id": 101,
+      "ownerId": "usr_test123",
+      "accountId": "checking-001",
+      "bankName": "Capital One",
+      "date": "2026-04-28",
+      "currencyIsoCode": "USD",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "description": "Coffee Shop",
+      "createdAt": "2026-04-28T18:30:00Z",
+      "updatedAt": "2026-04-28T18:30:00Z"
+    }
+  ]
+}
+```
+
+### Duplicate Detection
+
+Preview duplicate flags are advisory. Batch import always re-checks duplicates
+before persistence because stored transactions can change after preview.
+
+Duplicate detection is scoped to the authenticated owner and uses `accountId`,
+`bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and `description`.
+Empty `accountId` values are equivalent to `null`, amounts are compared at
+scale 2, and descriptions are exact matches.
+
+Duplicate reasons:
+- `EXISTING_TRANSACTION` - The preview row matches an active transaction
+  already stored for the owner.
+- `IN_BATCH` - The row duplicates an earlier row in the same preview payload.
 
 ## Implementation Details
 
@@ -237,14 +337,14 @@ curl -X POST http://localhost:8082/v1/transactions/import \
    - Extract amount (from single column or credit/debit columns)
    - Determine transaction type
    - Extract description
-5. **Transaction Creation** - Create Transaction entities
-6. **Batch Save** - Persist all transactions in single transaction
+5. **Preview Response** - Return editable transactions with duplicate metadata
+6. **Batch Import** - Persist reviewed transactions in a single transaction
 7. **Error Handling** - Roll back on any parsing error
 
 ### Error Handling
 
-All imports are transactional:
-- Success: All transactions from all files saved
+Batch imports are transactional:
+- Success: All non-skipped transactions from the request are saved
 - Failure: No transactions saved, detailed error message returned
 
 Error messages include:
@@ -258,7 +358,8 @@ Error messages include:
 - `StatementFormatService` - CRUD operations for statement formats
 - `StatementExtractorRegistry` - Registry of extractors by format key
 - `CsvStatementExtractor` - Extracts transactions from CSV files
-- `TransactionController.importTransactions()` - API endpoint
+- `TransactionController.previewTransactions()` - Preview API endpoint
+- `TransactionController.batchImportTransactions()` - Batch import API endpoint
 - `TransactionImportService` - Business logic for imports
 
 ### Discovery Commands
@@ -273,7 +374,7 @@ cat src/main/java/org/budgetanalyzer/transaction/service/StatementFormatService.
 # View seeded formats
 cat src/main/resources/db/migration/V7__add_statement_format.sql
 
-# Find import endpoint
+# Find import endpoints
 grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 ```
 
@@ -306,9 +407,14 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 **Cause:** CSV contains transactions already in database.
 
 **Solution:**
-- Current implementation doesn't check for duplicates
 - Consider filtering CSV to only new transactions
-- Or implement duplicate detection (requires unique business key)
+- When using the preview-to-batch flow, set `allowDuplicate=true` only on rows
+  that should be intentionally imported despite matching duplicate detection.
+- Preview responses mark likely duplicates before import with `duplicate=true`
+  and `duplicateReason` of `EXISTING_TRANSACTION` or `IN_BATCH`.
+- Duplicate detection uses account ID, bank name, date, amount, type, currency,
+  and description. Empty account IDs are treated the same as missing account
+  IDs.
 
 ### Empty amounts parsed as zero
 
@@ -330,7 +436,7 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 Potential improvements (not yet implemented):
 
-- Duplicate detection using transaction hash
+- File-content hash warning during preview for exact reuploads
 - Column order flexibility (currently order-dependent)
 - Optional column support
 - Custom data transformations

@@ -612,6 +612,7 @@ class TransactionServiceTest {
     // Then: both transactions are created
     assertThat(result.createdTransactions()).hasSize(2);
     assertThat(result.duplicatesSkipped()).isEqualTo(0);
+    assertThat(result.duplicatesImported()).isEqualTo(0);
     verify(transactionRepository, times(1)).saveAll(any());
   }
 
@@ -671,7 +672,7 @@ class TransactionServiceTest {
             null);
 
     // Simulate that dto1's key already exists
-    var existingKey = "2024-01-15|100.00|Existing Transaction";
+    var existingKey = TransactionDuplicateKey.from(dto1).toLookupValue();
     when(transactionRepository.findExistingDuplicateKeys(any(), any()))
         .thenReturn(Set.of(existingKey));
     when(transactionRepository.saveAll(any()))
@@ -690,7 +691,45 @@ class TransactionServiceTest {
     // Then: only new transaction is created, duplicate is skipped
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isEqualTo(0);
     assertThat(result.createdTransactions().get(0).getDescription()).isEqualTo("New Transaction");
+  }
+
+  @Test
+  void batchImport_existingDuplicateAllowed_importsMatchingTransaction() {
+    // Given: one duplicate transaction has an explicit override
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Existing Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null,
+            true);
+    var existingKey = TransactionDuplicateKey.from(dto).toLookupValue();
+
+    when(transactionRepository.findExistingDuplicateKeys(any(), any()))
+        .thenReturn(Set.of(existingKey));
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              transactions.get(0).setId(1L);
+              return transactions;
+            });
+
+    // When: batch import is called
+    var result = transactionService.batchImport(List.of(dto), USER_ID);
+
+    // Then: duplicate is imported and counted separately from skipped duplicates
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isEqualTo(1);
+    assertThat(result.createdTransactions().get(0).getDescription())
+        .isEqualTo("Existing Transaction");
   }
 
   @Test
@@ -734,6 +773,52 @@ class TransactionServiceTest {
     // Then: only first transaction is created, second is skipped as intra-batch duplicate
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isEqualTo(0);
+  }
+
+  @Test
+  void batchImport_intraBatchDuplicateAllowed_importsSecondOccurrence() {
+    // Given: the second identical transaction has an explicit duplicate override
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Same Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Same Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null,
+            true);
+
+    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.saveAll(any()))
+        .thenAnswer(
+            invocation -> {
+              List<Transaction> transactions = invocation.getArgument(0);
+              for (int i = 0; i < transactions.size(); i++) {
+                transactions.get(i).setId((long) (i + 1));
+              }
+              return transactions;
+            });
+
+    // When: batch import is called
+    var result = transactionService.batchImport(List.of(dto1, dto2), USER_ID);
+
+    // Then: both transactions are created and the duplicate import is counted
+    assertThat(result.createdTransactions()).hasSize(2);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isEqualTo(1);
   }
 
   @Test
@@ -748,6 +833,7 @@ class TransactionServiceTest {
     // Then: returns empty result
     assertThat(result.createdTransactions()).isEmpty();
     assertThat(result.duplicatesSkipped()).isEqualTo(0);
+    assertThat(result.duplicatesImported()).isEqualTo(0);
   }
 
   @Test
