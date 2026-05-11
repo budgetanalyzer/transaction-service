@@ -202,7 +202,7 @@ Suggested response shape:
    - Add batch `allowDuplicate`.
    - Add any new batch response count fields.
 
-6. Update documentation.
+6. Update documentation. **Implemented.**
    - `docs/api/README.md`: preview response, batch request, batch response, and
      duplicate key behavior.
    - `docs/csv-import.md`: remove stale note that duplicate detection is not

@@ -92,7 +92,13 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
   and file import lookups
 - `idx_transaction_owner_deleted_duplicate_fields` supports owner-scoped
   duplicate detection across `account_id`, `bank_name`, `date`, `amount`,
-  `type`, `currency_iso_code`, and `description`
+  `type`, `currency_iso_code`, and `description`. It replaced the older
+  `idx_transaction_owner_deleted_date_amount_desc` index in migration
+  `V13__replace_duplicate_detection_index.sql`.
+
+Duplicate detection treats empty `account_id` values as equivalent to `NULL` in
+the lookup query. Only active rows (`deleted = false`) for the same `owner_id`
+are considered duplicates.
 
 ### budgets
 
