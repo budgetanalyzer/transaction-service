@@ -25,9 +25,8 @@ public record PreviousFileImportResponse(
             example = "capital-one")
         String format,
     @Schema(
-            description = "Account ID used for the previous import",
+            description = "Account ID used for the previous import. Omitted when unavailable.",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
-            nullable = true,
             example = "checking-12345")
         String accountId,
     @Schema(

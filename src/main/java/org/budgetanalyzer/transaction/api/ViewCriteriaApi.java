@@ -13,7 +13,7 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
 public record ViewCriteriaApi(
     @Schema(description = "Start date for transaction date range", example = "2024-12-01")
         LocalDate startDate,
-    @Schema(description = "End date for transaction date range (null for open-ended views)")
+    @Schema(description = "End date for transaction date range. Omitted for open-ended views.")
         LocalDate endDate,
     @Schema(description = "Account IDs to filter by") Set<String> accountIds,
     @Schema(description = "Bank names to filter by", example = "[\"Capital One\", \"Truist\"]")

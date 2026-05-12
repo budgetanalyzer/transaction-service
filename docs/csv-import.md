@@ -269,9 +269,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
   "detectedFormat": "capital-one",
   "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
-    "alreadyImported": false,
-    "warningCode": null,
-    "previousImport": null
+    "alreadyImported": false
   },
   "transactions": [
     {
@@ -279,12 +277,10 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "category": null,
       "bankName": "Capital One",
       "currencyIsoCode": "USD",
       "accountId": "checking-001",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
   ]
 }

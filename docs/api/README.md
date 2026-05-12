@@ -131,7 +131,7 @@ Preview responses also include a file-level `fileImport` object. When
 `alreadyImported=true`, `warningCode` is `FILE_ALREADY_IMPORTED` and
 `previousImport` contains the matching file import metadata for the current
 user. When the uploaded bytes do not match a prior `file_import` row for the
-current user, `alreadyImported=false` and the other fields are `null`. The
+current user, `alreadyImported=false` and the other fields are omitted. The
 legacy top-level `warnings` array has been removed; file reupload status is
 reported only through `fileImport`, while row-level transaction duplicates stay
 on each preview transaction.
@@ -380,12 +380,10 @@ Fields:
       "description": "PAYROLL",
       "amount": 2500.00,
       "type": "CREDIT",
-      "category": null,
       "bankName": "Capital One",
       "currencyIsoCode": "USD",
       "accountId": "checking-12345",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
   ]
 }
@@ -395,7 +393,7 @@ Fields:
 transaction already stored for the authenticated owner. It is `IN_BATCH` when
 the row duplicates an earlier row in the same preview response. The preview
 endpoint does not persist transactions and does not return matching transaction
-IDs.
+IDs. It is omitted when `duplicate=false`.
 
 `fileImport` is file-level metadata, separate from per-row duplicate detection.
 It compares the uploaded file bytes with previous `file_import` records for the

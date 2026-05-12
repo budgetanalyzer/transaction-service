@@ -13,15 +13,16 @@ public record PreviewFileImportStatusResponse(
             example = "false")
         boolean alreadyImported,
     @Schema(
-            description = "Stable warning code for file-level preview status",
+            description =
+                "Stable warning code for file-level preview status. Omitted when there is no "
+                    + "warning.",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
-            nullable = true,
             example = "FILE_ALREADY_IMPORTED")
         PreviewFileWarningCode warningCode,
     @Schema(
-            description = "Previous matching import metadata. Null when alreadyImported is false.",
-            requiredMode = Schema.RequiredMode.NOT_REQUIRED,
-            nullable = true)
+            description =
+                "Previous matching import metadata. Omitted when alreadyImported is false.",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         PreviousFileImportResponse previousImport) {
 
   /** Creates a file import status response from a service-layer DTO. */

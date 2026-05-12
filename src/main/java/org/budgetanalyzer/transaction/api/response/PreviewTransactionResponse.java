@@ -78,10 +78,9 @@ public record PreviewTransactionResponse(
         boolean duplicate,
     @Schema(
             description =
-                "Reason this row was marked as a duplicate. Null when duplicate is false.",
+                "Reason this row was marked as a duplicate. Omitted when duplicate is false.",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             allowableValues = {"EXISTING_TRANSACTION", "IN_BATCH"},
-            nullable = true,
             example = "EXISTING_TRANSACTION")
         PreviewDuplicateReason duplicateReason) {
 
