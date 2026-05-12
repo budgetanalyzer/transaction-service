@@ -1,9 +1,6 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -15,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
-import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 class CapOneBankMonthlyExtractorTest {
 
@@ -32,141 +28,131 @@ class CapOneBankMonthlyExtractorTest {
 
   @Test
   void canHandle_withValidCapitalOneMonthlyPdf_returnsTrue() {
-    assertTrue(extractor.canHandle(pdfContent, "cap-one-bank-monthly-sample.pdf"));
+    assertThat(extractor.canHandle(pdfContent, "cap-one-bank-monthly-sample.pdf")).isTrue();
   }
 
   @Test
   void canHandle_withCsvFile_returnsFalse() {
-    assertFalse(extractor.canHandle(pdfContent, "transactions.csv"));
+    assertThat(extractor.canHandle(pdfContent, "transactions.csv")).isFalse();
   }
 
   @Test
   void canHandle_withNonMatchingPdf_returnsFalse() throws IOException {
     // Year-end summary PDF should not match
-    byte[] yearlyPdf =
+    var yearlyPdf =
         Files.readAllBytes(
             Paths.get("src/test/resources/fixtures/cap-one-credit-yearly-summary-sample.pdf"));
-    assertFalse(extractor.canHandle(yearlyPdf, "cap-one-credit-yearly-summary-sample.pdf"));
+    assertThat(extractor.canHandle(yearlyPdf, "cap-one-credit-yearly-summary-sample.pdf"))
+        .isFalse();
   }
 
   @Test
   void getFormatKey_returnsCorrectKey() {
-    assertEquals("capital-one-bank-monthly-statement", extractor.getFormatKey());
+    assertThat(extractor.getFormatKey()).isEqualTo("capital-one-bank-monthly-statement");
   }
 
   @Test
   void extract_withSamplePdf_extractsTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
-
-    assertNotNull(result);
-    assertNotNull(result.transactions());
-    assertFalse(result.transactions().isEmpty());
+    var transactions = extractor.extract(pdfContent, null);
 
     // November 2025 fixture has 6 transactions (excluding opening/closing balance)
-    assertEquals(6, result.transactions().size());
+    assertThat(transactions).hasSize(6);
   }
 
   @Test
   void extract_withSamplePdf_setsCorrectBankAndCurrency() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals("Capital One", transaction.bankName());
-      assertEquals("USD", transaction.currencyIsoCode());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.bankName()).isEqualTo("Capital One");
+      assertThat(previewTransaction.currencyIsoCode()).isEqualTo("USD");
     }
   }
 
   @Test
   void extract_withAccountId_setsAccountIdOnAllTransactions() {
-    String accountId = "test-account-123";
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, accountId);
+    var accountId = "test-account-123";
+    var transactions = extractor.extract(pdfContent, accountId);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals(accountId, transaction.accountId());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.accountId()).isEqualTo(accountId);
     }
   }
 
   @Test
   void extract_withSamplePdf_parsesYear2025Correctly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals(2025, transaction.date().getYear());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.date().getYear()).isEqualTo(2025);
     }
   }
 
   @Test
   void extract_withSamplePdf_extractsBillPayTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the ONLINE BILL PAY transaction
-    PreviewTransaction billPay =
-        result.transactions().stream()
-            .filter(t -> t.description().contains("ONLINE BILL PAY"))
-            .findFirst()
-            .orElse(null);
+    var billPayTransaction =
+        transactions.stream().filter(t -> t.description().contains("ONLINE BILL PAY")).findFirst();
 
-    assertNotNull(billPay, "Should find ONLINE BILL PAY transaction");
-    assertEquals(LocalDate.of(2025, 11, 13), billPay.date());
-    assertEquals(new BigDecimal("1862.72"), billPay.amount());
-    assertEquals(TransactionType.DEBIT, billPay.type());
+    assertThat(billPayTransaction).as("Should find ONLINE BILL PAY transaction").isPresent();
+    assertThat(billPayTransaction.get().date()).isEqualTo(LocalDate.of(2025, 11, 13));
+    assertThat(billPayTransaction.get().amount()).isEqualByComparingTo(new BigDecimal("1862.72"));
+    assertThat(billPayTransaction.get().type()).isEqualTo(TransactionType.DEBIT);
   }
 
   @Test
   void extract_withSamplePdf_extractsDepositTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the EMPLOYER DIRECT DEPOSIT
-    PreviewTransaction deposit =
-        result.transactions().stream()
+    var depositTransaction =
+        transactions.stream()
             .filter(t -> t.description().contains("EMPLOYER DIRECT DEPOSIT"))
-            .findFirst()
-            .orElse(null);
+            .findFirst();
 
-    assertNotNull(deposit, "Should find EMPLOYER DIRECT DEPOSIT transaction");
-    assertEquals(LocalDate.of(2025, 11, 24), deposit.date());
-    assertEquals(new BigDecimal("5000.00"), deposit.amount());
-    assertEquals(TransactionType.CREDIT, deposit.type());
+    assertThat(depositTransaction)
+        .as("Should find EMPLOYER DIRECT DEPOSIT transaction")
+        .isPresent();
+    assertThat(depositTransaction.get().date()).isEqualTo(LocalDate.of(2025, 11, 24));
+    assertThat(depositTransaction.get().amount()).isEqualByComparingTo(new BigDecimal("5000.00"));
+    assertThat(depositTransaction.get().type()).isEqualTo(TransactionType.CREDIT);
   }
 
   @Test
   void extract_withSamplePdf_handlesCreditsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find credit transactions
-    long creditCount =
-        result.transactions().stream().filter(t -> t.type() == TransactionType.CREDIT).count();
+    var creditCount = transactions.stream().filter(t -> t.type() == TransactionType.CREDIT).count();
 
     // Fixture has 2 credits: EMPLOYER DIRECT DEPOSIT and Monthly Interest Paid
-    assertEquals(2, creditCount);
+    assertThat(creditCount).isEqualTo(2L);
   }
 
   @Test
   void extract_withSamplePdf_handlesDebitsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find debit transactions
-    long debitCount =
-        result.transactions().stream().filter(t -> t.type() == TransactionType.DEBIT).count();
+    var debitCount = transactions.stream().filter(t -> t.type() == TransactionType.DEBIT).count();
 
     // Fixture has 4 debits: ELECTRIC COMPANY, ONLINE BILL PAY, 2x ATM WITHDRAWAL
-    assertEquals(4, debitCount);
+    assertThat(debitCount).isEqualTo(4L);
   }
 
   @Test
   void extract_withSamplePdf_extractsInterestTransaction() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the Monthly Interest Paid transaction
-    PreviewTransaction interest =
-        result.transactions().stream()
-            .filter(t -> t.description().contains("Monthly Interest"))
-            .findFirst()
-            .orElse(null);
+    var interestTransaction =
+        transactions.stream().filter(t -> t.description().contains("Monthly Interest")).findFirst();
 
-    assertNotNull(interest, "Should find Monthly Interest Paid transaction");
-    assertEquals(LocalDate.of(2025, 11, 30), interest.date());
-    assertEquals(new BigDecimal("0.14"), interest.amount());
-    assertEquals(TransactionType.CREDIT, interest.type());
+    assertThat(interestTransaction).as("Should find Monthly Interest Paid transaction").isPresent();
+    assertThat(interestTransaction.get().date()).isEqualTo(LocalDate.of(2025, 11, 30));
+    assertThat(interestTransaction.get().amount()).isEqualByComparingTo(new BigDecimal("0.14"));
+    assertThat(interestTransaction.get().type()).isEqualTo(TransactionType.CREDIT);
   }
 }

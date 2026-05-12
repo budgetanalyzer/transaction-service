@@ -103,16 +103,16 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. Each preview transaction includes advisory duplicate metadata.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. The multipart file part must include a non-blank filename. Each preview transaction includes advisory duplicate metadata. The response also includes fileImport status for exact file reuploads by the authenticated user and an opaque previewImportToken for token-backed batch import recording.
 ```
 
 **Batch Import Transactions**
 ```
 POST /v1/transactions/batch
-Body: BatchImportRequest (list of BatchImportTransactionRequest objects, optional allowDuplicate per row)
+Body: BatchImportRequest (required previewImportToken, list of BatchImportTransactionRequest objects, optional allowDuplicate per row)
 Response: BatchImportResponse (200 OK)
 Permission: transactions:write
-Notes: Imports transactions from the preview endpoint after user edits. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row.
+Notes: Imports transactions from the preview endpoint after user edits. The previewImportToken is required and verified before batch import processing starts. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row. If every submitted row is skipped as a duplicate, the request fails with BATCH_IMPORT_NO_TRANSACTIONS_CREATED and no file import is recorded. When at least one transaction is created, the service records file import metadata unless the file was already recorded for the user; created transactions are linked to the new or existing file import row.
 ```
 
 Duplicate detection is scoped to the authenticated owner and uses
@@ -126,6 +126,27 @@ row in the same preview payload. Preview duplicate metadata is advisory;
 `false`; when set to `true`, the row is imported even if it matches an existing
 transaction or an earlier row in the same batch. Batch responses include
 `duplicatesSkipped` and `duplicatesImported` counts.
+
+Preview responses also include a file-level `fileImport` object. When
+`alreadyImported=true`, `warningCode` is `FILE_ALREADY_IMPORTED` and
+`previousImport` contains the matching file import metadata for the current
+user. When the uploaded bytes do not match a prior `file_import` row for the
+current user, `alreadyImported=false` and the other fields are omitted. The
+legacy top-level `warnings` array has been removed; file reupload status is
+reported only through `fileImport`, while row-level transaction duplicates stay
+on each preview transaction.
+
+The `previewImportToken` is an encrypted, time-limited source-file token
+required by `/batch` to record successful file-backed imports. Treat it as
+opaque client state; the API never returns the raw content hash, and token
+payload fields are not client-decodable. Missing, invalid, expired, or
+wrong-owner tokens fail before service-layer batch validation, duplicate checks,
+or persistence. If duplicate filtering leaves no rows to create, `/batch`
+returns `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` as a 422 response; set
+`allowDuplicate=true` only for rows that should be intentionally imported.
+Preview rejects multipart uploads whose `file` part omits the filename
+parameter or supplies only whitespace, returning `MISSING_ORIGINAL_FILENAME`
+as a 422 response before parsing the file or issuing a preview token.
 
 ### Cross-User Transaction Search
 
@@ -318,10 +339,29 @@ Permission: statementformats:write
 
 ### PreviewResponse
 
+Fields:
+- `sourceFile` - Original uploaded filename.
+- `detectedFormat` - Statement format key used for parsing.
+- `previewImportToken` - Opaque encrypted source-file token required by `/batch`.
+- `fileImport` - Exact-file reupload status for the authenticated user.
+- `transactions` - Editable preview rows with advisory duplicate metadata.
+
 ```json
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
+  "fileImport": {
+    "alreadyImported": true,
+    "warningCode": "FILE_ALREADY_IMPORTED",
+    "previousImport": {
+      "originalFilename": "statement.csv",
+      "importedAt": "2026-05-01T12:34:56Z",
+      "format": "capital-one",
+      "accountId": "checking-12345",
+      "transactionCount": 42
+    }
+  },
   "transactions": [
     {
       "date": "2026-04-28",
@@ -340,15 +380,12 @@ Permission: statementformats:write
       "description": "PAYROLL",
       "amount": 2500.00,
       "type": "CREDIT",
-      "category": null,
       "bankName": "Capital One",
       "currencyIsoCode": "USD",
       "accountId": "checking-12345",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
-  ],
-  "warnings": []
+  ]
 }
 ```
 
@@ -356,12 +393,27 @@ Permission: statementformats:write
 transaction already stored for the authenticated owner. It is `IN_BATCH` when
 the row duplicates an earlier row in the same preview response. The preview
 endpoint does not persist transactions and does not return matching transaction
-IDs.
+IDs. It is omitted when `duplicate=false`.
+
+`fileImport` is file-level metadata, separate from per-row duplicate detection.
+It compares the uploaded file bytes with previous `file_import` records for the
+authenticated owner and does not expose the raw content hash.
+`previewImportToken` is encrypted with the configured transaction service
+preview token encryption secret and expires according to service configuration.
+The token is opaque: clients must not inspect or derive source-file metadata
+from it.
+The preview response does not include a `warnings` field.
 
 ### BatchImportRequest
 
+Fields:
+- `previewImportToken` - Required opaque token returned by the preview endpoint.
+- `transactions` - Reviewed transaction rows to import.
+- `allowDuplicate` - Optional per-row override, defaulting to `false`.
+
 ```json
 {
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "transactions": [
     {
       "date": "2026-04-28",
@@ -381,6 +433,11 @@ IDs.
 Omit `allowDuplicate` or set it to `false` to skip rows that match duplicate
 detection. Set it to `true` only for rows that should be intentionally imported
 despite matching an existing transaction or an earlier row in the same batch.
+`previewImportToken` is required and must be valid, unexpired, and owned by the
+authenticated user. The token is the source-file identity for batch import and
+is verified before validation, duplicate checks, or persistence. If all
+submitted rows are skipped by duplicate filtering, the request fails with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no file import is recorded.
 
 ### BatchImportResponse
 
@@ -415,6 +472,15 @@ despite matching an existing transaction or an earlier row in the same batch.
   "type": "APPLICATION_ERROR",
   "message": "Format not supported: fake-bank",
   "code": "FORMAT_NOT_SUPPORTED"
+}
+```
+
+**Preview upload error:**
+```json
+{
+  "type": "APPLICATION_ERROR",
+  "message": "Uploaded file must include an original filename.",
+  "code": "MISSING_ORIGINAL_FILENAME"
 }
 ```
 

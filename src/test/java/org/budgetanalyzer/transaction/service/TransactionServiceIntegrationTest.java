@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,9 +19,12 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @SpringBootTest
@@ -42,6 +46,8 @@ class TransactionServiceIntegrationTest {
 
   @Autowired private TransactionRepository transactionRepository;
 
+  @Autowired private FileImportRepository fileImportRepository;
+
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -53,24 +59,31 @@ class TransactionServiceIntegrationTest {
   @BeforeEach
   void cleanDatabase() {
     transactionRepository.deleteAllInBatch();
+    fileImportRepository.deleteAllInBatch();
   }
 
   @Test
-  void batchImport_sameTransactionsSubmittedTwice_skipsSecondSubmission() {
+  void batchImport_sameTransactionsSubmittedTwice_rejectsSecondSubmission() {
     var transactions =
         List.of(
             previewTransaction(LocalDate.of(2025, 11, 18), "COFFEE SHOP", "9.97"),
             previewTransaction(LocalDate.of(2025, 11, 19), "GROCERY STORE", "42.30"));
 
-    var firstResult = transactionService.batchImport(transactions, USER_ID);
-    var secondResult = transactionService.batchImport(transactions, USER_ID);
+    var fileImportSource = fileImportSource("statement-duplicates.csv");
+    var firstResult = transactionService.batchImport(transactions, USER_ID, fileImportSource);
 
     assertThat(firstResult.createdTransactions()).hasSize(2);
     assertThat(firstResult.duplicatesSkipped()).isZero();
     assertThat(firstResult.duplicatesImported()).isZero();
-    assertThat(secondResult.createdTransactions()).isEmpty();
-    assertThat(secondResult.duplicatesSkipped()).isEqualTo(2);
-    assertThat(secondResult.duplicatesImported()).isZero();
+    assertThatThrownBy(
+            () -> transactionService.batchImport(transactions, USER_ID, fileImportSource))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.BATCH_IMPORT_NO_TRANSACTIONS_CREATED.name());
+            });
     assertThat(transactionRepository.findAll()).hasSize(2);
   }
 
@@ -89,8 +102,9 @@ class TransactionServiceIntegrationTest {
             transaction.accountId(),
             true);
 
-    transactionService.batchImport(List.of(transaction), USER_ID);
-    var result = transactionService.batchImport(List.of(duplicate), USER_ID);
+    var fileImportSource = fileImportSource("statement-override.csv");
+    transactionService.batchImport(List.of(transaction), USER_ID, fileImportSource);
+    var result = transactionService.batchImport(List.of(duplicate), USER_ID, fileImportSource);
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.duplicatesSkipped()).isZero();
@@ -108,5 +122,14 @@ class TransactionServiceIntegrationTest {
         "Capital One",
         "USD",
         "capital-one-credit");
+  }
+
+  private BatchFileImportSource fileImportSource(String originalFilename) {
+    return new BatchFileImportSource(
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        originalFilename,
+        "capital-one",
+        "account-123",
+        1024L);
   }
 }

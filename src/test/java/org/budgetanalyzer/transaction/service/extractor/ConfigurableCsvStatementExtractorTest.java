@@ -128,10 +128,10 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
           .thenReturn(csvData);
 
-      var result = extractor.extract("dummy".getBytes(), "account-123");
+      var transactions = extractor.extract("dummy".getBytes(), "account-123");
 
-      assertThat(result.transactions()).hasSize(1);
-      var tx = result.transactions().get(0);
+      assertThat(transactions).hasSize(1);
+      var tx = transactions.get(0);
       assertThat(tx.date()).isEqualTo(LocalDate.of(2025, 1, 15));
       assertThat(tx.description()).isEqualTo("Grocery Store");
       assertThat(tx.amount()).isEqualByComparingTo(new BigDecimal("52.34"));
@@ -156,10 +156,10 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
           .thenReturn(csvData);
 
-      var result = extractor.extract("dummy".getBytes(), null);
+      var transactions = extractor.extract("dummy".getBytes(), null);
 
-      assertThat(result.transactions()).hasSize(1);
-      var tx = result.transactions().get(0);
+      assertThat(transactions).hasSize(1);
+      var tx = transactions.get(0);
       assertThat(tx.type()).isEqualTo(TransactionType.CREDIT);
       assertThat(tx.amount()).isEqualByComparingTo(new BigDecimal("2500.00"));
     }
@@ -179,10 +179,9 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
           .thenReturn(csvData);
 
-      var result = extractor.extract("dummy".getBytes(), null);
+      var transactions = extractor.extract("dummy".getBytes(), null);
 
-      assertThat(result.transactions().get(0).amount())
-          .isEqualByComparingTo(new BigDecimal("1234.56"));
+      assertThat(transactions.get(0).amount()).isEqualByComparingTo(new BigDecimal("1234.56"));
     }
 
     @Test
@@ -349,9 +348,9 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
           .thenReturn(csvData);
 
-      var result = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
 
-      assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.CREDIT);
+      assertThat(transactions.get(0).type()).isEqualTo(TransactionType.CREDIT);
     }
 
     @Test
@@ -372,9 +371,9 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
           .thenReturn(csvData);
 
-      var result = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
 
-      assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.DEBIT);
+      assertThat(transactions.get(0).type()).isEqualTo(TransactionType.DEBIT);
     }
 
     @Test
@@ -395,9 +394,9 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
           .thenReturn(csvData);
 
-      var result = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
 
-      assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.DEBIT);
+      assertThat(transactions.get(0).type()).isEqualTo(TransactionType.DEBIT);
     }
   }
 

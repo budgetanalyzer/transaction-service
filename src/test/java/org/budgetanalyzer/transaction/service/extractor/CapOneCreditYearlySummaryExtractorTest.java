@@ -1,9 +1,6 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -15,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
-import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 class CapOneCreditYearlySummaryExtractorTest {
 
@@ -32,118 +28,111 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void canHandle_withValidCapitalOnePdf_returnsTrue() {
-    assertTrue(extractor.canHandle(pdfContent, "cap-one-credit-yearly-summary-sample.pdf"));
+    assertThat(extractor.canHandle(pdfContent, "cap-one-credit-yearly-summary-sample.pdf"))
+        .isTrue();
   }
 
   @Test
   void canHandle_withCsvFile_returnsFalse() {
-    assertFalse(extractor.canHandle(pdfContent, "transactions.csv"));
+    assertThat(extractor.canHandle(pdfContent, "transactions.csv")).isFalse();
   }
 
   @Test
-  void canHandle_withNonMatchingPdf_returnsFalse() throws IOException {
+  void canHandle_withNonMatchingPdf_returnsFalse() {
     // Random bytes won't match
-    byte[] randomBytes = new byte[] {0x25, 0x50, 0x44, 0x46}; // PDF magic bytes only
-    assertFalse(extractor.canHandle(randomBytes, "random.pdf"));
+    var randomBytes = new byte[] {0x25, 0x50, 0x44, 0x46}; // PDF magic bytes only
+    assertThat(extractor.canHandle(randomBytes, "random.pdf")).isFalse();
   }
 
   @Test
   void getFormatKey_returnsCorrectKey() {
-    assertEquals("capital-one-credit-yearly-statement", extractor.getFormatKey());
+    assertThat(extractor.getFormatKey()).isEqualTo("capital-one-credit-yearly-statement");
   }
 
   @Test
   void extract_withSamplePdf_extractsTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
-
-    assertNotNull(result);
-    assertNotNull(result.transactions());
-    assertFalse(result.transactions().isEmpty());
+    var transactions = extractor.extract(pdfContent, null);
 
     // Fixture contains 15 transactions across 7 categories
-    assertTrue(
-        result.transactions().size() > 10,
-        "Expected more than 10 transactions but got " + result.transactions().size());
+    assertThat(transactions).hasSizeGreaterThan(10);
   }
 
   @Test
   void extract_withSamplePdf_setsCorrectBankAndCurrency() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals("Capital One", transaction.bankName());
-      assertEquals("USD", transaction.currencyIsoCode());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.bankName()).isEqualTo("Capital One");
+      assertThat(previewTransaction.currencyIsoCode()).isEqualTo("USD");
     }
   }
 
   @Test
   void extract_withAccountId_setsAccountIdOnAllTransactions() {
-    String accountId = "test-account-123";
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, accountId);
+    var accountId = "test-account-123";
+    var transactions = extractor.extract(pdfContent, accountId);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals(accountId, transaction.accountId());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.accountId()).isEqualTo(accountId);
     }
   }
 
   @Test
   void extract_withSamplePdf_parsesYear2024Correctly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
-    for (PreviewTransaction transaction : result.transactions()) {
-      assertEquals(2024, transaction.date().getYear());
+    for (var previewTransaction : transactions) {
+      assertThat(previewTransaction.date().getYear()).isEqualTo(2024);
     }
   }
 
   @Test
   void extract_withSamplePdf_extractsKnownTransactions() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the TAQUERIA DEL SOL transaction from the dining category
-    PreviewTransaction taqueriaTransaction =
-        result.transactions().stream()
-            .filter(t -> t.description().contains("TAQUERIA DEL SOL"))
-            .findFirst()
-            .orElse(null);
+    var taqueriaTransaction =
+        transactions.stream().filter(t -> t.description().contains("TAQUERIA DEL SOL")).findFirst();
 
-    assertNotNull(taqueriaTransaction, "Should find TAQUERIA DEL SOL transaction");
-    assertEquals(LocalDate.of(2024, 4, 12), taqueriaTransaction.date());
-    assertEquals(new BigDecimal("55.12"), taqueriaTransaction.amount());
-    assertEquals(TransactionType.DEBIT, taqueriaTransaction.type());
-    assertEquals("Dining", taqueriaTransaction.category());
+    assertThat(taqueriaTransaction).as("Should find TAQUERIA DEL SOL transaction").isPresent();
+    assertThat(taqueriaTransaction.get().date()).isEqualTo(LocalDate.of(2024, 4, 12));
+    assertThat(taqueriaTransaction.get().amount()).isEqualByComparingTo(new BigDecimal("55.12"));
+    assertThat(taqueriaTransaction.get().type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(taqueriaTransaction.get().category()).isEqualTo("Dining");
   }
 
   @Test
   void extract_withSamplePdf_handlesCreditsCorrectly() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Find the REFUND FROM ONLINE SHOP credit (-$37.27)
-    PreviewTransaction creditTransaction =
-        result.transactions().stream()
+    var creditTransaction =
+        transactions.stream()
             .filter(
                 t ->
                     t.description().contains("REFUND FROM ONLINE SHOP")
                         && t.amount().compareTo(new BigDecimal("37.27")) == 0
                         && t.type() == TransactionType.CREDIT)
-            .findFirst()
-            .orElse(null);
+            .findFirst();
 
-    assertNotNull(creditTransaction, "Should find a REFUND FROM ONLINE SHOP credit transaction");
-    assertEquals(TransactionType.CREDIT, creditTransaction.type());
+    assertThat(creditTransaction)
+        .as("Should find a REFUND FROM ONLINE SHOP credit transaction")
+        .isPresent();
+    assertThat(creditTransaction.get().type()).isEqualTo(TransactionType.CREDIT);
   }
 
   @Test
   void extract_withSamplePdf_extractsCategories() {
-    StatementExtractor.ExtractionResult result = extractor.extract(pdfContent, null);
+    var transactions = extractor.extract(pdfContent, null);
 
     // Verify we have multiple categories
-    long categoryCount =
-        result.transactions().stream()
-            .map(PreviewTransaction::category)
+    var categoryCount =
+        transactions.stream()
+            .map(previewTransaction -> previewTransaction.category())
             .filter(c -> c != null)
             .distinct()
             .count();
 
-    assertTrue(categoryCount >= 5, "Expected at least 5 different categories");
+    assertThat(categoryCount).isGreaterThanOrEqualTo(5L);
   }
 }

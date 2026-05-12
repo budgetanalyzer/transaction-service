@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -109,7 +108,7 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
   }
 
   @Override
-  public ExtractionResult extract(byte[] fileContent, String accountId) {
+  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
       String fullText = extractTextFromPdf(fileContent, 1, Integer.MAX_VALUE);
 
@@ -119,7 +118,7 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
       List<PreviewTransaction> transactions = parseTransactions(fullText, year, accountId);
       log.info("Extracted {} transactions from Capital One Year-End Summary", transactions.size());
 
-      return new ExtractionResult(transactions, Collections.emptyList());
+      return transactions;
     } catch (BusinessException e) {
       throw e;
     } catch (Exception e) {
@@ -138,8 +137,7 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
   @Override
   public List<Transaction> extractEntities(
       byte[] fileContent, String accountId, FileImport fileImport) {
-    var result = extract(fileContent, accountId);
-    return result.transactions().stream()
+    return extract(fileContent, accountId).stream()
         .map(preview -> toTransaction(preview, fileImport))
         .toList();
   }

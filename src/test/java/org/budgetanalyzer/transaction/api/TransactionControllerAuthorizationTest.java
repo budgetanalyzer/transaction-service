@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -40,8 +41,12 @@ import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 
 @WebMvcTest(TransactionController.class)
@@ -57,11 +62,16 @@ class TransactionControllerAuthorizationTest {
 
   @MockitoBean private TransactionImportService transactionImportService;
 
+  @MockitoBean private PreviewImportTokenService previewImportTokenService;
+
   @BeforeEach
   void setupServiceMocks() {
     when(transactionService.getTransactions(anyString())).thenReturn(List.of());
 
-    when(transactionService.batchImport(anyList(), anyString()))
+    when(previewImportTokenService.verifyToken(anyString(), anyString()))
+        .thenReturn(previewImportToken());
+
+    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
         .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 0));
 
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
@@ -75,7 +85,13 @@ class TransactionControllerAuthorizationTest {
 
     when(transactionImportService.previewFile(
             anyString(), any(), any(MultipartFile.class), anyString()))
-        .thenReturn(new PreviewResult("test.csv", "capital-one", List.of(), List.of()));
+        .thenReturn(
+            new PreviewResult(
+                "test.csv",
+                "capital-one",
+                "preview-token",
+                PreviewFileImportStatus.notPreviouslyImported(),
+                List.of()));
   }
 
   // ==================== No authentication ====================
@@ -121,6 +137,7 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
+                      "previewImportToken": "preview-token",
                       "transactions": [
                         {
                           "date": "2024-01-15",
@@ -216,6 +233,7 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
+                      "previewImportToken": "preview-token",
                       "transactions": [
                         {
                           "date": "2024-01-15",
@@ -250,6 +268,7 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
+                      "previewImportToken": "preview-token",
                       "transactions": [
                         {
                           "date": "2024-01-15",
@@ -598,5 +617,17 @@ class TransactionControllerAuthorizationTest {
     transaction.setCurrencyIsoCode("USD");
     transaction.setOwnerId(USER_ID);
     return transaction;
+  }
+
+  private PreviewImportToken previewImportToken() {
+    return new PreviewImportToken(
+        USER_ID,
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "statement.csv",
+        "capital-one",
+        "checking-12345",
+        1024L,
+        Instant.parse("2026-05-01T12:00:00Z"),
+        Instant.parse("2026-05-01T12:30:00Z"));
   }
 }

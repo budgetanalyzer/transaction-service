@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
@@ -32,17 +33,26 @@ public class TransactionImportService {
 
   private final StatementExtractorRegistry extractorRegistry;
   private final TransactionRepository transactionRepository;
+  private final FileImportTrackingService fileImportTrackingService;
+  private final PreviewImportTokenService previewImportTokenService;
 
   /**
    * Constructs a new TransactionImportService.
    *
    * @param extractorRegistry the registry for looking up statement extractors
    * @param transactionRepository the repository for owner-scoped duplicate lookup
+   * @param fileImportTrackingService the service for file import history lookup
+   * @param previewImportTokenService the service for preview import token creation
    */
   public TransactionImportService(
-      StatementExtractorRegistry extractorRegistry, TransactionRepository transactionRepository) {
+      StatementExtractorRegistry extractorRegistry,
+      TransactionRepository transactionRepository,
+      FileImportTrackingService fileImportTrackingService,
+      PreviewImportTokenService previewImportTokenService) {
     this.extractorRegistry = extractorRegistry;
     this.transactionRepository = transactionRepository;
+    this.fileImportTrackingService = fileImportTrackingService;
+    this.previewImportTokenService = previewImportTokenService;
   }
 
   /**
@@ -85,44 +95,66 @@ public class TransactionImportService {
    */
   private PreviewResult previewWithExtractor(
       StatementExtractor extractor, String accountId, MultipartFile file, String userId) {
+    var originalFilename = requireOriginalFilename(file);
+    if (file.isEmpty()) {
+      throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+    }
+
+    log.info("Previewing file with extractor '{}': {}", extractor.getFormatKey(), originalFilename);
+
+    var fileContent = readFileContent(file);
+    var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
+    var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
+    var previewImportToken =
+        previewImportTokenService.createToken(
+            userId,
+            fileCheckResult.hash(),
+            originalFilename,
+            extractor.getFormatKey(),
+            accountId,
+            file.getSize());
+    var extractedTransactions = extractor.extract(fileContent, accountId);
+
+    log.info(
+        "Successfully previewed {} transactions from file {}",
+        extractedTransactions.size(),
+        originalFilename);
+
+    var transactions = markDuplicates(extractedTransactions, userId);
+
+    return new PreviewResult(
+        originalFilename,
+        extractor.getFormatKey(),
+        previewImportToken,
+        fileImportStatus,
+        transactions);
+  }
+
+  private byte[] readFileContent(MultipartFile file) {
     try {
-      if (file.isEmpty()) {
-        throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
-      }
-
-      log.info(
-          "Previewing file with extractor '{}': {}",
-          extractor.getFormatKey(),
-          file.getOriginalFilename());
-
-      var fileContent = file.getBytes();
-      var extractionResult = extractor.extract(fileContent, accountId);
-
-      log.info(
-          "Successfully previewed {} transactions from file {}",
-          extractionResult.transactions().size(),
-          file.getOriginalFilename());
-
-      var transactions = markDuplicates(extractionResult.transactions(), userId);
-
-      return new PreviewResult(
-          file.getOriginalFilename(),
-          extractor.getFormatKey(),
-          transactions,
-          extractionResult.warnings());
-    } catch (BusinessException businessException) {
-      throw businessException;
+      return file.getBytes();
     } catch (IOException e) {
       throw new BusinessException(
           "Failed to read file: " + e.getMessage(),
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
           e);
-    } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to preview file: " + e.getMessage(),
-          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          e);
     }
+  }
+
+  private String requireOriginalFilename(MultipartFile file) {
+    var originalFilename = file.getOriginalFilename();
+    if (originalFilename == null) {
+      throw new BusinessException(
+          "Uploaded file must include an original filename.",
+          BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+    }
+    var trimmedOriginalFilename = originalFilename.trim();
+    if (trimmedOriginalFilename.isBlank()) {
+      throw new BusinessException(
+          "Uploaded file must include an original filename.",
+          BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+    }
+    return trimmedOriginalFilename;
   }
 
   private List<PreviewTransaction> markDuplicates(

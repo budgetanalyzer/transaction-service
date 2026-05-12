@@ -26,24 +26,29 @@ public record PreviewResponse(
         String detectedFormat,
     @Schema(
             description =
+                "Opaque encrypted source-file token required for token-backed batch import",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg")
+        String previewImportToken,
+    @Schema(
+            description =
+                "File-level import history status for the uploaded bytes and authenticated user",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+        PreviewFileImportStatusResponse fileImport,
+    @Schema(
+            description =
                 "List of extracted transactions ready for review, including advisory duplicate "
                     + "metadata for each row",
             requiredMode = Schema.RequiredMode.REQUIRED)
-        List<PreviewTransactionResponse> transactions,
-    @Schema(
-            description =
-                "List of warnings for fields with potential issues. "
-                    + "Empty for CSV extraction; populated for PDF extraction where OCR confidence "
-                    + "may be low.",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        List<PreviewWarning> warnings) {
+        List<PreviewTransactionResponse> transactions) {
 
   /** Creates a PreviewResponse from a service-layer PreviewResult. */
   public static PreviewResponse from(PreviewResult previewResult) {
     return new PreviewResponse(
         previewResult.sourceFile(),
         previewResult.detectedFormat(),
-        previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList(),
-        previewResult.warnings().stream().map(PreviewWarning::from).toList());
+        previewResult.previewImportToken(),
+        PreviewFileImportStatusResponse.from(previewResult.fileImport()),
+        previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList());
   }
 }

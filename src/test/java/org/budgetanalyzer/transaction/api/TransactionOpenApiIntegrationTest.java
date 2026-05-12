@@ -123,10 +123,53 @@ class TransactionOpenApiIntegrationTest {
 
     var previewTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/PreviewTransactionResponse");
+    var previewResponseSchemaJsonNode = openApiJsonNode.at("/components/schemas/PreviewResponse");
+    assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode())
+        .isFalse();
+    assertThat(previewResponseSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
+        .isFalse();
+    assertThat(previewResponseSchemaJsonNode.at("/properties/contentHash").isMissingNode())
+        .isTrue();
+
+    var fileImportStatusSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, previewResponseSchemaJsonNode.at("/properties/fileImport"));
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/alreadyImported").isMissingNode())
+        .isFalse();
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/warningCode").isMissingNode())
+        .isFalse();
+    assertThat(fileImportStatusSchemaJsonNode.at("/properties/previousImport").isMissingNode())
+        .isFalse();
+    assertThat(requiredPropertyNames(fileImportStatusSchemaJsonNode))
+        .contains("alreadyImported")
+        .doesNotContain("warningCode", "previousImport");
+    var fileWarningCodeSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, fileImportStatusSchemaJsonNode.at("/properties/warningCode"));
+    assertThat(enumValues(fileWarningCodeSchemaJsonNode)).containsExactly("FILE_ALREADY_IMPORTED");
+    assertThat(schemaAllowsNull(fileWarningCodeSchemaJsonNode)).isFalse();
+
+    var previousImportSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, fileImportStatusSchemaJsonNode.at("/properties/previousImport"));
+    assertThat(previousImportSchemaJsonNode.at("/properties/originalFilename").isMissingNode())
+        .isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/importedAt").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/format").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/accountId").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/transactionCount").isMissingNode())
+        .isFalse();
+    assertThat(requiredPropertyNames(previousImportSchemaJsonNode)).doesNotContain("accountId");
+    assertThat(schemaAllowsNull(previousImportSchemaJsonNode.at("/properties/accountId")))
+        .isFalse();
+
     assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicate").isMissingNode())
         .isFalse();
     assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicateReason").isMissingNode())
         .isFalse();
+    assertThat(requiredPropertyNames(previewTransactionSchemaJsonNode))
+        .contains("duplicate")
+        .doesNotContain("duplicateReason");
     assertThat(
             previewTransactionSchemaJsonNode
                 .at("/properties/duplicate")
@@ -138,9 +181,19 @@ class TransactionOpenApiIntegrationTest {
             openApiJsonNode, previewTransactionSchemaJsonNode.at("/properties/duplicateReason"));
     assertThat(enumValues(duplicateReasonSchemaJsonNode))
         .containsExactlyInAnyOrder("EXISTING_TRANSACTION", "IN_BATCH");
+    assertThat(schemaAllowsNull(duplicateReasonSchemaJsonNode)).isFalse();
 
     var batchImportTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
+    var batchImportRequestSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/BatchImportRequest");
+    assertThat(
+            batchImportRequestSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
+        .isFalse();
+    assertThat(batchImportRequestSchemaJsonNode.at("/required").toString())
+        .contains("previewImportToken");
+    assertThat(batchImportRequestSchemaJsonNode.at("/properties/contentHash").isMissingNode())
+        .isTrue();
     assertThat(
             batchImportTransactionSchemaJsonNode.at("/properties/allowDuplicate").isMissingNode())
         .isFalse();
@@ -190,6 +243,39 @@ class TransactionOpenApiIntegrationTest {
     return StreamSupport.stream(schemaJsonNode.path("enum").spliterator(), false)
         .map(JsonNode::asText)
         .toList();
+  }
+
+  private List<String> requiredPropertyNames(JsonNode schemaJsonNode) {
+    return StreamSupport.stream(schemaJsonNode.path("required").spliterator(), false)
+        .map(JsonNode::asText)
+        .toList();
+  }
+
+  private boolean schemaAllowsNull(JsonNode schemaJsonNode) {
+    return schemaJsonNode.path("nullable").asBoolean(false)
+        || schemaTypeIncludes(schemaJsonNode, "null")
+        || enumIncludesNull(schemaJsonNode)
+        || composedSchemaAllowsNull(schemaJsonNode, "oneOf")
+        || composedSchemaAllowsNull(schemaJsonNode, "anyOf");
+  }
+
+  private boolean schemaTypeIncludes(JsonNode schemaJsonNode, String type) {
+    var typeJsonNode = schemaJsonNode.path("type");
+    if (typeJsonNode.isTextual()) {
+      return type.equals(typeJsonNode.asText());
+    }
+    return StreamSupport.stream(typeJsonNode.spliterator(), false)
+        .anyMatch(typeValueJsonNode -> type.equals(typeValueJsonNode.asText()));
+  }
+
+  private boolean enumIncludesNull(JsonNode schemaJsonNode) {
+    return StreamSupport.stream(schemaJsonNode.path("enum").spliterator(), false)
+        .anyMatch(JsonNode::isNull);
+  }
+
+  private boolean composedSchemaAllowsNull(JsonNode schemaJsonNode, String compositionKeyword) {
+    return StreamSupport.stream(schemaJsonNode.path(compositionKeyword).spliterator(), false)
+        .anyMatch(composedSchemaJsonNode -> schemaAllowsNull(composedSchemaJsonNode));
   }
 
   private String escapeJsonPointerToken(String value) {

@@ -6,5 +6,6 @@ import java.util.List;
 public record PreviewResult(
     String sourceFile,
     String detectedFormat,
-    List<PreviewTransaction> transactions,
-    List<PreviewWarning> warnings) {}
+    String previewImportToken,
+    PreviewFileImportStatus fileImport,
+    List<PreviewTransaction> transactions) {}

@@ -49,6 +49,10 @@ spring:
     validate-on-migrate: true
 
 budgetanalyzer:
+  transaction:
+    preview-import-token:
+      encryption-secret: ${PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET:}
+      ttl: ${PREVIEW_IMPORT_TOKEN_TTL:PT30M}
   service:
     http-logging:
       enabled: true

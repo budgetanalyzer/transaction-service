@@ -49,8 +49,10 @@ import org.budgetanalyzer.transaction.api.response.BatchImportResponse;
 import org.budgetanalyzer.transaction.api.response.BulkDeleteResponse;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
+import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
+import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
 @RestController
@@ -74,11 +76,15 @@ public class TransactionController {
 
   private final TransactionImportService transactionImportService;
   private final TransactionService transactionService;
+  private final PreviewImportTokenService previewImportTokenService;
 
   public TransactionController(
-      TransactionImportService transactionImportService, TransactionService transactionService) {
+      TransactionImportService transactionImportService,
+      TransactionService transactionService,
+      PreviewImportTokenService previewImportTokenService) {
     this.transactionImportService = transactionImportService;
     this.transactionService = transactionService;
+    this.previewImportTokenService = previewImportTokenService;
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")
@@ -87,9 +93,10 @@ public class TransactionController {
       description =
           "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
               + "before batch import. No data is persisted. The format parameter is required and "
-              + "determines which parser to use. The response includes parsing warnings and "
-              + "advisory duplicate metadata for existing owner-scoped transactions or earlier "
-              + "rows in the same preview payload.")
+              + "determines which parser to use. The response includes advisory duplicate "
+              + "metadata for existing owner-scoped transactions or earlier rows in the same "
+              + "preview payload, plus file-level import history status for exact reuploads "
+              + "by the authenticated user.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -125,6 +132,17 @@ public class TransactionController {
                         "type": "APPLICATION_ERROR",
                         "message": "Missing value for required column 'Description' at line 1",
                         "code": "CSV_PARSING_ERROR"
+                      }
+                      """),
+                      @ExampleObject(
+                          name = "Missing Original Filename",
+                          summary = "Multipart file part omitted the filename parameter",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Uploaded file must include an original filename.",
+                        "code": "MISSING_ORIGINAL_FILENAME"
                       }
                       """)
                     }))
@@ -168,7 +186,10 @@ public class TransactionController {
               + "user edits). Validates all transactions upfront and rejects the entire batch if "
               + "any fail. Duplicates matching the owner-scoped transaction key are skipped unless "
               + "allowDuplicate is true on the row. The response reports skipped duplicates and "
-              + "duplicates intentionally imported.")
+              + "duplicates intentionally imported. previewImportToken from the preview response "
+              + "is required and is verified before batch import processing starts. If duplicate "
+              + "filtering leaves no rows to create, the request fails with "
+              + "BATCH_IMPORT_NO_TRANSACTIONS_CREATED.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -198,6 +219,25 @@ public class TransactionController {
                         ]
                       }
                       """)
+                    })),
+        @ApiResponse(
+            responseCode = "422",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class),
+                    examples = {
+                      @ExampleObject(
+                          name = "No Transactions Created",
+                          summary = "All rows were skipped as duplicates",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "All submitted rows were skipped as duplicates.",
+                        "code": "BATCH_IMPORT_NO_TRANSACTIONS_CREATED"
+                      }
+                      """)
                     }))
       })
   @PostMapping(path = "/batch", consumes = "application/json", produces = "application/json")
@@ -206,15 +246,26 @@ public class TransactionController {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
     var userId = getCurrentUserId();
-    var serviceDtos =
+    var previewImportToken = requirePreviewImportToken(request);
+    var fileImportSource =
+        BatchFileImportSource.from(
+            previewImportTokenService.verifyToken(previewImportToken, userId));
+    var previewTransactions =
         request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
-    var result = transactionService.batchImport(serviceDtos, userId);
+    var result = transactionService.batchImport(previewTransactions, userId, fileImportSource);
 
     return new BatchImportResponse(
         result.createdTransactions().size(),
         result.duplicatesSkipped(),
         result.duplicatesImported(),
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
+  }
+
+  private String requirePreviewImportToken(BatchImportRequest request) {
+    if (request.previewImportToken() == null || request.previewImportToken().isBlank()) {
+      throw new InvalidRequestException("previewImportToken is required");
+    }
+    return request.previewImportToken();
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")

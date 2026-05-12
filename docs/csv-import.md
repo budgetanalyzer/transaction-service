@@ -162,8 +162,10 @@ No restart required - formats are loaded from database.
 ### Step 4: Preview Import
 
 Use the preview endpoint with your format key. Preview parses the file, returns
-editable transactions, and includes advisory duplicate indicators without
-persisting anything:
+editable transactions, includes advisory duplicate indicators, and reports
+whether the exact file bytes match a previous import record for the current user
+without persisting anything. It also returns an encrypted, time-limited
+`previewImportToken` for token-backed batch import recording:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
@@ -176,13 +178,27 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 
 Review the returned `transactions` array. Rows with `duplicate=true` are likely
 duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
-`IN_BATCH`.
+`IN_BATCH`. The preview response no longer contains a top-level `warnings`
+array; exact-file reupload status is represented by `fileImport`, and
+transaction duplicate status is represented on each transaction row.
+
+Review the returned `fileImport` object before batch import. If
+`alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
+record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
+Keep `previewImportToken` as opaque client state. The token identifies the
+uploaded source file without exposing the raw content hash or client-decodable
+payload fields and must be sent back with the reviewed batch request.
+The multipart `file` part must include a non-blank filename. Preview rejects
+uploads with a missing or whitespace-only original filename before parsing the
+file or returning `previewImportToken`.
 
 ### Step 5: Batch Import
 
 Submit the reviewed transactions to the batch endpoint. Omit `allowDuplicate`
 or set it to `false` for normal imports. Set it to `true` only for duplicate
-rows that should be intentionally imported:
+rows that should be intentionally imported. Include the `previewImportToken`
+from the preview response so the service can record `file_import` metadata and
+link newly created transactions to that import:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/batch \
@@ -190,6 +206,7 @@ curl -X POST http://localhost:8082/v1/transactions/batch \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:write" \
   -d '{
+    "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
     "transactions": [
       {
         "date": "2026-04-28",
@@ -230,7 +247,8 @@ Verify:
 **POST** `/v1/transactions/preview`
 
 **Parameters:**
-- `file` (multipart file, required) - CSV or PDF file to parse
+- `file` (multipart file, required) - CSV or PDF file to parse; must include a
+  non-blank multipart filename
 - `format` (string, required) - Format key from configuration
 - `accountId` (string, optional) - Account to associate with previewed transactions
 
@@ -249,32 +267,40 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 {
   "sourceFile": "statement.csv",
   "detectedFormat": "capital-one",
+  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
+  "fileImport": {
+    "alreadyImported": false
+  },
   "transactions": [
     {
       "date": "2026-04-28",
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "category": null,
       "bankName": "Capital One",
       "currencyIsoCode": "USD",
       "accountId": "checking-001",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
-  ],
-  "warnings": []
+  ]
 }
 ```
 
-**Error Response:** `400 Bad Request`
+**Missing Filename Error Response:** `422 Unprocessable Entity`
 ```json
 {
-  "timestamp": "2024-11-15T10:30:00Z",
-  "status": 400,
-  "error": "Bad Request",
+  "type": "APPLICATION_ERROR",
+  "message": "Uploaded file must include an original filename.",
+  "code": "MISSING_ORIGINAL_FILENAME"
+}
+```
+
+**Parsing Error Response:** `422 Unprocessable Entity`
+```json
+{
+  "type": "APPLICATION_ERROR",
   "message": "CSV parsing error in file 'statement.csv' at line 12: Invalid date format",
-  "path": "/v1/transactions/preview"
+  "code": "CSV_PARSING_ERROR"
 }
 ```
 
@@ -283,8 +309,13 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 **POST** `/v1/transactions/batch`
 
 **Request Body:**
+- `previewImportToken` (string, required) - Opaque token returned by preview
 - `transactions` (array, required) - Reviewed transactions from preview
 - `allowDuplicate` (boolean, optional per row) - Defaults to `false`
+
+The batch endpoint is token-backed. There is no manual no-file batch import
+path for file preview results: clients must submit the `previewImportToken`
+returned by the preview endpoint.
 
 **Response:** `200 OK`
 ```json
@@ -324,6 +355,23 @@ Duplicate reasons:
 - `EXISTING_TRANSACTION` - The preview row matches an active transaction
   already stored for the owner.
 - `IN_BATCH` - The row duplicates an earlier row in the same preview payload.
+
+File reupload status is separate from transaction duplicate detection. Preview
+sets `fileImport.alreadyImported=true` only when the exact uploaded bytes match a
+previous `file_import` record for the authenticated user. The response includes
+`warningCode=FILE_ALREADY_IMPORTED` plus previous import metadata
+(`originalFilename`, `importedAt`, `format`, `accountId`, and
+`transactionCount`) and never exposes the raw content hash. The encrypted
+`previewImportToken` is returned on every successful preview and expires based
+on transaction service configuration. Batch import requires the token and
+verifies it before service-layer validation, duplicate checks, or persistence.
+Missing, invalid, expired, or wrong-owner tokens fail the request. If all
+submitted rows are skipped as transaction duplicates, the request fails with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no `file_import` row is recorded.
+When rows are created, each token-backed batch transaction is linked to file
+import metadata. If the exact file was already recorded for the user, created
+rows link to the existing `file_import` row instead of creating a duplicate file
+import record.
 
 ## Implementation Details
 
@@ -436,7 +484,6 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 Potential improvements (not yet implemented):
 
-- File-content hash warning during preview for exact reuploads
 - Column order flexibility (currently order-dependent)
 - Optional column support
 - Custom data transformations

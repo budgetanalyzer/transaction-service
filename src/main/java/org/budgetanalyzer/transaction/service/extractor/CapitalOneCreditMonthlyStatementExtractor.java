@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.time.Month;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -100,7 +99,7 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
   }
 
   @Override
-  public ExtractionResult extract(byte[] fileContent, String accountId) {
+  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
       String fullText = extractTextFromPdf(fileContent, 1, Integer.MAX_VALUE);
 
@@ -117,7 +116,7 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
           "Extracted {} transactions from Capital One Credit Monthly Statement",
           transactions.size());
 
-      return new ExtractionResult(transactions, Collections.emptyList());
+      return transactions;
     } catch (BusinessException e) {
       throw e;
     } catch (Exception e) {
@@ -136,8 +135,7 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
   @Override
   public List<Transaction> extractEntities(
       byte[] fileContent, String accountId, FileImport fileImport) {
-    var result = extract(fileContent, accountId);
-    return result.transactions().stream()
+    return extract(fileContent, accountId).stream()
         .map(preview -> toTransaction(preview, fileImport))
         .toList();
   }
