@@ -290,6 +290,7 @@ class StatementFormatRepositoryIntegrationTest {
           .extracting(StatementFormat::getFormatKey)
           .containsExactlyInAnyOrder(
               "bkk-bank-statement-csv",
+              "bkk-bank-statement-pdf",
               "capital-one-credit-monthly-statement",
               "capital-one-credit-yearly-statement",
               "capital-one-bank-monthly-statement");
@@ -337,6 +338,19 @@ class StatementFormatRepositoryIntegrationTest {
       assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
       assertThat(format.get().getBankName()).isEqualTo("Capital One");
       assertThat(format.get().getDisplayName()).isEqualTo("Capital One Bank - Monthly Statement");
+      assertThat(format.get().getDateHeader()).isNull();
+      assertThat(format.get().getDescriptionHeader()).isNull();
+    }
+
+    @Test
+    void bangkokBankStatementPdfFormatHasCorrectConfiguration() {
+      var format = repository.findByFormatKey("bkk-bank-statement-pdf");
+
+      assertThat(format).isPresent();
+      assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
+      assertThat(format.get().getBankName()).isEqualTo("Bangkok Bank");
+      assertThat(format.get().getDefaultCurrencyIsoCode()).isEqualTo("THB");
+      assertThat(format.get().getDisplayName()).isEqualTo("Bangkok Bank - Statement PDF");
       assertThat(format.get().getDateHeader()).isNull();
       assertThat(format.get().getDescriptionHeader()).isNull();
     }

@@ -1,13 +1,22 @@
-# CSV Import System
+# Statement Import System
 
 ## Overview
 
-The CSV Import system provides configuration-driven parsing for multiple bank statement formats. Banks have different CSV export formats with varying column headers, date formats, and amount representations. This system eliminates the need for code changes when adding new bank formats.
+The statement import system provides configuration-driven CSV parsing and
+dedicated PDF extractors for multiple bank statement formats. Banks have
+different export formats with varying column headers, date formats, amount
+representations, and PDF layouts. CSV formats can usually be added without code
+changes; new PDF layouts require a dedicated `StatementExtractor`.
 
 ## Supported Banks
 
 Currently configured banks:
 - **Bangkok Bank** (THB) - Statement format
+
+Registered PDF formats:
+- **Capital One** (USD) - Credit monthly, credit yearly, and bank monthly statements
+- **Bangkok Bank** (THB) - Statement PDFs with `Date`, `Particulars`,
+  `Withdrawal`, and `Deposit` columns
 
 ## Configuration Structure
 
@@ -18,7 +27,7 @@ Statement formats are stored in the `statement_format` database table and manage
 ```sql
 CREATE TABLE statement_format (
     id BIGSERIAL PRIMARY KEY,
-    format_key VARCHAR(50) NOT NULL UNIQUE,  -- e.g., "capital-one"
+    format_key VARCHAR(50) NOT NULL UNIQUE,  -- e.g., "bkk-bank-statement-csv"
     format_type VARCHAR(10) NOT NULL,        -- CSV, PDF, XLSX
     bank_name VARCHAR(100) NOT NULL,
     default_currency_iso_code VARCHAR(3) NOT NULL,
@@ -91,7 +100,7 @@ Used by: Bangkok Bank
 
 See `V7__add_statement_format.sql` for all seeded formats. Here are sample CSVs:
 
-### Bangkok Bank (bkk-bank-statement format)
+### Bangkok Bank CSV (`bkk-bank-statement-csv`)
 
 **Sample CSV:**
 ```csv
@@ -99,6 +108,25 @@ Date,Particulars,Withdrawal,Deposit
 15/11/24,Coffee Shop,150.00,
 14/11/24,Transfer,,5000.00
 ```
+
+### Bangkok Bank PDF (`bkk-bank-statement-pdf`)
+
+The seeded PDF format uses display name `Bangkok Bank - Statement PDF`, bank
+name `Bangkok Bank`, and default currency `THB`. The dedicated PDF extractor
+detects statement PDFs by requiring Bangkok Bank text plus a transaction table
+with date rows after the expected `Date Particulars ... Withdrawal Deposit`
+header. The native statement layout may include non-transaction columns such as
+`Chq.No.`, `Balance`, and `Via`.
+
+Transaction rows are parsed only after that header. Repeated headers on later
+pages continue the same table. Withdrawal amounts import as `DEBIT`, deposit
+amounts import as `CREDIT`, optional trailing `Balance` column values are
+ignored, dates use `dd/MM/yy`, and amounts are stored as positive THB values. A
+balance-forward row such as `B/F` is ignored because it carries only a running
+balance, not a transaction amount. Rows that do not match the transaction row
+shape are ignored; ambiguous rows with both amount columns populated or no
+populated amount column fail with `PDF_PARSING_ERROR`. CSV-specific
+configuration columns remain null for this format.
 
 ## Date Format Patterns
 
@@ -258,7 +286,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
   -F "file=@statement.csv" \
-  -F "format=capital-one" \
+  -F "format=bkk-bank-statement-csv" \
   -F "accountId=checking-001"
 ```
 
@@ -266,7 +294,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 ```json
 {
   "sourceFile": "statement.csv",
-  "detectedFormat": "capital-one",
+  "detectedFormat": "bkk-bank-statement-csv",
   "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": false
@@ -277,8 +305,8 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "bankName": "Capital One",
-      "currencyIsoCode": "USD",
+      "bankName": "Bangkok Bank",
+      "currencyIsoCode": "THB",
       "accountId": "checking-001",
       "duplicate": false
     }
