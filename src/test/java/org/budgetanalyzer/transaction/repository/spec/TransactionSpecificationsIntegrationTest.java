@@ -3,7 +3,9 @@ package org.budgetanalyzer.transaction.repository.spec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
 /**
  * Integration tests for {@link TransactionSpecifications}.
@@ -361,6 +364,76 @@ class TransactionSpecificationsIntegrationTest {
     // Then: only transaction matching ALL criteria is returned
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getDescription()).isEqualTo("Amazon Prime");
+  }
+
+  @Test
+  void withCriteria_appliesOwnerTypeDateAmountAndTimestampFilters() {
+    // Given: transactions that differ across the shared criteria fields
+    final var createdAfter = Instant.now().minusSeconds(60);
+    var matchingTransaction =
+        createComplexTransaction(
+            "Matching transaction", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    matchingTransaction.setOwnerId("user-A");
+    matchingTransaction.setDate(LocalDate.of(2025, 1, 15));
+    matchingTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(matchingTransaction);
+
+    var otherOwnerTransaction =
+        createComplexTransaction(
+            "Other owner", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    otherOwnerTransaction.setOwnerId("user-B");
+    otherOwnerTransaction.setDate(LocalDate.of(2025, 1, 15));
+    otherOwnerTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(otherOwnerTransaction);
+
+    var wrongTypeTransaction =
+        createComplexTransaction(
+            "Wrong type", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    wrongTypeTransaction.setOwnerId("user-A");
+    wrongTypeTransaction.setDate(LocalDate.of(2025, 1, 15));
+    wrongTypeTransaction.setType(TransactionType.CREDIT);
+    transactionRepository.save(wrongTypeTransaction);
+
+    var outsideDateTransaction =
+        createComplexTransaction(
+            "Outside date", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    outsideDateTransaction.setOwnerId("user-A");
+    outsideDateTransaction.setDate(LocalDate.of(2025, 2, 15));
+    outsideDateTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(outsideDateTransaction);
+
+    var outsideAmountTransaction =
+        createComplexTransaction(
+            "Outside amount", "checking-123", "Capital One", BigDecimal.valueOf(500));
+    outsideAmountTransaction.setOwnerId("user-A");
+    outsideAmountTransaction.setDate(LocalDate.of(2025, 1, 15));
+    outsideAmountTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(outsideAmountTransaction);
+
+    var criteria =
+        new TransactionCriteria(
+            null,
+            "user-A",
+            Set.of("checking"),
+            Set.of("capital"),
+            LocalDate.of(2025, 1, 1),
+            LocalDate.of(2025, 1, 31),
+            Set.of("USD"),
+            BigDecimal.valueOf(25),
+            BigDecimal.valueOf(75),
+            TransactionType.DEBIT,
+            null,
+            createdAfter,
+            Instant.now().plusSeconds(60),
+            createdAfter,
+            Instant.now().plusSeconds(60));
+
+    // When: shared internal criteria are applied
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    // Then: all criteria predicates are combined with AND
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getDescription()).isEqualTo("Matching transaction");
   }
 
   @Test

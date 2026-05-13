@@ -34,6 +34,7 @@ import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
 @ExtendWith(MockitoExtension.class)
 class SavedViewServiceTest {
@@ -360,7 +361,7 @@ class SavedViewServiceTest {
   // ==================== owner scoping regression ====================
 
   @Test
-  void criteriaToFilter_setsOwnerIdFromParameter() {
+  void transactionCriteriaFromViewCriteria_setsOwnerIdFromParameter() {
     var criteria =
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
@@ -373,13 +374,13 @@ class SavedViewServiceTest {
             null,
             null);
 
-    var filter = savedViewService.criteriaToFilter(criteria, false, USER_ID);
+    var transactionCriteria = TransactionCriteria.fromViewCriteria(criteria, USER_ID, false);
 
-    assertThat(filter.ownerId()).isEqualTo(USER_ID);
+    assertThat(transactionCriteria.ownerId()).isEqualTo(USER_ID);
   }
 
   @Test
-  void criteriaToFilter_mapsDateRangeAndType() {
+  void transactionCriteriaFromViewCriteria_mapsDateRangeAndType() {
     var criteria =
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
@@ -392,11 +393,11 @@ class SavedViewServiceTest {
             TransactionType.DEBIT,
             null);
 
-    var filter = savedViewService.criteriaToFilter(criteria, false, USER_ID);
+    var transactionCriteria = TransactionCriteria.fromViewCriteria(criteria, USER_ID, false);
 
-    assertThat(filter.dateFrom()).isEqualTo(LocalDate.of(2024, 12, 1));
-    assertThat(filter.dateTo()).isEqualTo(LocalDate.of(2024, 12, 31));
-    assertThat(filter.type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(transactionCriteria.dateFrom()).isEqualTo(LocalDate.of(2024, 12, 1));
+    assertThat(transactionCriteria.dateTo()).isEqualTo(LocalDate.of(2024, 12, 31));
+    assertThat(transactionCriteria.type()).isEqualTo(TransactionType.DEBIT);
   }
 
   @Test

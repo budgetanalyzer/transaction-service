@@ -206,13 +206,15 @@ find src/main/java/org/budgetanalyzer/transaction -type d | sort
 ### Layering — `TransactionFilter` crossing
 
 `TransactionFilter` lives in `api/request/` and is imported directly by
-`TransactionService`, `SavedViewService`, and `TransactionSpecifications`.
+`TransactionService`, `TransactionCriteria`, and the compatibility overload in
+`TransactionSpecifications`.
 This is an **intentional** `service → api.request` crossing: the record
 carries `@DateTimeFormat` bind annotations for Spring MVC query-parameter
 binding, and its fields map 1:1 to the JPA spec built in
-`TransactionSpecifications.withFilter(...)`. Moving it to `service/dto/`
-would require translating between two identical records on every call. All
-other service → api crossings have been eliminated (see
+`TransactionCriteria.fromFilter(...)`, which then feeds
+`TransactionSpecifications.withCriteria(...)`. Moving it to `service/dto/`
+would require translating between two identical records at the HTTP boundary.
+All other service → api crossings have been eliminated (see
 `docs/plans/service-api-layering-fixes.md`).
 
 If a new `service → api` import appears outside this single exception,

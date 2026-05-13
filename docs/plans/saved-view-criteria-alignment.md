@@ -4,9 +4,17 @@
 
 Phase 1 is implemented in `transaction-service`: saved-view criteria now use
 `dateFrom` and `dateTo`, persist and return `type`, and map `type` into
-transaction filtering. The remaining backend gaps are the shared internal
-criteria model, real multi-value matching for plural fields, and the text-search
-contract decision.
+transaction filtering.
+
+Phase 2 is implemented in `transaction-service`: transaction search and
+saved-view matching now map into shared internal `TransactionCriteria`, and
+`TransactionSpecifications.withCriteria(...)` is the primary predicate builder.
+The compatibility `withFilter(...)` overload delegates through the internal
+criteria model. Observable query behavior is intentionally unchanged from
+Phase 1.
+
+The remaining backend gaps are real multi-value matching for plural fields and
+the text-search contract decision.
 
 ## Problem
 
