@@ -13,8 +13,14 @@ The compatibility `withFilter(...)` overload delegates through the internal
 criteria model. Observable query behavior is intentionally unchanged from
 Phase 1.
 
-The remaining backend gaps are real multi-value matching for plural fields and
-the text-search contract decision.
+Phase 3 is implemented in `transaction-service`: saved-view `accountIds`,
+`bankNames`, and `currencyIsoCodes` now apply every supplied value instead of
+silently using only the first one. Blank plural-field entries are ignored.
+
+Phase 4 is implemented in `transaction-service`: saved-view `searchText` and
+the transaction-search `searchText` query parameter match transaction
+descriptions or bank names. The existing transaction-search `description`
+query parameter remains description-only for compatibility.
 
 ## Problem
 
@@ -58,9 +64,10 @@ Saved views also have misleading multi-value fields. `accountIds`,
 `SavedViewService.criteriaToFilter(...)` only uses the first value from each
 set. That makes the API look more capable than the behavior.
 
-Text search also differs. The Transactions screen search matches description
-or bank name, while saved view `searchText` is mapped to transaction
-description only.
+Text search is now explicit. The transaction-search `searchText` query
+parameter and saved-view `searchText` both match description or bank name. The
+older transaction-search `description` query parameter remains
+description-only.
 
 ## Target Contract
 
@@ -184,9 +191,10 @@ Benefits:
    - Use `searchText` for saved views.
    - Match the Transactions screen behavior: text search matches description
      or bank name.
-   - Make transaction search decide whether its existing `description`
-     parameter should remain description-only or map into the same `searchText`
-     behavior. If changed, document it as a search behavior change.
+   - Keep transaction search's existing `description` parameter
+     description-only.
+   - Add transaction search `searchText` for broad description-or-bank-name
+     matching.
 
 7. Remove saved-view conversion through single-value `TransactionFilter`:
    - Replace `SavedViewService.criteriaToFilter(...)` with mapping to the
@@ -239,9 +247,9 @@ Benefits:
 
 ## Open Questions
 
-1. Should transaction search's existing `description` parameter remain
-   description-only, or should it be renamed/extended to the same broad
-   `searchText` behavior as saved views and the Transactions screen?
+1. Resolved in Phase 4: transaction search's existing `description` parameter
+   remains description-only, and a separate `searchText` query parameter uses
+   the same broad description-or-bank-name behavior as saved views.
 
 2. Should currency be added to the Transactions screen as a filter before it is
    retained in saved-view criteria?
@@ -335,10 +343,9 @@ Implementation steps:
    - Add `withCriteria(TransactionCriteria criteria)`.
    - Make existing `withFilter(TransactionFilter filter)` delegate through the
      mapper for compatibility.
-   - Keep the existing text predicate behavior unchanged in this phase:
-     transaction search `description` and saved-view `searchText` both still
-     target transaction descriptions only. Phase 4 decides whether text search
-     should broaden to description-or-bank-name matching.
+   - Keep the existing text predicate behavior unchanged in this phase. Phase
+     4 later broadened saved-view `searchText` and introduced transaction
+     search `searchText` for description-or-bank-name matching.
 4. Update `SavedViewService`:
    - Replace saved-view filtering through `TransactionFilter` with
      `TransactionCriteria`.
@@ -417,8 +424,8 @@ Implementation steps:
 1. Decide the contract:
    - Option A: keep transaction search `description` description-only and make
      saved-view `searchText` description-only.
-   - Option B: introduce or document broad `searchText` behavior that matches
-     description or bank name, matching the Transactions screen.
+   - Option B, chosen: introduce and document broad `searchText` behavior that
+     matches description or bank name, matching the Transactions screen.
 2. Implement the chosen predicate behavior in `TransactionSpecifications`.
 3. If Option B is chosen:
    - Add a query parameter only if needed by the public API.

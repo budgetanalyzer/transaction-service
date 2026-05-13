@@ -1067,6 +1067,7 @@ class TransactionControllerTest {
                 .param("type", "DEBIT")
                 .param("currencyIsoCode", "USD")
                 .param("description", "Coffee")
+                .param("searchText", "Capital")
                 .param("dateFrom", "2025-01-01")
                 .param("dateTo", "2025-12-31")
                 .param("minAmount", "10.00")
@@ -1082,6 +1083,7 @@ class TransactionControllerTest {
     assertThat(filter.type()).isEqualTo(TransactionType.DEBIT);
     assertThat(filter.currencyIsoCode()).isEqualTo("USD");
     assertThat(filter.description()).isEqualTo("Coffee");
+    assertThat(filter.searchText()).isEqualTo("Capital");
     assertThat(filter.dateFrom()).isEqualTo(LocalDate.of(2025, 1, 1));
     assertThat(filter.dateTo()).isEqualTo(LocalDate.of(2025, 12, 31));
     assertThat(filter.minAmount()).isEqualByComparingTo(new BigDecimal("10.00"));

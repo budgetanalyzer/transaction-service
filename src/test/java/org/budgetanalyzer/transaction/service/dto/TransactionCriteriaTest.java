@@ -36,6 +36,7 @@ class TransactionCriteriaTest {
             BigDecimal.valueOf(100),
             TransactionType.DEBIT,
             "coffee",
+            "capital",
             createdAfter,
             createdBefore,
             updatedAfter,
@@ -53,11 +54,25 @@ class TransactionCriteriaTest {
     assertThat(criteria.minAmount()).isEqualByComparingTo("10");
     assertThat(criteria.maxAmount()).isEqualByComparingTo("100");
     assertThat(criteria.type()).isEqualTo(TransactionType.DEBIT);
-    assertThat(criteria.searchText()).isEqualTo("coffee");
+    assertThat(criteria.description()).isEqualTo("coffee");
+    assertThat(criteria.searchText()).isEqualTo("capital");
     assertThat(criteria.createdAfter()).isEqualTo(createdAfter);
     assertThat(criteria.createdBefore()).isEqualTo(createdBefore);
     assertThat(criteria.updatedAfter()).isEqualTo(updatedAfter);
     assertThat(criteria.updatedBefore()).isEqualTo(updatedBefore);
+  }
+
+  @Test
+  void fromFilter_dropsBlankSingletonFilterValues() {
+    var filter =
+        new TransactionFilter(
+            null, null, " ", "", null, null, "\t", null, null, null, null, null, null, null, null);
+
+    var criteria = TransactionCriteria.fromFilter(filter);
+
+    assertThat(criteria.accountIds()).isNull();
+    assertThat(criteria.bankNames()).isNull();
+    assertThat(criteria.currencyIsoCodes()).isNull();
   }
 
   @Test
@@ -86,6 +101,7 @@ class TransactionCriteriaTest {
     assertThat(criteria.minAmount()).isEqualByComparingTo("10");
     assertThat(criteria.maxAmount()).isEqualByComparingTo("100");
     assertThat(criteria.type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(criteria.description()).isNull();
     assertThat(criteria.searchText()).isEqualTo("coffee");
     assertThat(criteria.createdAfter()).isNull();
     assertThat(criteria.createdBefore()).isNull();
@@ -100,5 +116,22 @@ class TransactionCriteriaTest {
     var criteria = TransactionCriteria.fromViewCriteria(viewCriteria, USER_ID, true);
 
     assertThat(criteria.dateTo()).isEqualTo(LocalDate.now());
+  }
+
+  @Test
+  void fromViewCriteria_dropsNullBlankAndEmptySetValues() {
+    var accountIds = new java.util.HashSet<String>();
+    accountIds.add("checking-123");
+    accountIds.add("");
+    accountIds.add(null);
+    var bankNames = Set.of("Capital One", " ");
+    var viewCriteria =
+        new ViewCriteria(null, null, accountIds, bankNames, Set.of(), null, null, null, null);
+
+    var criteria = TransactionCriteria.fromViewCriteria(viewCriteria, USER_ID, false);
+
+    assertThat(criteria.accountIds()).containsExactly("checking-123");
+    assertThat(criteria.bankNames()).containsExactly("Capital One");
+    assertThat(criteria.currencyIsoCodes()).isNull();
   }
 }

@@ -3,7 +3,9 @@ package org.budgetanalyzer.transaction.service.dto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.TransactionType;
@@ -25,7 +27,8 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
  * @param minAmount inclusive amount lower bound
  * @param maxAmount inclusive amount upper bound
  * @param type transaction type to match
- * @param searchText text to match against transaction descriptions
+ * @param description text to match against transaction descriptions only
+ * @param searchText text to match against transaction descriptions or bank names
  * @param createdAfter inclusive creation timestamp lower bound
  * @param createdBefore inclusive creation timestamp upper bound
  * @param updatedAfter inclusive update timestamp lower bound
@@ -42,16 +45,65 @@ public record TransactionCriteria(
     BigDecimal minAmount,
     BigDecimal maxAmount,
     TransactionType type,
+    String description,
     String searchText,
     Instant createdAfter,
     Instant createdBefore,
     Instant updatedAfter,
     Instant updatedBefore) {
 
+  /** Normalizes optional multi-value criteria. */
+  public TransactionCriteria {
+    accountIds = normalizeValues(accountIds);
+    bankNames = normalizeValues(bankNames);
+    currencyIsoCodes = normalizeValues(currencyIsoCodes);
+  }
+
+  /**
+   * Creates criteria using the pre-searchText internal criteria contract.
+   *
+   * <p>The supplied text value maps to broad {@code searchText} semantics.
+   */
+  public TransactionCriteria(
+      Long id,
+      String ownerId,
+      Set<String> accountIds,
+      Set<String> bankNames,
+      LocalDate dateFrom,
+      LocalDate dateTo,
+      Set<String> currencyIsoCodes,
+      BigDecimal minAmount,
+      BigDecimal maxAmount,
+      TransactionType type,
+      String searchText,
+      Instant createdAfter,
+      Instant createdBefore,
+      Instant updatedAfter,
+      Instant updatedBefore) {
+    this(
+        id,
+        ownerId,
+        accountIds,
+        bankNames,
+        dateFrom,
+        dateTo,
+        currencyIsoCodes,
+        minAmount,
+        maxAmount,
+        type,
+        null,
+        searchText,
+        createdAfter,
+        createdBefore,
+        updatedAfter,
+        updatedBefore);
+  }
+
   /** Creates an empty criteria with all filters unset. */
   public static TransactionCriteria empty() {
     return new TransactionCriteria(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 
   /**
@@ -80,6 +132,7 @@ public record TransactionCriteria(
         filter.maxAmount(),
         filter.type(),
         filter.description(),
+        filter.searchText(),
         filter.createdAfter(),
         filter.createdBefore(),
         filter.updatedAfter(),
@@ -117,6 +170,7 @@ public record TransactionCriteria(
         effectiveCriteria.minAmount(),
         effectiveCriteria.maxAmount(),
         effectiveCriteria.type(),
+        null,
         effectiveCriteria.searchText(),
         null,
         null,
@@ -126,5 +180,19 @@ public record TransactionCriteria(
 
   private static Set<String> singletonSet(String value) {
     return value == null ? null : Set.of(value);
+  }
+
+  private static Set<String> normalizeValues(Set<String> values) {
+    if (values == null || values.isEmpty()) {
+      return null;
+    }
+
+    var normalizedValues =
+        values.stream()
+            .filter(Objects::nonNull)
+            .filter(value -> !value.isBlank())
+            .collect(Collectors.toUnmodifiableSet());
+
+    return normalizedValues.isEmpty() ? null : normalizedValues;
   }
 }

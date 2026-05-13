@@ -32,6 +32,8 @@ public class TransactionSpecifications {
    *   <li>Multiple words: OR predicate (e.g., "amazon prime" matches descriptions containing
    *       "amazon" OR "prime")
    *   <li>Special characters (%, _) are escaped to prevent wildcard matching
+   *   <li>Description filters match only the description field
+   *   <li>Search-text filters match description or bank name
    * </ul>
    *
    * <p>For date, timestamp, and numeric range fields, appropriate greater-than / less-than
@@ -55,34 +57,43 @@ public class TransactionSpecifications {
         predicates.add(cb.equal(root.get("ownerId"), effectiveCriteria.ownerId()));
       }
 
-      // Account ID (case-insensitive LIKE with multi-word OR support)
+      // Account IDs (case-insensitive LIKE with multi-word OR support)
       Predicate accountIdPredicate =
-          createTextFilterPredicate(
-              cb, root.get("accountId"), firstValue(effectiveCriteria.accountIds()));
+          createAnyTextFilterPredicate(cb, root.get("accountId"), effectiveCriteria.accountIds());
       if (accountIdPredicate != null) {
         predicates.add(accountIdPredicate);
       }
 
-      // Bank name (case-insensitive LIKE with multi-word OR support)
+      // Bank names (case-insensitive LIKE with multi-word OR support)
       Predicate bankNamePredicate =
-          createTextFilterPredicate(
-              cb, root.get("bankName"), firstValue(effectiveCriteria.bankNames()));
+          createAnyTextFilterPredicate(cb, root.get("bankName"), effectiveCriteria.bankNames());
       if (bankNamePredicate != null) {
         predicates.add(bankNamePredicate);
       }
 
-      // Currency code (case-insensitive exact match)
-      var currencyIsoCode = firstValue(effectiveCriteria.currencyIsoCodes());
-      if (currencyIsoCode != null && !currencyIsoCode.isBlank()) {
-        predicates.add(
-            cb.equal(cb.lower(root.get("currencyIsoCode")), currencyIsoCode.toLowerCase()));
+      // Currency codes (case-insensitive exact match)
+      Predicate currencyIsoCodePredicate =
+          createAnyCaseInsensitiveExactPredicate(
+              cb, root.get("currencyIsoCode"), effectiveCriteria.currencyIsoCodes());
+      if (currencyIsoCodePredicate != null) {
+        predicates.add(currencyIsoCodePredicate);
       }
 
       // Description (case-insensitive LIKE with multi-word OR support)
       Predicate descriptionPredicate =
-          createTextFilterPredicate(cb, root.get("description"), effectiveCriteria.searchText());
+          createTextFilterPredicate(cb, root.get("description"), effectiveCriteria.description());
       if (descriptionPredicate != null) {
         predicates.add(descriptionPredicate);
+      }
+
+      // Search text (case-insensitive LIKE against description or bank name)
+      Predicate searchTextPredicate =
+          createAnyFieldTextFilterPredicate(
+              cb,
+              List.of(root.get("description"), root.get("bankName")),
+              effectiveCriteria.searchText());
+      if (searchTextPredicate != null) {
+        predicates.add(searchTextPredicate);
       }
 
       // Transaction type (enum)
@@ -165,12 +176,65 @@ public class TransactionSpecifications {
     return input.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
 
-  private static String firstValue(Set<String> values) {
-    if (values == null || values.isEmpty()) {
+  private static Predicate createAnyTextFilterPredicate(
+      CriteriaBuilder cb, Expression<String> fieldPath, Set<String> filterValues) {
+    if (filterValues == null || filterValues.isEmpty()) {
       return null;
     }
 
-    return values.iterator().next();
+    List<Predicate> valuePredicates = new ArrayList<>();
+    for (var filterValue : filterValues) {
+      var valuePredicate = createTextFilterPredicate(cb, fieldPath, filterValue);
+      if (valuePredicate != null) {
+        valuePredicates.add(valuePredicate);
+      }
+    }
+
+    return combineWithOr(cb, valuePredicates);
+  }
+
+  private static Predicate createAnyCaseInsensitiveExactPredicate(
+      CriteriaBuilder cb, Expression<String> fieldPath, Set<String> filterValues) {
+    if (filterValues == null || filterValues.isEmpty()) {
+      return null;
+    }
+
+    var normalizedValues =
+        filterValues.stream()
+            .filter(Objects::nonNull)
+            .filter(value -> !value.isBlank())
+            .map(String::toLowerCase)
+            .toList();
+    if (normalizedValues.isEmpty()) {
+      return null;
+    }
+
+    return cb.lower(fieldPath).in(normalizedValues);
+  }
+
+  private static Predicate combineWithOr(CriteriaBuilder cb, List<Predicate> predicates) {
+    if (predicates == null || predicates.isEmpty()) {
+      return null;
+    }
+
+    return predicates.size() == 1 ? predicates.get(0) : cb.or(predicates.toArray(new Predicate[0]));
+  }
+
+  private static Predicate createAnyFieldTextFilterPredicate(
+      CriteriaBuilder cb, List<Expression<String>> fieldPaths, String filterValue) {
+    if (fieldPaths == null || fieldPaths.isEmpty()) {
+      return null;
+    }
+
+    List<Predicate> fieldPredicates = new ArrayList<>();
+    for (var fieldPath : fieldPaths) {
+      var fieldPredicate = createTextFilterPredicate(cb, fieldPath, filterValue);
+      if (fieldPredicate != null) {
+        fieldPredicates.add(fieldPredicate);
+      }
+    }
+
+    return combineWithOr(cb, fieldPredicates);
   }
 
   /**
@@ -205,8 +269,6 @@ public class TransactionSpecifications {
       return null;
     }
 
-    return wordPredicates.size() == 1
-        ? wordPredicates.get(0)
-        : cb.or(wordPredicates.toArray(new Predicate[0]));
+    return combineWithOr(cb, wordPredicates);
   }
 }

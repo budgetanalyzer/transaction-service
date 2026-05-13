@@ -79,6 +79,31 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
+  void withFilter_descriptionDoesNotMatchBankName() {
+    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Grocery Store", "Bangkok Bank"));
+
+    var spec = TransactionSpecifications.withFilter(filterByDescription("capital"));
+    var results = transactionRepository.findAll(spec);
+
+    assertThat(results).isEmpty();
+  }
+
+  @Test
+  void withFilter_searchTextMatchesDescriptionOrBankName() {
+    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Neighborhood Bank"));
+    transactionRepository.save(createTransactionWithBank("Grocery Store", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Fuel Stop", "Bangkok Bank"));
+
+    var spec = TransactionSpecifications.withFilter(filterBySearchText("coffee capital"));
+    var results = transactionRepository.findAll(spec);
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Coffee Shop", "Grocery Store");
+  }
+
+  @Test
   void withFilter_descriptionMultipleWords_matchesAnyWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
@@ -219,6 +244,24 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("checking_account", "credit_card");
   }
 
+  @Test
+  void withCriteria_accountIdsMatchesAnyProvidedValue() {
+    transactionRepository.save(
+        createTransactionWithAccount("Checking transaction", "checking-123", BigDecimal.TEN));
+    transactionRepository.save(
+        createTransactionWithAccount("Savings transaction", "savings-456", BigDecimal.TEN));
+    transactionRepository.save(
+        createTransactionWithAccount("Brokerage transaction", "brokerage-789", BigDecimal.TEN));
+
+    var criteria = criteriaWithValues(Set.of("checking-123", "savings-456"), null, null);
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Checking transaction", "Savings transaction");
+  }
+
   // ==================== Bank Name Filter Tests ====================
 
   @Test
@@ -257,6 +300,21 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("Wells Fargo", "Chase Bank");
   }
 
+  @Test
+  void withCriteria_bankNamesMatchesAnyProvidedValue() {
+    transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
+    transactionRepository.save(createTransactionWithBank("Truist transaction", "Truist"));
+
+    var criteria = criteriaWithValues(null, Set.of("capital", "bangkok"), null);
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Capital transaction", "Bangkok transaction");
+  }
+
   // ==================== Currency Code Filter Tests ====================
 
   @Test
@@ -273,6 +331,39 @@ class TransactionSpecificationsIntegrationTest {
     // Then: only USD transactions are returned
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getCurrencyIsoCode()).isEqualTo("USD");
+  }
+
+  @Test
+  void withCriteria_currencyIsoCodesMatchesAnyProvidedValueCaseInsensitive() {
+    transactionRepository.save(createTransactionWithCurrency("Dollar transaction", "USD"));
+    transactionRepository.save(createTransactionWithCurrency("Baht transaction", "THB"));
+    transactionRepository.save(createTransactionWithCurrency("Euro transaction", "EUR"));
+
+    var criteria = criteriaWithValues(null, null, Set.of("usd", "thb"));
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Dollar transaction", "Baht transaction");
+  }
+
+  @Test
+  void withCriteria_blankSetValuesAreIgnored() {
+    transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
+
+    var bankNames = new java.util.HashSet<String>();
+    bankNames.add("capital");
+    bankNames.add("");
+    bankNames.add(" ");
+    var criteria = criteriaWithValues(Set.of(), bankNames, Set.of());
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactly("Capital transaction");
   }
 
   // ==================== Transaction Type Filter Tests ====================
@@ -612,6 +703,26 @@ class TransactionSpecificationsIntegrationTest {
         null);
   }
 
+  private TransactionFilter filterBySearchText(String searchText) {
+    return new TransactionFilter(
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        searchText,
+        null,
+        null,
+        null,
+        null);
+  }
+
   private TransactionFilter filterByOwnerId(String ownerId) {
     return new TransactionFilter(
         null, ownerId, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -689,6 +800,26 @@ class TransactionSpecificationsIntegrationTest {
   private TransactionFilter emptyFilter() {
     return new TransactionFilter(
         null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+  }
+
+  private TransactionCriteria criteriaWithValues(
+      Set<String> accountIds, Set<String> bankNames, Set<String> currencyIsoCodes) {
+    return new TransactionCriteria(
+        null,
+        null,
+        accountIds,
+        bankNames,
+        null,
+        null,
+        currencyIsoCodes,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
   // Transaction factory methods

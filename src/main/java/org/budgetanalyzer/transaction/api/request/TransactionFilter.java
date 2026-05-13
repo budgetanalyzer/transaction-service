@@ -46,6 +46,10 @@ public record TransactionFilter(
         TransactionType type,
     @Schema(description = "Text to match in the transaction description", example = "Grocery")
         String description,
+    @Schema(
+            description = "Text to match in the transaction description or bank name",
+            example = "Capital")
+        String searchText,
     @Schema(description = "Start of creation timestamp range", example = "2025-10-14T00:00:00Z")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant createdAfter,
@@ -59,9 +63,51 @@ public record TransactionFilter(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         Instant updatedBefore) {
 
+  /**
+   * Creates a filter using the legacy transaction-search contract.
+   *
+   * <p>The legacy {@code description} parameter remains description-only. Use {@code searchText}
+   * for broad description-or-bank-name matching.
+   */
+  public TransactionFilter(
+      Long id,
+      String ownerId,
+      String accountId,
+      String bankName,
+      LocalDate dateFrom,
+      LocalDate dateTo,
+      String currencyIsoCode,
+      BigDecimal minAmount,
+      BigDecimal maxAmount,
+      TransactionType type,
+      String description,
+      Instant createdAfter,
+      Instant createdBefore,
+      Instant updatedAfter,
+      Instant updatedBefore) {
+    this(
+        id,
+        ownerId,
+        accountId,
+        bankName,
+        dateFrom,
+        dateTo,
+        currencyIsoCode,
+        minAmount,
+        maxAmount,
+        type,
+        description,
+        null,
+        createdAfter,
+        createdBefore,
+        updatedAfter,
+        updatedBefore);
+  }
+
   /** Creates an empty filter with all criteria set to null. */
   public static TransactionFilter empty() {
     return new TransactionFilter(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+        null);
   }
 }

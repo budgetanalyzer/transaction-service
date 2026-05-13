@@ -568,6 +568,7 @@ public class TransactionController {
         || hasText(filter.bankName())
         || hasText(filter.currencyIsoCode())
         || hasText(filter.description())
+        || hasText(filter.searchText())
         || filter.type() != null;
   }
 

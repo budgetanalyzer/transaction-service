@@ -83,6 +83,7 @@ class TransactionOpenApiIntegrationTest {
             "maxAmount",
             "type",
             "description",
+            "searchText",
             "createdAfter",
             "createdBefore",
             "updatedAfter",

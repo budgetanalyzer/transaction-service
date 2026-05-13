@@ -28,7 +28,9 @@ public record ViewCriteriaApi(
             allowableValues = {"CREDIT", "DEBIT"},
             example = "DEBIT")
         TransactionType type,
-    @Schema(description = "Text to match in the transaction description", example = "coffee")
+    @Schema(
+            description = "Text to match in the transaction description or bank name",
+            example = "coffee")
         String searchText) {
 
   /** Converts this API criteria to a domain ViewCriteria. */

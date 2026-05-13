@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -109,13 +110,226 @@ class SavedViewServiceIntegrationTest {
     assertThat(membership.matched()).containsExactly(inRangeTransaction.getId());
   }
 
+  @Test
+  void getViewTransactions_multipleBankNamesIncludeAllListedBanks() {
+    final var capitalOneTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Capital One transaction",
+                LocalDate.of(2024, 12, 15),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Capital One",
+                "USD"));
+    var bangkokBankTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Bangkok Bank transaction",
+                LocalDate.of(2024, 12, 16),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Bangkok Bank",
+                "THB"));
+    transactionRepository.save(
+        createTransaction(
+            "Truist transaction",
+            LocalDate.of(2024, 12, 17),
+            TransactionType.DEBIT,
+            "checking-12345",
+            "Truist",
+            "USD"));
+
+    var criteria =
+        new ViewCriteria(
+            null, null, null, Set.of("capital", "bangkok"), null, null, null, null, null);
+    var view = savedViewService.createView(USER_ID, new SavedViewCommand("Banks", criteria, false));
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+
+    assertThat(membership.matched())
+        .containsExactly(capitalOneTransaction.getId(), bangkokBankTransaction.getId());
+  }
+
+  @Test
+  void getViewTransactions_multipleAccountIdsIncludeAllListedAccounts() {
+    var checkingTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Checking transaction",
+                LocalDate.of(2024, 12, 15),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Capital One",
+                "USD"));
+    var savingsTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Savings transaction",
+                LocalDate.of(2024, 12, 16),
+                TransactionType.DEBIT,
+                "savings-67890",
+                "Capital One",
+                "USD"));
+    transactionRepository.save(
+        createTransaction(
+            "Brokerage transaction",
+            LocalDate.of(2024, 12, 17),
+            TransactionType.DEBIT,
+            "brokerage-11111",
+            "Capital One",
+            "USD"));
+
+    var criteria =
+        new ViewCriteria(
+            null,
+            null,
+            Set.of("checking-12345", "savings-67890"),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var view =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Accounts", criteria, false));
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+
+    assertThat(membership.matched())
+        .containsExactly(checkingTransaction.getId(), savingsTransaction.getId());
+  }
+
+  @Test
+  void getViewTransactions_multipleCurrencyIsoCodesIncludeAllListedCurrencies() {
+    var dollarTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Dollar transaction",
+                LocalDate.of(2024, 12, 15),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Capital One",
+                "USD"));
+    var bahtTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Baht transaction",
+                LocalDate.of(2024, 12, 16),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Bangkok Bank",
+                "THB"));
+    transactionRepository.save(
+        createTransaction(
+            "Euro transaction",
+            LocalDate.of(2024, 12, 17),
+            TransactionType.DEBIT,
+            "checking-12345",
+            "Test Bank",
+            "EUR"));
+
+    var criteria =
+        new ViewCriteria(null, null, null, null, Set.of("usd", "thb"), null, null, null, null);
+    var view =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Currencies", criteria, false));
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+
+    assertThat(membership.matched())
+        .containsExactly(dollarTransaction.getId(), bahtTransaction.getId());
+  }
+
+  @Test
+  void getViewTransactions_searchTextMatchesDescriptionOrBankName() {
+    var descriptionMatch =
+        transactionRepository.save(
+            createTransaction(
+                "Coffee shop",
+                LocalDate.of(2024, 12, 15),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Neighborhood Bank",
+                "USD"));
+    var bankMatch =
+        transactionRepository.save(
+            createTransaction(
+                "Grocery store",
+                LocalDate.of(2024, 12, 16),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Capital One",
+                "USD"));
+    transactionRepository.save(
+        createTransaction(
+            "Fuel stop",
+            LocalDate.of(2024, 12, 17),
+            TransactionType.DEBIT,
+            "checking-12345",
+            "Bangkok Bank",
+            "THB"));
+
+    var criteria =
+        new ViewCriteria(null, null, null, null, null, null, null, null, "coffee capital");
+    var view =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Search text", criteria, false));
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+
+    assertThat(membership.matched()).containsExactly(descriptionMatch.getId(), bankMatch.getId());
+  }
+
+  @Test
+  void getViewTransactions_blankAndEmptySetCriteriaEntriesAreIgnored() {
+    var bankNames = new java.util.HashSet<String>();
+    bankNames.add("capital");
+    bankNames.add("");
+    bankNames.add(" ");
+    var criteria =
+        new ViewCriteria(null, null, Set.of(), bankNames, Set.of(), null, null, null, null);
+    var capitalOneTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Capital One transaction",
+                LocalDate.of(2024, 12, 15),
+                TransactionType.DEBIT,
+                "checking-12345",
+                "Capital One",
+                "USD"));
+    transactionRepository.save(
+        createTransaction(
+            "Bangkok Bank transaction",
+            LocalDate.of(2024, 12, 16),
+            TransactionType.DEBIT,
+            "checking-12345",
+            "Bangkok Bank",
+            "THB"));
+
+    var view =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Blank values", criteria, false));
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+
+    assertThat(membership.matched()).containsExactly(capitalOneTransaction.getId());
+  }
+
   private Transaction createTransaction(
       String description, LocalDate date, TransactionType transactionType) {
+    return createTransaction(
+        description, date, transactionType, "checking-12345", "Capital One", "USD");
+  }
+
+  private Transaction createTransaction(
+      String description,
+      LocalDate date,
+      TransactionType transactionType,
+      String accountId,
+      String bankName,
+      String currencyIsoCode) {
     var transaction = new Transaction();
-    transaction.setAccountId("checking-12345");
-    transaction.setBankName("Capital One");
+    transaction.setAccountId(accountId);
+    transaction.setBankName(bankName);
     transaction.setDate(date);
-    transaction.setCurrencyIsoCode("USD");
+    transaction.setCurrencyIsoCode(currencyIsoCode);
     transaction.setAmount(BigDecimal.TEN);
     transaction.setType(transactionType);
     transaction.setDescription(description);
