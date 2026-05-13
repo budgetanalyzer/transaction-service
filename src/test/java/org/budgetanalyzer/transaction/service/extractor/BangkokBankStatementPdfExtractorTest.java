@@ -29,9 +29,14 @@ class BangkokBankStatementPdfExtractorTest {
 
   private static final float DATE_X = 50f;
   private static final float PARTICULARS_X = 120f;
+  private static final float CHQ_NO_X = 260f;
   private static final float WITHDRAWAL_X = 330f;
   private static final float DEPOSIT_X = 430f;
   private static final float BALANCE_X = 520f;
+  private static final float VIA_X = 570f;
+  private static final float WITHDRAWAL_RIGHT_X = 390f;
+  private static final float DEPOSIT_RIGHT_X = 490f;
+  private static final float BALANCE_RIGHT_X = 565f;
   private static final float FONT_SIZE = 10f;
   private static final float LEADING = 14f;
   private static final Path SAMPLE_PDF_PATH =
@@ -51,7 +56,7 @@ class BangkokBankStatementPdfExtractorTest {
             "Bangkok Bank",
             "Statement of Account",
             "Account No. 123-4-56789-0",
-            "Date Particulars Withdrawal Deposit",
+            "Date Particulars Chq.No. Withdrawal Deposit Balance Via",
             "01/01/26 Coffee Shop 150.00");
 
     assertThat(extractor.canHandle(pdfContent, "bkk-bank-statement.pdf")).isTrue();
@@ -107,6 +112,7 @@ class BangkokBankStatementPdfExtractorTest {
         bangkokBankPdfWithPages(
             List.of(
                 List.of(
+                    balanceForward("01/01/26", "1,000.00"),
                     text("Opening Balance 1,000.00"),
                     withdrawal("01/01/26", "COFFEE SHOP", "150.00"),
                     text("Summary line that should be ignored"),
@@ -138,6 +144,50 @@ class BangkokBankStatementPdfExtractorTest {
     assertThat(atmTransaction.description()).isEqualTo("ATM WITHDRAWAL");
     assertThat(atmTransaction.amount()).isEqualByComparingTo(new BigDecimal("1200.00"));
     assertThat(atmTransaction.type()).isEqualTo(TransactionType.DEBIT);
+  }
+
+  @Test
+  void extract_withBalanceForwardRow_ignoresRow() throws IOException {
+    var pdfContent =
+        bangkokBankPdfWithBalanceColumn(
+            List.of(
+                List.of(
+                    balanceForward("01/01/26", "1,000.00"),
+                    withdrawalWithBalance("01/01/26", "COFFEE SHOP", "150.00", "850.00"))));
+
+    var transactions = extractor.extract(pdfContent, "checking-001");
+
+    assertThat(transactions)
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.date()).isEqualTo(LocalDate.of(2026, 1, 1));
+              assertThat(transaction.description()).isEqualTo("COFFEE SHOP");
+              assertThat(transaction.amount()).isEqualByComparingTo(new BigDecimal("150.00"));
+              assertThat(transaction.type()).isEqualTo(TransactionType.DEBIT);
+            });
+  }
+
+  @Test
+  void extract_withRightAlignedWideDeposit_usesDepositColumn() throws IOException {
+    var pdfContent =
+        bangkokBankPdfWithBalanceColumn(
+            List.of(
+                List.of(
+                    balanceForward("01/01/26", "1,000.00"),
+                    depositWithBalance(
+                        "02/01/26", "CASH DEPOSIT", "1,000,000.00", "1,001,000.00"))));
+
+    var transactions = extractor.extract(pdfContent, "checking-001");
+
+    assertThat(transactions)
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.description()).isEqualTo("CASH DEPOSIT");
+              assertThat(transaction.amount()).isEqualByComparingTo(new BigDecimal("1000000.00"));
+              assertThat(transaction.type()).isEqualTo(TransactionType.CREDIT);
+            });
   }
 
   @Test
@@ -337,11 +387,11 @@ class BangkokBankStatementPdfExtractorTest {
 
           writeText(contentStream, font, "Date", DATE_X, y);
           writeText(contentStream, font, "Particulars", PARTICULARS_X, y);
+          writeText(contentStream, font, "Chq.No.", CHQ_NO_X, y);
           writeText(contentStream, font, "Withdrawal", WITHDRAWAL_X, y);
           writeText(contentStream, font, "Deposit", DEPOSIT_X, y);
-          if (includeBalanceColumn) {
-            writeText(contentStream, font, "Balance", BALANCE_X, y);
-          }
+          writeText(contentStream, font, "Balance", BALANCE_X, y);
+          writeText(contentStream, font, "Via", VIA_X, y);
           y -= LEADING;
 
           for (var tableLine : pageLines) {
@@ -354,13 +404,17 @@ class BangkokBankStatementPdfExtractorTest {
               writeText(contentStream, font, tableLine.date(), DATE_X, y);
               writeText(contentStream, font, tableLine.description(), PARTICULARS_X, y);
               if (tableLine.withdrawal() != null) {
-                writeText(contentStream, font, tableLine.withdrawal(), WITHDRAWAL_X, y);
+                writeRightAlignedText(
+                    contentStream, font, tableLine.withdrawal(), WITHDRAWAL_RIGHT_X, y);
               }
               if (tableLine.deposit() != null) {
-                writeText(contentStream, font, tableLine.deposit(), DEPOSIT_X, y);
+                writeRightAlignedText(contentStream, font, tableLine.deposit(), DEPOSIT_RIGHT_X, y);
               }
               if (includeBalanceColumn && tableLine.balance() != null) {
-                writeText(contentStream, font, tableLine.balance(), BALANCE_X, y);
+                writeRightAlignedText(contentStream, font, tableLine.balance(), BALANCE_RIGHT_X, y);
+              }
+              if (tableLine.via() != null) {
+                writeText(contentStream, font, tableLine.via(), VIA_X, y);
               }
             }
             y -= LEADING;
@@ -388,39 +442,50 @@ class BangkokBankStatementPdfExtractorTest {
     contentStream.endText();
   }
 
+  private void writeRightAlignedText(
+      PDPageContentStream contentStream, PDType1Font font, String text, float rightX, float y)
+      throws IOException {
+    var textWidth = font.getStringWidth(text) / 1000 * FONT_SIZE;
+    writeText(contentStream, font, text, rightX - textWidth, y);
+  }
+
   private TableLine preTableText(String text) {
-    return new TableLine(null, null, null, null, null, text, true, true);
+    return new TableLine(null, null, null, null, null, null, text, true, true);
   }
 
   private TableLine text(String text) {
-    return new TableLine(null, null, null, null, null, text, true, false);
+    return new TableLine(null, null, null, null, null, null, text, true, false);
   }
 
   private TableLine withdrawal(String date, String description, String amount) {
-    return new TableLine(date, description, amount, null, null, null, false, false);
+    return new TableLine(date, description, amount, null, null, null, null, false, false);
   }
 
   private TableLine deposit(String date, String description, String amount) {
-    return new TableLine(date, description, null, amount, null, null, false, false);
+    return new TableLine(date, description, null, amount, null, null, null, false, false);
+  }
+
+  private TableLine balanceForward(String date, String balance) {
+    return new TableLine(date, "B/F", null, null, balance, null, null, false, false);
   }
 
   private TableLine withdrawalWithBalance(
       String date, String description, String amount, String balance) {
-    return new TableLine(date, description, amount, null, balance, null, false, false);
+    return new TableLine(date, description, amount, null, balance, null, null, false, false);
   }
 
   private TableLine depositWithBalance(
       String date, String description, String amount, String balance) {
-    return new TableLine(date, description, null, amount, balance, null, false, false);
+    return new TableLine(date, description, null, amount, balance, null, null, false, false);
   }
 
   private TableLine bothAmounts(
       String date, String description, String withdrawal, String deposit) {
-    return new TableLine(date, description, withdrawal, deposit, null, null, false, false);
+    return new TableLine(date, description, withdrawal, deposit, null, null, null, false, false);
   }
 
   private TableLine noAmount(String date, String description) {
-    return new TableLine(date, description, null, null, null, null, false, false);
+    return new TableLine(date, description, null, null, null, null, null, false, false);
   }
 
   private record TableLine(
@@ -429,6 +494,7 @@ class BangkokBankStatementPdfExtractorTest {
       String withdrawal,
       String deposit,
       String balance,
+      String via,
       String text,
       boolean rawText,
       boolean beforeTable) {}

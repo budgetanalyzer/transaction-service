@@ -29,8 +29,14 @@ class TestFixtureGenerator {
   private static final float TOP_START = 750f;
   private static final float BKK_DATE_X = 50f;
   private static final float BKK_PARTICULARS_X = 120f;
+  private static final float BKK_CHQ_NO_X = 260f;
   private static final float BKK_WITHDRAWAL_X = 330f;
   private static final float BKK_DEPOSIT_X = 430f;
+  private static final float BKK_BALANCE_X = 520f;
+  private static final float BKK_VIA_X = 570f;
+  private static final float BKK_WITHDRAWAL_RIGHT_X = 390f;
+  private static final float BKK_DEPOSIT_RIGHT_X = 490f;
+  private static final float BKK_BALANCE_RIGHT_X = 565f;
 
   public static void main(String[] args) throws Exception {
     new TestFixtureGenerator().generateAllFixtures();
@@ -174,6 +180,7 @@ class TestFixtureGenerator {
         writeText(contentStream, font, "Opening Balance 1,000.00", BKK_DATE_X, y);
         y -= LEADING * 2;
         y = writeBangkokBankHeader(contentStream, font, y);
+        y = writeBangkokBankBalanceForward(contentStream, font, y, "01/01/26", "1,000.00");
         y = writeBangkokBankWithdrawal(contentStream, font, y, "01/01/26", "COFFEE SHOP", "150.00");
         writeText(contentStream, font, "Summary line that should be ignored", BKK_DATE_X, y);
         y -= LEADING;
@@ -205,8 +212,20 @@ class TestFixtureGenerator {
       throws IOException {
     writeText(contentStream, font, "Date", BKK_DATE_X, y);
     writeText(contentStream, font, "Particulars", BKK_PARTICULARS_X, y);
+    writeText(contentStream, font, "Chq.No.", BKK_CHQ_NO_X, y);
     writeText(contentStream, font, "Withdrawal", BKK_WITHDRAWAL_X, y);
     writeText(contentStream, font, "Deposit", BKK_DEPOSIT_X, y);
+    writeText(contentStream, font, "Balance", BKK_BALANCE_X, y);
+    writeText(contentStream, font, "Via", BKK_VIA_X, y);
+    return y - LEADING;
+  }
+
+  private float writeBangkokBankBalanceForward(
+      PDPageContentStream contentStream, PDType1Font font, float y, String date, String balance)
+      throws IOException {
+    writeText(contentStream, font, date, BKK_DATE_X, y);
+    writeText(contentStream, font, "B/F", BKK_PARTICULARS_X, y);
+    writeRightAlignedText(contentStream, font, balance, BKK_BALANCE_RIGHT_X, y);
     return y - LEADING;
   }
 
@@ -220,7 +239,7 @@ class TestFixtureGenerator {
       throws IOException {
     writeText(contentStream, font, date, BKK_DATE_X, y);
     writeText(contentStream, font, description, BKK_PARTICULARS_X, y);
-    writeText(contentStream, font, amount, BKK_WITHDRAWAL_X, y);
+    writeRightAlignedText(contentStream, font, amount, BKK_WITHDRAWAL_RIGHT_X, y);
     return y - LEADING;
   }
 
@@ -234,7 +253,7 @@ class TestFixtureGenerator {
       throws IOException {
     writeText(contentStream, font, date, BKK_DATE_X, y);
     writeText(contentStream, font, description, BKK_PARTICULARS_X, y);
-    writeText(contentStream, font, amount, BKK_DEPOSIT_X, y);
+    writeRightAlignedText(contentStream, font, amount, BKK_DEPOSIT_RIGHT_X, y);
     return y - LEADING;
   }
 
@@ -274,5 +293,12 @@ class TestFixtureGenerator {
     contentStream.newLineAtOffset(x, y);
     contentStream.showText(text);
     contentStream.endText();
+  }
+
+  private void writeRightAlignedText(
+      PDPageContentStream contentStream, PDType1Font font, String text, float rightX, float y)
+      throws IOException {
+    var textWidth = font.getStringWidth(text) / 1000 * FONT_SIZE;
+    writeText(contentStream, font, text, rightX - textWidth, y);
   }
 }

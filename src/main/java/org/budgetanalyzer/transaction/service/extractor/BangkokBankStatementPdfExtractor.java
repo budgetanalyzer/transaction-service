@@ -53,16 +53,15 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
           .withResolverStyle(ResolverStyle.STRICT);
   private static final Pattern BANK_PATTERN =
       Pattern.compile("\\bBangkok\\s+Bank\\b", Pattern.CASE_INSENSITIVE);
-  private static final Pattern STATEMENT_PATTERN =
-      Pattern.compile(
-          "\\b(Account\\s+Statement|Statement\\s+of\\s+Account)\\b", Pattern.CASE_INSENSITIVE);
   private static final Pattern TABLE_HEADER_PATTERN =
       Pattern.compile(
-          "\\bDate\\b\\s+\\bParticulars\\b\\s+\\bWithdrawal\\b\\s+\\bDeposit\\b",
+          "\\bDate\\b\\s+\\bParticulars\\b(?:\\s+\\S+)*?\\s+\\bWithdrawal\\b\\s+\\bDeposit\\b",
           Pattern.CASE_INSENSITIVE);
   private static final Pattern DATE_PREFIX_PATTERN =
       Pattern.compile("^(\\d{2}/\\d{2}/\\d{2})\\s+(.+)$");
   private static final Pattern DATE_VALUE_PATTERN = Pattern.compile("^\\d{2}/\\d{2}/\\d{2}$");
+  private static final Pattern BALANCE_FORWARD_PATTERN =
+      Pattern.compile("^(?:B/F|BALANCE\\s+FORWARD)$", Pattern.CASE_INSENSITIVE);
   private static final Pattern AMOUNT_PATTERN =
       Pattern.compile("(?<!\\d)[(+-]?(?:THB\\s*)?(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}\\)?");
 
@@ -76,9 +75,11 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
 
     try {
       var text = extractTextFromPdf(fileContent, 1, 2);
-      return BANK_PATTERN.matcher(text).find()
-          && STATEMENT_PATTERN.matcher(text).find()
-          && TABLE_HEADER_PATTERN.matcher(text).find();
+      if (!BANK_PATTERN.matcher(text).find()) {
+        return false;
+      }
+      var lines = extractTextLinesFromPdf(fileContent, 1, 2);
+      return containsTransactionTable(lines);
     } catch (Exception exception) {
       log.debug(
           "Failed to check if file is Bangkok Bank Statement PDF: {}", exception.getMessage());
@@ -204,6 +205,22 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     return transactions;
   }
 
+  private boolean containsTransactionTable(List<PdfTextLine> lines) {
+    var foundHeader = false;
+    for (var textLine : lines) {
+      if (parseTableHeader(textLine) != null) {
+        foundHeader = true;
+        continue;
+      }
+      if (foundHeader
+          && (findDateChunk(textLine) != null
+              || DATE_PREFIX_PATTERN.matcher(textLine.text()).find())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private TableColumns parseTableHeader(PdfTextLine textLine) {
     var positionedColumns = parsePositionedTableHeader(textLine);
     if (positionedColumns != null) {
@@ -281,6 +298,11 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
       return null;
     }
 
+    var description = descriptionText(textLine, dateChunk, tableColumns);
+    if (isBalanceForwardDescription(description)) {
+      return null;
+    }
+
     var withdrawalText = columnText(textLine, tableColumns.withdrawalX(), tableColumns.depositX());
     var depositText =
         columnText(textLine, tableColumns.depositX(), tableColumns.depositEndBoundaryX());
@@ -295,7 +317,6 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
           "Both withdrawal and deposit are populated in Bangkok Bank row: " + textLine.text());
     }
 
-    var description = descriptionText(textLine, dateChunk, tableColumns);
     if (description.isBlank()) {
       throw parsingError("Missing description in Bangkok Bank statement row: " + textLine.text());
     }
@@ -323,8 +344,8 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
 
   private String columnText(PdfTextLine textLine, float startX, float endX) {
     return textLine.chunks().stream()
-        .filter(chunk -> chunk.x() >= startX - COLUMN_X_TOLERANCE)
-        .filter(chunk -> chunk.x() < endX - COLUMN_X_TOLERANCE)
+        .filter(chunk -> chunk.centerX() >= startX - COLUMN_X_TOLERANCE)
+        .filter(chunk -> chunk.centerX() < endX - COLUMN_X_TOLERANCE)
         .map(PdfTextChunk::text)
         .reduce((left, right) -> left + " " + right)
         .orElse("");
@@ -349,6 +370,11 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     }
 
     var remainder = dateMatcher.group(2);
+    var descriptionWithoutBalanceAmount = descriptionWithoutBalanceAmount(remainder);
+    if (isBalanceForwardDescription(descriptionWithoutBalanceAmount)) {
+      return null;
+    }
+
     var remainderStart = dateMatcher.start(2);
     var amountMatches = findColumnAmountMatches(remainder, remainderStart, tableColumns);
     if (amountMatches.isEmpty()) {
@@ -423,6 +449,14 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     }
   }
 
+  private boolean isBalanceForwardDescription(String description) {
+    return BALANCE_FORWARD_PATTERN.matcher(description.strip()).matches();
+  }
+
+  private String descriptionWithoutBalanceAmount(String remainder) {
+    return AMOUNT_PATTERN.matcher(remainder).replaceAll("").strip();
+  }
+
   private Transaction toTransaction(PreviewTransaction previewTransaction, FileImport fileImport) {
     var transaction = new Transaction();
     transaction.setDate(previewTransaction.date());
@@ -458,7 +492,11 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
 
   private record MatchResultSnapshot(int start, int end, String group) {}
 
-  private record PdfTextChunk(int page, float x, float y, String text) {}
+  private record PdfTextChunk(int page, float x, float endX, float y, String text) {
+    float centerX() {
+      return (x + endX) / 2;
+    }
+  }
 
   private record PdfTextLine(int page, float y, List<PdfTextChunk> chunks) {
     String text() {
@@ -495,10 +533,12 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
       }
 
       var firstTextPosition = textPositions.getFirst();
+      var lastTextPosition = textPositions.getLast();
       chunks.add(
           new PdfTextChunk(
               currentPage,
               firstTextPosition.getXDirAdj(),
+              lastTextPosition.getXDirAdj() + lastTextPosition.getWidthDirAdj(),
               firstTextPosition.getYDirAdj(),
               normalizedText));
     }

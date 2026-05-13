@@ -113,17 +113,20 @@ Date,Particulars,Withdrawal,Deposit
 
 The seeded PDF format uses display name `Bangkok Bank - Statement PDF`, bank
 name `Bangkok Bank`, and default currency `THB`. The dedicated PDF extractor
-detects statement PDFs by requiring Bangkok Bank statement text and the expected
-`Date Particulars Withdrawal Deposit` table header.
+detects statement PDFs by requiring Bangkok Bank text plus a transaction table
+with date rows after the expected `Date Particulars ... Withdrawal Deposit`
+header. The native statement layout may include non-transaction columns such as
+`Chq.No.`, `Balance`, and `Via`.
 
 Transaction rows are parsed only after that header. Repeated headers on later
 pages continue the same table. Withdrawal amounts import as `DEBIT`, deposit
 amounts import as `CREDIT`, optional trailing `Balance` column values are
-ignored, dates use `dd/MM/yy`, and amounts are stored as positive THB values.
-Rows that do not match the transaction row shape are ignored; ambiguous rows
-with both amount columns populated or no populated amount column fail with
-`PDF_PARSING_ERROR`. CSV-specific configuration columns remain null for this
-format.
+ignored, dates use `dd/MM/yy`, and amounts are stored as positive THB values. A
+balance-forward row such as `B/F` is ignored because it carries only a running
+balance, not a transaction amount. Rows that do not match the transaction row
+shape are ignored; ambiguous rows with both amount columns populated or no
+populated amount column fail with `PDF_PARSING_ERROR`. CSV-specific
+configuration columns remain null for this format.
 
 ## Date Format Patterns
 
