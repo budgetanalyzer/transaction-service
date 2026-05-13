@@ -1,5 +1,13 @@
 # Saved View Criteria Alignment Plan
 
+## Status
+
+Phase 1 is implemented in `transaction-service`: saved-view criteria now use
+`dateFrom` and `dateTo`, persist and return `type`, and map `type` into
+transaction filtering. The remaining backend gaps are the shared internal
+criteria model, real multi-value matching for plural fields, and the text-search
+contract decision.
+
 ## Problem
 
 Saved views do not preserve all filters a user can apply on the Transactions
@@ -15,7 +23,7 @@ The root cause is contract drift:
 
 These separate models are no longer aligned.
 
-## Current Gaps
+## Original Gaps
 
 Normal transaction filtering supports or exposes these fields:
 

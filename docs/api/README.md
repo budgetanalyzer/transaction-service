@@ -217,6 +217,39 @@ Permission: views:read
 Notes: Returns transactions matching the view's criteria, plus pinned/excluded overrides.
 ```
 
+**Saved View Criteria**
+
+Saved views persist the user-facing transaction filters below in the
+`criteria` object:
+
+- `dateFrom`, `dateTo` - Inclusive transaction date range.
+- `searchText` - Text matched against transaction descriptions.
+- `bankNames`, `accountIds`, `currencyIsoCodes` - Plural saved-view fields.
+  Currently only the first value in each set is applied; real multi-value
+  matching is pending.
+- `minAmount`, `maxAmount` - Inclusive transaction amount range.
+- `type` - Transaction type, `DEBIT` or `CREDIT`.
+
+`startDate` and `endDate` are no longer part of the saved-view API contract.
+
+```json
+{
+  "name": "December Debits",
+  "criteria": {
+    "dateFrom": "2024-12-01",
+    "dateTo": "2024-12-31",
+    "bankNames": ["Capital One"],
+    "accountIds": ["checking-12345"],
+    "currencyIsoCodes": ["USD"],
+    "minAmount": 10.00,
+    "maxAmount": 500.00,
+    "type": "DEBIT",
+    "searchText": "coffee"
+  },
+  "openEnded": false
+}
+```
+
 **Pin Transaction to View**
 ```
 POST /v1/views/{id}/pin/{txnId}

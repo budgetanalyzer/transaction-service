@@ -173,7 +173,7 @@ class SavedViewControllerAuthorizationTest {
     view.setId(UUID.randomUUID());
     view.setName("Test View");
     view.setUserId("usr_test123");
-    view.setCriteria(new ViewCriteria(null, null, null, null, null, null, null, null));
+    view.setCriteria(ViewCriteria.empty());
     return view;
   }
 }

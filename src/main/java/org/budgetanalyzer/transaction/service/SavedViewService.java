@@ -312,7 +312,7 @@ public class SavedViewService {
 
   TransactionFilter criteriaToFilter(ViewCriteria criteria, boolean openEnded, String ownerId) {
     // Determine effective end date
-    LocalDate effectiveEndDate = criteria.endDate();
+    LocalDate effectiveEndDate = criteria.dateTo();
     if (openEnded && effectiveEndDate == null) {
       effectiveEndDate = LocalDate.now();
     }
@@ -341,12 +341,12 @@ public class SavedViewService {
         ownerId,
         accountIdFilter, // accountId
         bankNameFilter, // bankName
-        criteria.startDate(), // dateFrom
+        criteria.dateFrom(), // dateFrom
         effectiveEndDate, // dateTo
         currencyFilter, // currencyIsoCode
         criteria.minAmount(), // minAmount
         criteria.maxAmount(), // maxAmount
-        null, // type
+        criteria.type(), // type
         criteria.searchText(), // description
         null, // createdAfter
         null, // createdBefore
