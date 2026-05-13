@@ -118,11 +118,12 @@ detects statement PDFs by requiring Bangkok Bank statement text and the expected
 
 Transaction rows are parsed only after that header. Repeated headers on later
 pages continue the same table. Withdrawal amounts import as `DEBIT`, deposit
-amounts import as `CREDIT`, dates use `dd/MM/yy`, and amounts are stored as
-positive THB values. Rows that do not match the transaction row shape are
-ignored; ambiguous rows with both amount columns populated or no populated
-amount column fail with `PDF_PARSING_ERROR`. CSV-specific configuration columns
-remain null for this format.
+amounts import as `CREDIT`, optional trailing `Balance` column values are
+ignored, dates use `dd/MM/yy`, and amounts are stored as positive THB values.
+Rows that do not match the transaction row shape are ignored; ambiguous rows
+with both amount columns populated or no populated amount column fail with
+`PDF_PARSING_ERROR`. CSV-specific configuration columns remain null for this
+format.
 
 ## Date Format Patterns
 

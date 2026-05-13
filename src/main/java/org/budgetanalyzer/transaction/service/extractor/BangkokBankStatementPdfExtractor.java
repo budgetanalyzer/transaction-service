@@ -217,9 +217,13 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     }
 
     var lowerCaseLine = line.toLowerCase(Locale.ROOT);
+    var depositStart = lowerCaseLine.indexOf("deposit", headerMatcher.start());
+    var balanceStart = lowerCaseLine.indexOf("balance", depositStart);
     return new TableColumns(
         lowerCaseLine.indexOf("withdrawal", headerMatcher.start()),
-        lowerCaseLine.indexOf("deposit", headerMatcher.start()),
+        depositStart,
+        balanceStart >= 0 ? balanceStart : Integer.MAX_VALUE,
+        null,
         null,
         null);
   }
@@ -229,6 +233,7 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     PdfTextChunk particularsChunk = null;
     PdfTextChunk withdrawalChunk = null;
     PdfTextChunk depositChunk = null;
+    PdfTextChunk balanceChunk = null;
 
     for (var chunk : textLine.chunks()) {
       if ("date".equalsIgnoreCase(chunk.text())) {
@@ -239,6 +244,8 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
         withdrawalChunk = chunk;
       } else if ("deposit".equalsIgnoreCase(chunk.text())) {
         depositChunk = chunk;
+      } else if ("balance".equalsIgnoreCase(chunk.text())) {
+        balanceChunk = chunk;
       }
     }
 
@@ -249,7 +256,10 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
       return null;
     }
 
-    return new TableColumns(0, 0, withdrawalChunk.x(), depositChunk.x());
+    var depositEndX =
+        balanceChunk != null && balanceChunk.x() > depositChunk.x() ? balanceChunk.x() : null;
+    return new TableColumns(
+        0, 0, Integer.MAX_VALUE, withdrawalChunk.x(), depositChunk.x(), depositEndX);
   }
 
   private PreviewTransaction parseTransactionLine(
@@ -272,7 +282,8 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     }
 
     var withdrawalText = columnText(textLine, tableColumns.withdrawalX(), tableColumns.depositX());
-    var depositText = columnText(textLine, tableColumns.depositX(), Float.MAX_VALUE);
+    var depositText =
+        columnText(textLine, tableColumns.depositX(), tableColumns.depositEndBoundaryX());
     var hasWithdrawal = !withdrawalText.isBlank();
     var hasDeposit = !depositText.isBlank();
 
@@ -371,7 +382,9 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     var transactionColumnStart = Math.max(0, tableColumns.withdrawalStart() - remainderStart);
 
     while (amountMatcher.find()) {
-      if (amountMatcher.start() >= transactionColumnStart) {
+      var absoluteAmountStart = amountMatcher.start() + remainderStart;
+      if (amountMatcher.start() >= transactionColumnStart
+          && absoluteAmountStart < tableColumns.depositEnd()) {
         amountMatches.add(
             new MatchResultSnapshot(
                 amountMatcher.start(), amountMatcher.end(), amountMatcher.group()));
@@ -428,9 +441,18 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
   }
 
   private record TableColumns(
-      int withdrawalStart, int depositStart, Float withdrawalX, Float depositX) {
+      int withdrawalStart,
+      int depositStart,
+      int depositEnd,
+      Float withdrawalX,
+      Float depositX,
+      Float depositEndX) {
     boolean hasPositionedColumns() {
       return withdrawalX != null && depositX != null;
+    }
+
+    float depositEndBoundaryX() {
+      return depositEndX != null ? depositEndX : Float.MAX_VALUE;
     }
   }
 
