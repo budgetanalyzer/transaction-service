@@ -11,12 +11,14 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
 /**
- * Generates anonymized PDF test fixtures for Capital One statement extractors.
+ * Generates anonymized PDF test fixtures for statement extractors.
  *
  * <p>Creates synthetic PDFs using PDFBox that produce text matching extractor regex patterns. Safer
  * than qpdf text-replacement on real PDFs: no risk of residual PII in binary blobs.
  *
- * <p>Run once: {@code ./gradlew test --tests "*TestFixtureGenerator*"}
+ * <p>Run once after updating fixture definitions: {@code ./gradlew testClasses && java -cp
+ * build/classes/java/test:build/classes/java/main:<test runtime jars>
+ * org.budgetanalyzer.transaction.service.extractor.TestFixtureGenerator}
  */
 class TestFixtureGenerator {
 
@@ -25,12 +27,21 @@ class TestFixtureGenerator {
   private static final float LEADING = 14f;
   private static final float LEFT_MARGIN = 50f;
   private static final float TOP_START = 750f;
+  private static final float BKK_DATE_X = 50f;
+  private static final float BKK_PARTICULARS_X = 120f;
+  private static final float BKK_WITHDRAWAL_X = 330f;
+  private static final float BKK_DEPOSIT_X = 430f;
+
+  public static void main(String[] args) throws Exception {
+    new TestFixtureGenerator().generateAllFixtures();
+  }
 
   void generateAllFixtures() throws Exception {
     Files.createDirectories(FIXTURES_DIR);
     generateCreditMonthlyFixture();
     generateBankMonthlyFixture();
     generateCreditYearlySummaryFixture();
+    generateBangkokBankStatementFixture();
   }
 
   private void generateCreditMonthlyFixture() throws IOException {
@@ -146,6 +157,87 @@ class TestFixtureGenerator {
     writePdf(FIXTURES_DIR.resolve("cap-one-credit-yearly-summary-sample.pdf"), lines);
   }
 
+  private void generateBangkokBankStatementFixture() throws IOException {
+    try (PDDocument document = new PDDocument()) {
+      PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+
+      var page = new PDPage();
+      document.addPage(page);
+      try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+        var y = TOP_START;
+        writeText(contentStream, font, "Bangkok Bank", BKK_DATE_X, y);
+        y -= LEADING;
+        writeText(contentStream, font, "Statement of Account", BKK_DATE_X, y);
+        y -= LEADING;
+        writeText(contentStream, font, "Account No. 123-4-56789-0", BKK_DATE_X, y);
+        y -= LEADING;
+        writeText(contentStream, font, "Opening Balance 1,000.00", BKK_DATE_X, y);
+        y -= LEADING * 2;
+        y = writeBangkokBankHeader(contentStream, font, y);
+        y = writeBangkokBankWithdrawal(contentStream, font, y, "01/01/26", "COFFEE SHOP", "150.00");
+        writeText(contentStream, font, "Summary line that should be ignored", BKK_DATE_X, y);
+        y -= LEADING;
+        writeBangkokBankDeposit(contentStream, font, y, "02/01/26", "SALARY TRANSFER", "5,000.25");
+      }
+
+      page = new PDPage();
+      document.addPage(page);
+      try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+        var y = TOP_START;
+        writeText(contentStream, font, "Bangkok Bank", BKK_DATE_X, y);
+        y -= LEADING;
+        writeText(contentStream, font, "Statement of Account", BKK_DATE_X, y);
+        y -= LEADING;
+        writeText(contentStream, font, "Page 2 of 2", BKK_DATE_X, y);
+        y -= LEADING * 2;
+        y = writeBangkokBankHeader(contentStream, font, y);
+        y =
+            writeBangkokBankWithdrawal(
+                contentStream, font, y, "03/01/26", "ATM WITHDRAWAL", "1,200.00");
+        writeText(contentStream, font, "Closing Balance 4,650.25", BKK_DATE_X, y);
+      }
+
+      document.save(FIXTURES_DIR.resolve("bkk-bank-statement-pdf-sample.pdf").toFile());
+    }
+  }
+
+  private float writeBangkokBankHeader(PDPageContentStream contentStream, PDType1Font font, float y)
+      throws IOException {
+    writeText(contentStream, font, "Date", BKK_DATE_X, y);
+    writeText(contentStream, font, "Particulars", BKK_PARTICULARS_X, y);
+    writeText(contentStream, font, "Withdrawal", BKK_WITHDRAWAL_X, y);
+    writeText(contentStream, font, "Deposit", BKK_DEPOSIT_X, y);
+    return y - LEADING;
+  }
+
+  private float writeBangkokBankWithdrawal(
+      PDPageContentStream contentStream,
+      PDType1Font font,
+      float y,
+      String date,
+      String description,
+      String amount)
+      throws IOException {
+    writeText(contentStream, font, date, BKK_DATE_X, y);
+    writeText(contentStream, font, description, BKK_PARTICULARS_X, y);
+    writeText(contentStream, font, amount, BKK_WITHDRAWAL_X, y);
+    return y - LEADING;
+  }
+
+  private float writeBangkokBankDeposit(
+      PDPageContentStream contentStream,
+      PDType1Font font,
+      float y,
+      String date,
+      String description,
+      String amount)
+      throws IOException {
+    writeText(contentStream, font, date, BKK_DATE_X, y);
+    writeText(contentStream, font, description, BKK_PARTICULARS_X, y);
+    writeText(contentStream, font, amount, BKK_DEPOSIT_X, y);
+    return y - LEADING;
+  }
+
   private void writePdf(Path outputPath, String[] textLines) throws IOException {
     try (PDDocument document = new PDDocument()) {
       PDPage page = new PDPage();
@@ -172,5 +264,15 @@ class TestFixtureGenerator {
 
       document.save(outputPath.toFile());
     }
+  }
+
+  private void writeText(
+      PDPageContentStream contentStream, PDType1Font font, String text, float x, float y)
+      throws IOException {
+    contentStream.beginText();
+    contentStream.setFont(font, FONT_SIZE);
+    contentStream.newLineAtOffset(x, y);
+    contentStream.showText(text);
+    contentStream.endText();
   }
 }

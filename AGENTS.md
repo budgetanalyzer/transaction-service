@@ -82,15 +82,15 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 
 **The most sophisticated feature of this service** - Configuration-driven file parsing for multiple banks.
 
-**Pattern**: Database-driven format configuration via `statement_format` table. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses statement extraction (Capital One).
+**Pattern**: Database-driven format configuration via `statement_format` table. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors.
 
 **When to consult documentation:**
-- **Adding new bank formats** → Read [CSV Import Guide](docs/csv-import.md) for configuration examples and step-by-step instructions
-- **Troubleshooting import errors** → Read [Troubleshooting section](docs/csv-import.md#troubleshooting) for common issues
-- **Understanding amount patterns** → Read [Amount Column Patterns](docs/csv-import.md#amount-column-patterns)
+- **Adding new bank formats** → Read [Statement Import Guide](docs/statement-import.md) for configuration examples and step-by-step instructions
+- **Troubleshooting import errors** → Read [Troubleshooting section](docs/statement-import.md#troubleshooting) for common issues
+- **Understanding amount patterns** → Read [Amount Column Patterns](docs/statement-import.md#amount-column-patterns)
 
 **Quick reference:**
-- Currently supported: Capital One (PDF), Bangkok Bank (CSV format)
+- Currently supported: Capital One (PDF), Bangkok Bank (CSV and statement PDF)
 - Configuration: `statement_format` table (see `StatementFormatService`)
 - API: `GET /v1/statement-formats` to list formats, `POST` to create new formats
 - Endpoints: `POST /v1/transactions/preview`, then `POST /v1/transactions/batch`
@@ -309,7 +309,10 @@ The build includes:
 
 **Troubleshooting:**
 
-If encountering "cannot resolve" errors for service-common classes:
+If `service-common` is unavailable for any reason (cannot resolve classes,
+missing local artifacts, GitHub Packages 401, or unresolved
+`org.budgetanalyzer` dependencies), immediately publish the sibling
+`service-common` repo to Maven Local before retrying this service:
 ```bash
 cd ../service-common
 ./gradlew clean build publishToMavenLocal

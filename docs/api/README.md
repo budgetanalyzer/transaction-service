@@ -254,6 +254,13 @@ Response: List<StatementFormatResponse>
 Permission: statementformats:read
 ```
 
+Seeded import formats include:
+- `bkk-bank-statement-csv`
+- `bkk-bank-statement-pdf`
+- `capital-one-credit-monthly-statement`
+- `capital-one-credit-yearly-statement`
+- `capital-one-bank-monthly-statement`
+
 **Get Statement Format**
 ```
 GET /v1/statement-formats/{formatKey}
@@ -349,7 +356,7 @@ Fields:
 ```json
 {
   "sourceFile": "statement.csv",
-  "detectedFormat": "capital-one",
+  "detectedFormat": "bkk-bank-statement-csv",
   "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": true,
@@ -357,7 +364,7 @@ Fields:
     "previousImport": {
       "originalFilename": "statement.csv",
       "importedAt": "2026-05-01T12:34:56Z",
-      "format": "capital-one",
+      "format": "bkk-bank-statement-csv",
       "accountId": "checking-12345",
       "transactionCount": 42
     }
@@ -365,23 +372,22 @@ Fields:
   "transactions": [
     {
       "date": "2026-04-28",
-      "description": "TAQUERIA DEL SOL #3",
-      "amount": 55.12,
+      "description": "COFFEE SHOP",
+      "amount": 150.00,
       "type": "DEBIT",
-      "category": "Dining",
-      "bankName": "Capital One",
-      "currencyIsoCode": "USD",
+      "bankName": "Bangkok Bank",
+      "currencyIsoCode": "THB",
       "accountId": "checking-12345",
       "duplicate": true,
       "duplicateReason": "EXISTING_TRANSACTION"
     },
     {
       "date": "2026-04-29",
-      "description": "PAYROLL",
-      "amount": 2500.00,
+      "description": "SALARY TRANSFER",
+      "amount": 5000.00,
       "type": "CREDIT",
-      "bankName": "Capital One",
-      "currencyIsoCode": "USD",
+      "bankName": "Bangkok Bank",
+      "currencyIsoCode": "THB",
       "accountId": "checking-12345",
       "duplicate": false
     }
@@ -417,12 +423,11 @@ Fields:
   "transactions": [
     {
       "date": "2026-04-28",
-      "description": "TAQUERIA DEL SOL #3",
-      "amount": 55.12,
+      "description": "COFFEE SHOP",
+      "amount": 150.00,
       "type": "DEBIT",
-      "category": "Dining",
-      "bankName": "Capital One",
-      "currencyIsoCode": "USD",
+      "bankName": "Bangkok Bank",
+      "currencyIsoCode": "THB",
       "accountId": "checking-12345",
       "allowDuplicate": true
     }
