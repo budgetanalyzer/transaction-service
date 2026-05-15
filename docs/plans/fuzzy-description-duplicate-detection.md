@@ -2,12 +2,13 @@
 
 ## Status
 
-Phases 1 through 3 are complete. The service now has a description-free
+Phases 1 through 4 are complete. The service now has a description-free
 duplicate candidate key, a description match result model, a deterministic
 description matcher with normalization plus conservative normalized Levenshtein
 scoring, and a repository lookup that retrieves active owner-scoped candidates
-without requiring description equality. Preview marking and batch import
-behavior are still unchanged and remain planned for later phases.
+without requiring description equality. Preview marking now uses that candidate
+lookup plus fuzzy description matching. Batch import behavior is still unchanged
+and remains planned for later phases.
 
 ## Problem
 
@@ -177,17 +178,20 @@ Acceptance criteria:
 
 ### Phase 4: Wire Preview Duplicate Marking
 
+Status: Complete.
+
 Update preview duplicate marking to use exact-field candidate lookup plus fuzzy
 description scoring.
 
 Tasks:
 
 - Replace the exact description key check in preview with the shared duplicate
-  matcher.
+  matcher. Done.
 - Preserve `PreviewDuplicateReason.EXISTING_TRANSACTION` for database matches.
+  Done.
 - Preserve `PreviewDuplicateReason.IN_BATCH` for duplicates within the same
-  preview payload.
-- Use the same fuzzy description matcher for in-preview duplicates.
+  preview payload. Done.
+- Use the same fuzzy description matcher for in-preview duplicates. Done.
 
 Acceptance criteria:
 

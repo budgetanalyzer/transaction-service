@@ -2,7 +2,7 @@ package org.budgetanalyzer.transaction.service;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
@@ -35,6 +36,8 @@ public class TransactionImportService {
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
   private final PreviewImportTokenService previewImportTokenService;
+  private final TransactionDescriptionMatcher transactionDescriptionMatcher =
+      new TransactionDescriptionMatcher();
 
   /**
    * Constructs a new TransactionImportService.
@@ -163,29 +166,67 @@ public class TransactionImportService {
       return transactions;
     }
 
-    var transactionKeys =
+    var transactionCandidateKeys =
         transactions.stream()
             .map(
                 previewTransaction ->
-                    TransactionDuplicateKey.from(previewTransaction).toLookupValue())
+                    TransactionDuplicateCandidateKey.from(previewTransaction).toLookupValue())
             .collect(Collectors.toSet());
-    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys, userId);
-    var seenKeys = new HashSet<String>();
+    var existingCandidatesByKey =
+        transactionRepository.findDuplicateCandidates(transactionCandidateKeys, userId).stream()
+            .collect(Collectors.groupingBy(TransactionDuplicateCandidate::getCandidateKey));
+    var seenTransactionsByCandidateKey = new HashMap<String, List<PreviewTransaction>>();
     var markedTransactions = new ArrayList<PreviewTransaction>(transactions.size());
 
     for (var previewTransaction : transactions) {
-      var transactionKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
-      if (existingKeys.contains(transactionKey)) {
+      var transactionCandidateKey =
+          TransactionDuplicateCandidateKey.from(previewTransaction).toLookupValue();
+      if (matchesExistingTransaction(
+          previewTransaction,
+          existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))) {
         markedTransactions.add(
             previewTransaction.withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION));
-      } else if (seenKeys.contains(transactionKey)) {
+      } else if (matchesSeenTransaction(
+          previewTransaction,
+          seenTransactionsByCandidateKey.getOrDefault(transactionCandidateKey, List.of()))) {
         markedTransactions.add(previewTransaction.withDuplicate(PreviewDuplicateReason.IN_BATCH));
       } else {
         markedTransactions.add(previewTransaction);
       }
-      seenKeys.add(transactionKey);
+      seenTransactionsByCandidateKey
+          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
+          .add(previewTransaction);
     }
 
     return markedTransactions;
+  }
+
+  private boolean matchesExistingTransaction(
+      PreviewTransaction previewTransaction,
+      List<TransactionDuplicateCandidate> transactionDuplicateCandidates) {
+    for (var transactionDuplicateCandidate : transactionDuplicateCandidates) {
+      var transactionDescriptionMatchResult =
+          transactionDescriptionMatcher.match(
+              previewTransaction.description(),
+              transactionDuplicateCandidate.getTransactionId(),
+              transactionDuplicateCandidate.getDescription());
+      if (transactionDescriptionMatchResult.matched()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean matchesSeenTransaction(
+      PreviewTransaction previewTransaction, List<PreviewTransaction> seenTransactions) {
+    for (var seenTransaction : seenTransactions) {
+      var transactionDescriptionMatchResult =
+          transactionDescriptionMatcher.match(
+              previewTransaction.description(), null, seenTransaction.description());
+      if (transactionDescriptionMatchResult.matched()) {
+        return true;
+      }
+    }
+    return false;
   }
 }

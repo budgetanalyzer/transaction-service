@@ -115,13 +115,14 @@ Permission: transactions:write
 Notes: Imports transactions from the preview endpoint after user edits. The previewImportToken is required and verified before batch import processing starts. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row. If every submitted row is skipped as a duplicate, the request fails with BATCH_IMPORT_NO_TRANSACTIONS_CREATED and no file import is recorded. When at least one transaction is created, the service records file import metadata unless the file was already recorded for the user; created transactions are linked to the new or existing file import row.
 ```
 
-Duplicate detection is scoped to the authenticated owner and uses
-`accountId`, `bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and
-`description`. Empty `accountId` values are treated the same as `null`, amounts
-are compared at scale 2, and descriptions are matched exactly. Preview responses
-set `duplicate=true` with `duplicateReason` of `EXISTING_TRANSACTION` for active
-owner-owned database matches, or `IN_BATCH` for rows that duplicate an earlier
-row in the same preview payload. Preview duplicate metadata is advisory;
+Preview duplicate marking is scoped to the authenticated owner. It first matches
+strict financial identity fields: `accountId`, `bankName`, `date`, `amount`,
+`type`, and `currencyIsoCode`. Empty `accountId` values are treated the same as
+`null`, and amounts are compared at scale 2. Candidate descriptions are then
+matched with normalized exact or conservative fuzzy comparison. Preview
+responses set `duplicate=true` with `duplicateReason` of `EXISTING_TRANSACTION`
+for active owner-owned database matches, or `IN_BATCH` for rows that duplicate
+an earlier row in the same preview payload. Preview duplicate metadata is advisory.
 `/batch` performs the final duplicate check. `allowDuplicate` defaults to
 `false`; when set to `true`, the row is imported even if it matches an existing
 transaction or an earlier row in the same batch. Batch responses include
@@ -435,10 +436,12 @@ Fields:
 ```
 
 `duplicateReason` is `EXISTING_TRANSACTION` when the row matches an active
-transaction already stored for the authenticated owner. It is `IN_BATCH` when
-the row duplicates an earlier row in the same preview response. The preview
-endpoint does not persist transactions and does not return matching transaction
-IDs. It is omitted when `duplicate=false`.
+transaction already stored for the authenticated owner after strict financial
+field matching and normalized exact or conservative fuzzy description matching.
+It is `IN_BATCH` when the row duplicates an earlier row in the same preview
+response under the same rule. The preview endpoint does not persist
+transactions and does not return matching transaction IDs. It is omitted when
+`duplicate=false`.
 
 `fileImport` is file-level metadata, separate from per-row duplicate detection.
 It compares the uploaded file bytes with previous `file_import` records for the
