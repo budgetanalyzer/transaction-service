@@ -234,6 +234,9 @@ Saved views persist the user-facing transaction filters below in the
 - `type` - Transaction type, `DEBIT` or `CREDIT`.
 
 `startDate` and `endDate` are no longer part of the saved-view API contract.
+Migration `V16__delete_legacy_saved_views.sql` deletes saved views persisted
+with the old criteria JSON shape; pinned and excluded transaction IDs are stored
+on the same `saved_view` row and are removed with the view.
 
 ```json
 {

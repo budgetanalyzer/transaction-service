@@ -151,6 +151,39 @@ service-created transactions that did not originate from an uploaded source
 file. If duplicate filtering leaves no rows to create, the batch fails with
 `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no file import row is recorded.
 
+### saved_view
+
+**Purpose:** Stores user-defined transaction views and their pinned or excluded
+transaction overrides.
+
+```sql
+CREATE TABLE saved_view (
+    id UUID PRIMARY KEY,
+    user_id VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    criteria TEXT NOT NULL,
+    open_ended BOOLEAN NOT NULL DEFAULT false,
+    pinned_ids TEXT NOT NULL DEFAULT '[]',
+    excluded_ids TEXT NOT NULL DEFAULT '[]',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
+```
+
+**Key Columns:**
+- `criteria` - Saved-view filter JSON using the current `dateFrom` and `dateTo`
+  date field names
+- `pinned_ids` - JSON array of transaction IDs pinned into the view
+- `excluded_ids` - JSON array of transaction IDs excluded from the view
+- `open_ended` - Allows the view to ignore the upper date bound when resolving
+  memberships
+
+Migration `V16__delete_legacy_saved_views.sql` removes rows written with the old
+`startDate` and `endDate` criteria JSON shape. Pinned and excluded IDs are
+stored on the same row, so no child tables require cascading.
+
 ### budgets
 
 **Purpose:** Stores budget definitions
