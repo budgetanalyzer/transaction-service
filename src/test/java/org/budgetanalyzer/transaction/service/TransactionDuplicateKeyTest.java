@@ -38,6 +38,18 @@ class TransactionDuplicateKeyTest {
   }
 
   @Test
+  void candidateKey_excludesDescription() {
+    var firstTransactionDuplicateKey = duplicateKeyWithDescription("Coffee");
+    var secondTransactionDuplicateKey = duplicateKeyWithDescription("Coffee Shop");
+
+    assertThat(firstTransactionDuplicateKey).isNotEqualTo(secondTransactionDuplicateKey);
+    assertThat(firstTransactionDuplicateKey.candidateKey())
+        .isEqualTo(secondTransactionDuplicateKey.candidateKey());
+    assertThat(firstTransactionDuplicateKey.candidateKey().toLookupValue())
+        .isEqualTo(secondTransactionDuplicateKey.candidateKey().toLookupValue());
+  }
+
+  @Test
   void constructor_nullAccountIdsAreEqual() {
     var nullAccountKey = duplicateKey(null);
     var anotherNullAccountKey = duplicateKey(null);

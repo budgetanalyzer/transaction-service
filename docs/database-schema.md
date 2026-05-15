@@ -59,7 +59,7 @@ CREATE INDEX idx_transaction_type ON transaction(type);
 CREATE INDEX idx_transaction_deleted ON transaction(deleted);
 CREATE INDEX idx_transaction_owner_id ON transaction(owner_id);
 CREATE INDEX idx_transaction_file_import_id ON transaction(file_import_id);
-CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
+CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
     ON transaction (
         owner_id,
         deleted,
@@ -68,8 +68,7 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
         date,
         amount,
         type,
-        currency_iso_code,
-        description
+        currency_iso_code
     );
 ```
 
@@ -91,11 +90,10 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_fields
 - Primary key on `id`
 - Single-column indexes for account, bank, date, currency, type, deleted, owner,
   and file import lookups
-- `idx_transaction_owner_deleted_duplicate_fields` supports owner-scoped
-  duplicate detection across `account_id`, `bank_name`, `date`, `amount`,
-  `type`, `currency_iso_code`, and `description`. It replaced the older
-  `idx_transaction_owner_deleted_date_amount_desc` index in migration
-  `V13__replace_duplicate_detection_index.sql`.
+- `idx_transaction_owner_deleted_duplicate_candidates` supports owner-scoped
+  duplicate candidate lookup across `account_id`, `bank_name`, `date`,
+  `amount`, `type`, and `currency_iso_code`. It replaced the exact-description
+  duplicate index in migration `V17__replace_duplicate_candidate_index.sql`.
 
 Duplicate detection treats empty `account_id` values as equivalent to `NULL` in
 the lookup query. Only active rows (`deleted = false`) for the same `owner_id`

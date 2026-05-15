@@ -18,6 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.TransactionDuplicateCandidateKey;
 import org.budgetanalyzer.transaction.service.TransactionDuplicateKey;
 
 @DataJpaTest
@@ -323,6 +324,157 @@ class TransactionRepositoryIntegrationTest {
     assertThat(existingKeys).isEmpty();
   }
 
+  @Test
+  void findDuplicateCandidates_returnsMatchingCandidateWhenDescriptionDiffers() {
+    // Given: a transaction exists with the same financial identity and a different description
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15),
+            BigDecimal.valueOf(100.00),
+            "X CORP. PAID FEATURES BASTROP     TX",
+            "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for candidates using only the strict financial identity fields
+    var candidateKey =
+        candidateKey(
+            transaction.getAccountId(),
+            transaction.getBankName(),
+            transaction.getDate(),
+            transaction.getAmount(),
+            transaction.getType(),
+            transaction.getCurrencyIsoCode());
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(Set.of(candidateKey), "test-user");
+
+    // Then: the active candidate is returned with its persisted description
+    assertThat(duplicateCandidates).hasSize(1);
+    assertThat(duplicateCandidates.getFirst().getCandidateKey()).isEqualTo(candidateKey);
+    assertThat(duplicateCandidates.getFirst().getTransactionId()).isEqualTo(transaction.getId());
+    assertThat(duplicateCandidates.getFirst().getDescription())
+        .isEqualTo("X CORP. PAID FEATURES BASTROP     TX");
+  }
+
+  @Test
+  void findDuplicateCandidates_doesNotMatchDifferentExactFields() {
+    // Given: a transaction exists for one financial identity
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking candidate keys that each differ on one strict financial field
+    var candidateKeys =
+        Set.of(
+            candidateKey(
+                "account-2",
+                transaction.getBankName(),
+                transaction.getDate(),
+                transaction.getAmount(),
+                transaction.getType(),
+                transaction.getCurrencyIsoCode()),
+            candidateKey(
+                transaction.getAccountId(),
+                "Other Bank",
+                transaction.getDate(),
+                transaction.getAmount(),
+                transaction.getType(),
+                transaction.getCurrencyIsoCode()),
+            candidateKey(
+                transaction.getAccountId(),
+                transaction.getBankName(),
+                transaction.getDate().plusDays(1),
+                transaction.getAmount(),
+                transaction.getType(),
+                transaction.getCurrencyIsoCode()),
+            candidateKey(
+                transaction.getAccountId(),
+                transaction.getBankName(),
+                transaction.getDate(),
+                BigDecimal.valueOf(101.00),
+                transaction.getType(),
+                transaction.getCurrencyIsoCode()),
+            candidateKey(
+                transaction.getAccountId(),
+                transaction.getBankName(),
+                transaction.getDate(),
+                transaction.getAmount(),
+                TransactionType.CREDIT,
+                transaction.getCurrencyIsoCode()),
+            candidateKey(
+                transaction.getAccountId(),
+                transaction.getBankName(),
+                transaction.getDate(),
+                transaction.getAmount(),
+                transaction.getType(),
+                "THB"));
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(candidateKeys, "test-user");
+
+    // Then: no candidates are returned
+    assertThat(duplicateCandidates).isEmpty();
+  }
+
+  @Test
+  void findDuplicateCandidates_treatsEmptyAccountIdAsNull() {
+    // Given: a transaction exists with an empty account ID
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "");
+    transactionRepository.save(transaction);
+
+    // When: checking for the same transaction details with a null account ID
+    var candidateKey =
+        candidateKey(
+            null,
+            transaction.getBankName(),
+            transaction.getDate(),
+            transaction.getAmount(),
+            transaction.getType(),
+            transaction.getCurrencyIsoCode());
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(Set.of(candidateKey), "test-user");
+
+    // Then: the transaction is returned as a candidate
+    assertThat(duplicateCandidates).hasSize(1);
+    assertThat(duplicateCandidates.getFirst().getCandidateKey()).isEqualTo(candidateKey);
+  }
+
+  @Test
+  void findDuplicateCandidates_doesNotFindCandidatesForDifferentOwner() {
+    // Given: a transaction exists for user-1
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+
+    // When: checking for candidates for a different owner
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(Set.of(candidateKey(transaction)), "other");
+
+    // Then: no candidates are returned
+    assertThat(duplicateCandidates).isEmpty();
+  }
+
+  @Test
+  void findDuplicateCandidates_excludesDeletedTransactions() {
+    // Given: a deleted transaction exists
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
+    transactionRepository.save(transaction);
+    transaction.markDeleted("test-user");
+    transactionRepository.save(transaction);
+
+    // When: checking for candidates for the same owner
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(
+            Set.of(candidateKey(transaction)), "test-user");
+
+    // Then: no candidates are returned
+    assertThat(duplicateCandidates).isEmpty();
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(String description, BigDecimal amount) {
@@ -370,6 +522,28 @@ class TransactionRepositoryIntegrationTest {
             type == null ? transaction.getType() : type,
             currencyIsoCode == null ? transaction.getCurrencyIsoCode() : currencyIsoCode,
             transaction.getDescription())
+        .toLookupValue();
+  }
+
+  private static String candidateKey(Transaction transaction) {
+    return candidateKey(
+        transaction.getAccountId(),
+        transaction.getBankName(),
+        transaction.getDate(),
+        transaction.getAmount(),
+        transaction.getType(),
+        transaction.getCurrencyIsoCode());
+  }
+
+  private static String candidateKey(
+      String accountId,
+      String bankName,
+      LocalDate date,
+      BigDecimal amount,
+      TransactionType type,
+      String currencyIsoCode) {
+    return new TransactionDuplicateCandidateKey(
+            accountId, bankName, date, amount, type, currencyIsoCode)
         .toLookupValue();
   }
 }

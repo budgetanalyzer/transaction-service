@@ -1,8 +1,6 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Objects;
 
@@ -19,12 +17,6 @@ public record TransactionDuplicateKey(
     String currencyIsoCode,
     String description) {
 
-  private static final int AMOUNT_SCALE = 2;
-  private static final String COMPONENT_SEPARATOR = "|";
-  private static final String NULL_COMPONENT = "N";
-  private static final String VALUE_PREFIX = "V";
-  private static final String VALUE_LENGTH_SEPARATOR = ":";
-
   /**
    * Creates a normalized duplicate key.
    *
@@ -37,10 +29,10 @@ public record TransactionDuplicateKey(
    * @param description the exact transaction description
    */
   public TransactionDuplicateKey {
-    accountId = normalizeAccountId(accountId);
+    accountId = TransactionDuplicateKeySupport.normalizeAccountId(accountId);
     bankName = Objects.requireNonNull(bankName, "bankName");
     date = Objects.requireNonNull(date, "date");
-    amount = canonicalizeAmount(amount);
+    amount = TransactionDuplicateKeySupport.canonicalizeAmount(amount);
     type = Objects.requireNonNull(type, "type");
     currencyIsoCode = Objects.requireNonNull(currencyIsoCode, "currencyIsoCode");
     description = Objects.requireNonNull(description, "description");
@@ -65,39 +57,28 @@ public record TransactionDuplicateKey(
   }
 
   /**
+   * Returns the duplicate candidate identity for this full duplicate key.
+   *
+   * @return the duplicate candidate key
+   */
+  public TransactionDuplicateCandidateKey candidateKey() {
+    return new TransactionDuplicateCandidateKey(
+        accountId, bankName, date, amount, type, currencyIsoCode);
+  }
+
+  /**
    * Returns the canonical lookup value used for string-based repository duplicate matching.
    *
    * @return the canonical lookup value
    */
   public String toLookupValue() {
-    return String.join(
-        COMPONENT_SEPARATOR,
-        encodeComponent(accountId),
-        encodeComponent(bankName),
-        encodeComponent(date.toString()),
-        encodeComponent(amount.toPlainString()),
-        encodeComponent(type.name()),
-        encodeComponent(currencyIsoCode),
-        encodeComponent(description));
-  }
-
-  private static String normalizeAccountId(String accountId) {
-    if (accountId == null || accountId.isEmpty()) {
-      return null;
-    }
-    return accountId;
-  }
-
-  private static BigDecimal canonicalizeAmount(BigDecimal amount) {
-    return Objects.requireNonNull(amount, "amount").setScale(AMOUNT_SCALE, RoundingMode.HALF_UP);
-  }
-
-  private static String encodeComponent(String value) {
-    if (value == null) {
-      return NULL_COMPONENT;
-    }
-
-    var valueLength = value.getBytes(StandardCharsets.UTF_8).length;
-    return VALUE_PREFIX + valueLength + VALUE_LENGTH_SEPARATOR + value;
+    return TransactionDuplicateKeySupport.encodeComponents(
+        accountId,
+        bankName,
+        date.toString(),
+        amount.toPlainString(),
+        type.name(),
+        currencyIsoCode,
+        description);
   }
 }

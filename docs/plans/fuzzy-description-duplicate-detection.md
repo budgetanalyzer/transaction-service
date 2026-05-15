@@ -2,7 +2,12 @@
 
 ## Status
 
-Planned. No implementation has been started.
+Phases 1 through 3 are complete. The service now has a description-free
+duplicate candidate key, a description match result model, a deterministic
+description matcher with normalization plus conservative normalized Levenshtein
+scoring, and a repository lookup that retrieves active owner-scoped candidates
+without requiring description equality. Preview marking and batch import
+behavior are still unchanged and remain planned for later phases.
 
 ## Problem
 
@@ -82,20 +87,26 @@ fixed, and Java scoring is easier to test and tune.
 
 ### Phase 1: Extract Duplicate Matching Model
 
+Status: Complete.
+
 Create a service-layer duplicate matching model that separates exact candidate
 identity from description comparison.
 
 Tasks:
 
-- Introduce a candidate key that excludes description.
+- Introduce a candidate key that excludes description. Done via
+  `TransactionDuplicateCandidateKey`.
 - Keep the existing full exact key behavior available only where tests need to
-  prove old assumptions, or replace it cleanly if no callers need it.
-- Add a small description match result type containing at least:
+  prove old assumptions, or replace it cleanly if no callers need it. Done;
+  `TransactionDuplicateKey` remains the exact-description key used by current
+  import paths.
+- Add a small description match result type. Done via
+  `TransactionDescriptionMatchResult`, containing:
   - matched or not matched
   - similarity score
   - matching candidate identifier or description, if useful for debugging
 - Keep all matching classes in `service/` or `service/dto/`; do not introduce
-  `api` dependencies.
+  `api` dependencies. Done.
 
 Acceptance criteria:
 
@@ -106,26 +117,40 @@ Acceptance criteria:
 
 ### Phase 2: Add Description Normalization And Similarity Scoring
 
-Implement the description preprocessing and similarity metric.
+Status: Complete.
+
+Implemented description preprocessing and a normalized Levenshtein similarity
+metric in `TransactionDescriptionMatcher`.
 
 Tasks:
 
 - Add a dedicated description matcher class with deterministic normalization.
-- Choose and document the threshold constant in code.
-- Add a minimum-length guard to avoid over-matching tiny merchant strings.
+  Done via `TransactionDescriptionMatcher`.
+- Choose and document the threshold constant in code. Done; fuzzy matches
+  require a normalized Levenshtein similarity score of `0.90` or higher.
+- Add a minimum-length guard to avoid over-matching tiny merchant strings. Done;
+  fuzzy matching requires both normalized descriptions to contain at least `8`
+  comparable characters.
 - Prefer a well-tested library if one is already available or cheap to add;
   otherwise implement a small normalized Levenshtein scorer with focused tests.
+  Done with an in-service scorer to avoid adding a dependency for this narrow
+  phase.
 
 Acceptance criteria:
 
-- The X Corp yearly/monthly descriptions match.
-- Punctuation and whitespace-only variants match.
-- Case-only variants match.
+- The X Corp yearly/monthly descriptions match. Covered by
+  `TransactionDescriptionMatcherTest`.
+- Punctuation and whitespace-only variants match. Covered by
+  `TransactionDescriptionMatcherTest`.
+- Case-only variants match. Covered by `TransactionDescriptionMatcherTest`.
 - Clearly different descriptions with the same date and amount do not match.
+  Covered by `TransactionDescriptionMatcherTest`.
 - Very short descriptions do not fuzzy-match unless they are normalized exact
-  matches.
+  matches. Covered by `TransactionDescriptionMatcherTest`.
 
 ### Phase 3: Change Repository Candidate Lookup
+
+Status: Complete.
 
 Change duplicate lookup to retrieve exact-field candidates without requiring
 description equality in SQL.
@@ -133,12 +158,14 @@ description equality in SQL.
 Tasks:
 
 - Add a repository method that accepts candidate keys and owner ID, then returns
-  active matching transaction candidates with descriptions.
-- Keep soft-deleted rows excluded.
-- Keep lookup owner-scoped.
+  active matching transaction candidates with descriptions. Done via
+  `TransactionRepository.findDuplicateCandidates(...)`.
+- Keep soft-deleted rows excluded. Done.
+- Keep lookup owner-scoped. Done.
 - Avoid broad scans by preserving an index that starts with owner/deleted and
-  the exact candidate fields.
-- Add a Flyway migration if the current duplicate index needs replacement.
+  the exact candidate fields. Done.
+- Add a Flyway migration if the current duplicate index needs replacement. Done
+  via `V17__replace_duplicate_candidate_index.sql`.
 
 Acceptance criteria:
 
