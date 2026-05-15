@@ -3,7 +3,9 @@ package org.budgetanalyzer.transaction.repository.spec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
 /**
  * Integration tests for {@link TransactionSpecifications}.
@@ -73,6 +76,29 @@ class TransactionSpecificationsIntegrationTest {
     assertThat(results)
         .extracting(Transaction::getDescription)
         .allMatch(desc -> desc.toLowerCase().contains("amazon"));
+  }
+
+  @Test
+  void withFilter_descriptionDoesNotMatchBankName() {
+    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Grocery Store", "Bangkok Bank"));
+
+    var spec = TransactionSpecifications.withFilter(filterByDescription("capital"));
+    var results = transactionRepository.findAll(spec);
+
+    assertThat(results).isEmpty();
+  }
+
+  @Test
+  void withCriteria_searchTextMatchesDescriptionOnly() {
+    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Neighborhood Bank"));
+    transactionRepository.save(createTransactionWithBank("Grocery Store", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Fuel Stop", "Bangkok Bank"));
+
+    var spec = TransactionSpecifications.withCriteria(criteriaBySearchText("coffee capital"));
+    var results = transactionRepository.findAll(spec);
+
+    assertThat(results).extracting(Transaction::getDescription).containsExactly("Coffee Shop");
   }
 
   @Test
@@ -216,6 +242,24 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("checking_account", "credit_card");
   }
 
+  @Test
+  void withCriteria_accountIdsMatchesAnyProvidedValue() {
+    transactionRepository.save(
+        createTransactionWithAccount("Checking transaction", "checking-123", BigDecimal.TEN));
+    transactionRepository.save(
+        createTransactionWithAccount("Savings transaction", "savings-456", BigDecimal.TEN));
+    transactionRepository.save(
+        createTransactionWithAccount("Brokerage transaction", "brokerage-789", BigDecimal.TEN));
+
+    var criteria = criteriaWithValues(Set.of("checking-123", "savings-456"), null, null);
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Checking transaction", "Savings transaction");
+  }
+
   // ==================== Bank Name Filter Tests ====================
 
   @Test
@@ -254,6 +298,21 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("Wells Fargo", "Chase Bank");
   }
 
+  @Test
+  void withCriteria_bankNamesMatchesAnyProvidedValue() {
+    transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
+    transactionRepository.save(createTransactionWithBank("Truist transaction", "Truist"));
+
+    var criteria = criteriaWithValues(null, Set.of("capital", "bangkok"), null);
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Capital transaction", "Bangkok transaction");
+  }
+
   // ==================== Currency Code Filter Tests ====================
 
   @Test
@@ -270,6 +329,39 @@ class TransactionSpecificationsIntegrationTest {
     // Then: only USD transactions are returned
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getCurrencyIsoCode()).isEqualTo("USD");
+  }
+
+  @Test
+  void withCriteria_currencyIsoCodesMatchesAnyProvidedValueCaseInsensitive() {
+    transactionRepository.save(createTransactionWithCurrency("Dollar transaction", "USD"));
+    transactionRepository.save(createTransactionWithCurrency("Baht transaction", "THB"));
+    transactionRepository.save(createTransactionWithCurrency("Euro transaction", "EUR"));
+
+    var criteria = criteriaWithValues(null, null, Set.of("usd", "thb"));
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("Dollar transaction", "Baht transaction");
+  }
+
+  @Test
+  void withCriteria_blankSetValuesAreIgnored() {
+    transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
+    transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
+
+    var bankNames = new java.util.HashSet<String>();
+    bankNames.add("capital");
+    bankNames.add("");
+    bankNames.add(" ");
+    var criteria = criteriaWithValues(Set.of(), bankNames, Set.of());
+
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    assertThat(results)
+        .extracting(Transaction::getDescription)
+        .containsExactly("Capital transaction");
   }
 
   // ==================== Transaction Type Filter Tests ====================
@@ -361,6 +453,76 @@ class TransactionSpecificationsIntegrationTest {
     // Then: only transaction matching ALL criteria is returned
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getDescription()).isEqualTo("Amazon Prime");
+  }
+
+  @Test
+  void withCriteria_appliesOwnerTypeDateAmountAndTimestampFilters() {
+    // Given: transactions that differ across the shared criteria fields
+    final var createdAfter = Instant.now().minusSeconds(60);
+    var matchingTransaction =
+        createComplexTransaction(
+            "Matching transaction", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    matchingTransaction.setOwnerId("user-A");
+    matchingTransaction.setDate(LocalDate.of(2025, 1, 15));
+    matchingTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(matchingTransaction);
+
+    var otherOwnerTransaction =
+        createComplexTransaction(
+            "Other owner", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    otherOwnerTransaction.setOwnerId("user-B");
+    otherOwnerTransaction.setDate(LocalDate.of(2025, 1, 15));
+    otherOwnerTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(otherOwnerTransaction);
+
+    var wrongTypeTransaction =
+        createComplexTransaction(
+            "Wrong type", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    wrongTypeTransaction.setOwnerId("user-A");
+    wrongTypeTransaction.setDate(LocalDate.of(2025, 1, 15));
+    wrongTypeTransaction.setType(TransactionType.CREDIT);
+    transactionRepository.save(wrongTypeTransaction);
+
+    var outsideDateTransaction =
+        createComplexTransaction(
+            "Outside date", "checking-123", "Capital One", BigDecimal.valueOf(50));
+    outsideDateTransaction.setOwnerId("user-A");
+    outsideDateTransaction.setDate(LocalDate.of(2025, 2, 15));
+    outsideDateTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(outsideDateTransaction);
+
+    var outsideAmountTransaction =
+        createComplexTransaction(
+            "Outside amount", "checking-123", "Capital One", BigDecimal.valueOf(500));
+    outsideAmountTransaction.setOwnerId("user-A");
+    outsideAmountTransaction.setDate(LocalDate.of(2025, 1, 15));
+    outsideAmountTransaction.setType(TransactionType.DEBIT);
+    transactionRepository.save(outsideAmountTransaction);
+
+    var criteria =
+        new TransactionCriteria(
+            null,
+            "user-A",
+            Set.of("checking"),
+            Set.of("capital"),
+            LocalDate.of(2025, 1, 1),
+            LocalDate.of(2025, 1, 31),
+            Set.of("USD"),
+            BigDecimal.valueOf(25),
+            BigDecimal.valueOf(75),
+            TransactionType.DEBIT,
+            null,
+            createdAfter,
+            Instant.now().plusSeconds(60),
+            createdAfter,
+            Instant.now().plusSeconds(60));
+
+    // When: shared internal criteria are applied
+    var results = transactionRepository.findAll(TransactionSpecifications.withCriteria(criteria));
+
+    // Then: all criteria predicates are combined with AND
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getDescription()).isEqualTo("Matching transaction");
   }
 
   @Test
@@ -539,6 +701,26 @@ class TransactionSpecificationsIntegrationTest {
         null);
   }
 
+  private TransactionCriteria criteriaBySearchText(String searchText) {
+    return new TransactionCriteria(
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        searchText,
+        null,
+        null,
+        null,
+        null);
+  }
+
   private TransactionFilter filterByOwnerId(String ownerId) {
     return new TransactionFilter(
         null, ownerId, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -616,6 +798,26 @@ class TransactionSpecificationsIntegrationTest {
   private TransactionFilter emptyFilter() {
     return new TransactionFilter(
         null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+  }
+
+  private TransactionCriteria criteriaWithValues(
+      Set<String> accountIds, Set<String> bankNames, Set<String> currencyIsoCodes) {
+    return new TransactionCriteria(
+        null,
+        null,
+        accountIds,
+        bankNames,
+        null,
+        null,
+        currencyIsoCodes,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
   // Transaction factory methods

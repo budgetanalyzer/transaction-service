@@ -169,6 +169,10 @@ Permission: transactions:read:any
 Notes: Cross-user count endpoint. Does not require transactions:read.
 ```
 
+Transaction text filtering uses `description`, which matches transaction
+descriptions only. Text filters are case-insensitive, split multi-word input
+into OR terms, and escape SQL LIKE wildcards.
+
 ### Saved Views
 
 **Create Saved View**
@@ -215,6 +219,41 @@ GET /v1/views/{id}/transactions
 Response: ViewMembershipResponse
 Permission: views:read
 Notes: Returns transactions matching the view's criteria, plus pinned/excluded overrides.
+```
+
+**Saved View Criteria**
+
+Saved views persist the user-facing transaction filters below in the
+`criteria` object:
+
+- `dateFrom`, `dateTo` - Inclusive transaction date range.
+- `searchText` - Text matched against transaction descriptions.
+- `bankNames`, `accountIds`, `currencyIsoCodes` - Multi-value saved-view
+  fields. Any supplied value can match. Blank entries are ignored.
+- `minAmount`, `maxAmount` - Inclusive transaction amount range.
+- `type` - Transaction type, `DEBIT` or `CREDIT`.
+
+`startDate` and `endDate` are no longer part of the saved-view API contract.
+Migration `V16__delete_legacy_saved_views.sql` deletes saved views persisted
+with the old criteria JSON shape; pinned and excluded transaction IDs are stored
+on the same `saved_view` row and are removed with the view.
+
+```json
+{
+  "name": "December Debits",
+  "criteria": {
+    "dateFrom": "2024-12-01",
+    "dateTo": "2024-12-31",
+    "bankNames": ["Capital One"],
+    "accountIds": ["checking-12345"],
+    "currencyIsoCodes": ["USD"],
+    "minAmount": 10.00,
+    "maxAmount": 500.00,
+    "type": "DEBIT",
+    "searchText": "coffee"
+  },
+  "openEnded": false
+}
 ```
 
 **Pin Transaction to View**

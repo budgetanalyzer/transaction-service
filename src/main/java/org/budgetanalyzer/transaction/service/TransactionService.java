@@ -24,6 +24,7 @@ import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
 /** Service for managing financial transactions. */
 @Service
@@ -206,7 +207,7 @@ public class TransactionService {
    * @return a page of matching transactions
    */
   public Page<Transaction> search(TransactionFilter filter, Pageable pageable) {
-    var spec = TransactionSpecifications.withFilter(filter);
+    var spec = TransactionSpecifications.withCriteria(TransactionCriteria.fromFilter(filter));
     return transactionRepository.findAllNotDeleted(spec, pageable);
   }
 
@@ -218,7 +219,7 @@ public class TransactionService {
    * @return the count of matching transactions
    */
   public long countNotDeletedForUser(TransactionFilter filter, String userId) {
-    var spec = TransactionSpecifications.withFilter(filter);
+    var spec = TransactionSpecifications.withCriteria(TransactionCriteria.fromFilter(filter));
     spec = spec.and(TransactionSpecifications.byOwner(userId));
     return transactionRepository.countNotDeleted(spec);
   }
@@ -232,7 +233,7 @@ public class TransactionService {
    * @return the count of matching transactions
    */
   public long countNotDeleted(TransactionFilter filter) {
-    var spec = TransactionSpecifications.withFilter(filter);
+    var spec = TransactionSpecifications.withCriteria(TransactionCriteria.fromFilter(filter));
     return transactionRepository.countNotDeleted(spec);
   }
 

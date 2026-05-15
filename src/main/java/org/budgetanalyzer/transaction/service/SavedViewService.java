@@ -1,6 +1,5 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -12,15 +11,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
-import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.Transaction;
-import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 import org.budgetanalyzer.transaction.service.dto.ViewMembership;
 
 /** Service for managing saved views (smart collections) of transactions. */
@@ -297,8 +295,11 @@ public class SavedViewService {
   }
 
   private List<Transaction> findMatchingTransactions(SavedView view) {
-    var filter = criteriaToFilter(view.getCriteria(), view.isOpenEnded(), view.getUserId());
-    return transactionRepository.findAllNotDeleted(TransactionSpecifications.withFilter(filter));
+    var criteria =
+        TransactionCriteria.fromViewCriteria(
+            view.getCriteria(), view.getUserId(), view.isOpenEnded());
+    return transactionRepository.findAllNotDeleted(
+        TransactionSpecifications.withCriteria(criteria));
   }
 
   private List<Transaction> findTransactionsByIds(Collection<Long> ids, String ownerId) {
@@ -308,50 +309,5 @@ public class SavedViewService {
         .map(java.util.Optional::get)
         .filter(transaction -> ownerId.equals(transaction.getOwnerId()))
         .toList();
-  }
-
-  TransactionFilter criteriaToFilter(ViewCriteria criteria, boolean openEnded, String ownerId) {
-    // Determine effective end date
-    LocalDate effectiveEndDate = criteria.endDate();
-    if (openEnded && effectiveEndDate == null) {
-      effectiveEndDate = LocalDate.now();
-    }
-
-    // Build account ID filter (join multiple IDs for LIKE query, or use first one)
-    String accountIdFilter = null;
-    if (criteria.accountIds() != null && !criteria.accountIds().isEmpty()) {
-      // For simplicity, use the first account ID. For multiple, we'd need OR conditions.
-      accountIdFilter = criteria.accountIds().iterator().next();
-    }
-
-    // Build bank name filter (use first value for now)
-    String bankNameFilter = null;
-    if (criteria.bankNames() != null && !criteria.bankNames().isEmpty()) {
-      bankNameFilter = criteria.bankNames().iterator().next();
-    }
-
-    // Build currency filter (use first value for now)
-    String currencyFilter = null;
-    if (criteria.currencyIsoCodes() != null && !criteria.currencyIsoCodes().isEmpty()) {
-      currencyFilter = criteria.currencyIsoCodes().iterator().next();
-    }
-
-    return new TransactionFilter(
-        null, // id
-        ownerId,
-        accountIdFilter, // accountId
-        bankNameFilter, // bankName
-        criteria.startDate(), // dateFrom
-        effectiveEndDate, // dateTo
-        currencyFilter, // currencyIsoCode
-        criteria.minAmount(), // minAmount
-        criteria.maxAmount(), // maxAmount
-        null, // type
-        criteria.searchText(), // description
-        null, // createdAfter
-        null, // createdBefore
-        null, // updatedAfter
-        null // updatedBefore
-        );
   }
 }

@@ -10,17 +10,18 @@ import java.util.Set;
  * <p>All fields are optional. When a field is null, that filter is not applied.
  */
 public record ViewCriteria(
-    LocalDate startDate,
-    LocalDate endDate,
+    LocalDate dateFrom,
+    LocalDate dateTo,
     Set<String> accountIds,
     Set<String> bankNames,
     Set<String> currencyIsoCodes,
     BigDecimal minAmount,
     BigDecimal maxAmount,
+    TransactionType type,
     String searchText) {
 
   /** Creates an empty criteria that matches all transactions. */
   public static ViewCriteria empty() {
-    return new ViewCriteria(null, null, null, null, null, null, null, null);
+    return new ViewCriteria(null, null, null, null, null, null, null, null, null);
   }
 }

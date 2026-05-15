@@ -34,6 +34,7 @@ import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
+import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
 @ExtendWith(MockitoExtension.class)
 class SavedViewServiceTest {
@@ -72,6 +73,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null);
     var command = new SavedViewCommand("My View", criteria, false);
 
@@ -82,7 +84,7 @@ class SavedViewServiceTest {
 
     assertThat(result.getName()).isEqualTo("My View");
     assertThat(result.getUserId()).isEqualTo(USER_ID);
-    assertThat(result.getCriteria().startDate()).isEqualTo(LocalDate.of(2024, 12, 1));
+    assertThat(result.getCriteria().dateFrom()).isEqualTo(LocalDate.of(2024, 12, 1));
     assertThat(result.isOpenEnded()).isFalse();
 
     verify(savedViewRepository, times(1)).save(any(SavedView.class));
@@ -159,6 +161,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
@@ -180,6 +183,7 @@ class SavedViewServiceTest {
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 5),
+            null,
             null,
             null,
             null,
@@ -214,6 +218,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
     testView.setExcludedIds(Set.of(2L));
 
@@ -239,6 +244,7 @@ class SavedViewServiceTest {
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 31),
+            null,
             null,
             null,
             null,
@@ -275,6 +281,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
 
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
@@ -294,6 +301,7 @@ class SavedViewServiceTest {
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 31),
+            null,
             null,
             null,
             null,
@@ -330,6 +338,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
     testView.setExcludedIds(Set.of(99L));
 
@@ -352,7 +361,7 @@ class SavedViewServiceTest {
   // ==================== owner scoping regression ====================
 
   @Test
-  void criteriaToFilter_setsOwnerIdFromParameter() {
+  void transactionCriteriaFromViewCriteria_setsOwnerIdFromParameter() {
     var criteria =
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
@@ -362,11 +371,33 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null);
 
-    var filter = savedViewService.criteriaToFilter(criteria, false, USER_ID);
+    var transactionCriteria = TransactionCriteria.fromViewCriteria(criteria, USER_ID, false);
 
-    assertThat(filter.ownerId()).isEqualTo(USER_ID);
+    assertThat(transactionCriteria.ownerId()).isEqualTo(USER_ID);
+  }
+
+  @Test
+  void transactionCriteriaFromViewCriteria_mapsDateRangeAndType() {
+    var criteria =
+        new org.budgetanalyzer.transaction.domain.ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            TransactionType.DEBIT,
+            null);
+
+    var transactionCriteria = TransactionCriteria.fromViewCriteria(criteria, USER_ID, false);
+
+    assertThat(transactionCriteria.dateFrom()).isEqualTo(LocalDate.of(2024, 12, 1));
+    assertThat(transactionCriteria.dateTo()).isEqualTo(LocalDate.of(2024, 12, 31));
+    assertThat(transactionCriteria.type()).isEqualTo(TransactionType.DEBIT);
   }
 
   @Test
@@ -376,6 +407,7 @@ class SavedViewServiceTest {
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 31),
+            null,
             null,
             null,
             null,
@@ -425,6 +457,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
     testView.setPinnedIds(Set.of(4L, 5L));
     testView.setExcludedIds(Set.of(1L, 6L));
@@ -468,6 +501,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
     testView.setPinnedIds(Set.of(100L));
     testView.setExcludedIds(Set.of(2L));
@@ -497,6 +531,7 @@ class SavedViewServiceTest {
             null,
             null,
             null,
+            null,
             null));
     testView.setPinnedIds(Set.of(99L));
 
@@ -518,6 +553,7 @@ class SavedViewServiceTest {
         new org.budgetanalyzer.transaction.domain.ViewCriteria(
             LocalDate.of(2024, 12, 1),
             LocalDate.of(2024, 12, 31),
+            null,
             null,
             null,
             null,
