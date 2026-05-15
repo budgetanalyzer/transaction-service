@@ -90,17 +90,15 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_searchTextMatchesDescriptionOrBankName() {
+  void withCriteria_searchTextMatchesDescriptionOnly() {
     transactionRepository.save(createTransactionWithBank("Coffee Shop", "Neighborhood Bank"));
     transactionRepository.save(createTransactionWithBank("Grocery Store", "Capital One"));
     transactionRepository.save(createTransactionWithBank("Fuel Stop", "Bangkok Bank"));
 
-    var spec = TransactionSpecifications.withFilter(filterBySearchText("coffee capital"));
+    var spec = TransactionSpecifications.withCriteria(criteriaBySearchText("coffee capital"));
     var results = transactionRepository.findAll(spec);
 
-    assertThat(results)
-        .extracting(Transaction::getDescription)
-        .containsExactlyInAnyOrder("Coffee Shop", "Grocery Store");
+    assertThat(results).extracting(Transaction::getDescription).containsExactly("Coffee Shop");
   }
 
   @Test
@@ -703,8 +701,8 @@ class TransactionSpecificationsIntegrationTest {
         null);
   }
 
-  private TransactionFilter filterBySearchText(String searchText) {
-    return new TransactionFilter(
+  private TransactionCriteria criteriaBySearchText(String searchText) {
+    return new TransactionCriteria(
         null,
         null,
         null,

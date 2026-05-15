@@ -28,7 +28,7 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
  * @param maxAmount inclusive amount upper bound
  * @param type transaction type to match
  * @param description text to match against transaction descriptions only
- * @param searchText text to match against transaction descriptions or bank names
+ * @param searchText saved-view text to match against transaction descriptions only
  * @param createdAfter inclusive creation timestamp lower bound
  * @param createdBefore inclusive creation timestamp upper bound
  * @param updatedAfter inclusive update timestamp lower bound
@@ -60,9 +60,9 @@ public record TransactionCriteria(
   }
 
   /**
-   * Creates criteria using the pre-searchText internal criteria contract.
+   * Creates criteria using the saved-view text criteria contract.
    *
-   * <p>The supplied text value maps to broad {@code searchText} semantics.
+   * <p>The supplied text value maps to description-only {@code searchText} semantics.
    */
   public TransactionCriteria(
       Long id,
@@ -132,7 +132,7 @@ public record TransactionCriteria(
         filter.maxAmount(),
         filter.type(),
         filter.description(),
-        filter.searchText(),
+        null,
         filter.createdAfter(),
         filter.createdBefore(),
         filter.updatedAfter(),

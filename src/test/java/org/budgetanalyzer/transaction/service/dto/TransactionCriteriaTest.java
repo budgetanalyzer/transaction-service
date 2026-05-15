@@ -36,7 +36,6 @@ class TransactionCriteriaTest {
             BigDecimal.valueOf(100),
             TransactionType.DEBIT,
             "coffee",
-            "capital",
             createdAfter,
             createdBefore,
             updatedAfter,
@@ -55,7 +54,7 @@ class TransactionCriteriaTest {
     assertThat(criteria.maxAmount()).isEqualByComparingTo("100");
     assertThat(criteria.type()).isEqualTo(TransactionType.DEBIT);
     assertThat(criteria.description()).isEqualTo("coffee");
-    assertThat(criteria.searchText()).isEqualTo("capital");
+    assertThat(criteria.searchText()).isNull();
     assertThat(criteria.createdAfter()).isEqualTo(createdAfter);
     assertThat(criteria.createdBefore()).isEqualTo(createdBefore);
     assertThat(criteria.updatedAfter()).isEqualTo(updatedAfter);

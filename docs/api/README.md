@@ -57,7 +57,7 @@ Notes: Returns only the requesting user's active (non-deleted) transactions.
 **Count User Transactions**
 ```
 GET /v1/transactions/count
-Query params: id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, searchText, createdAfter, createdBefore, updatedAfter, updatedBefore
+Query params: id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
 Response: long
 Permission: transactions:read
 Notes: Always scoped to the requesting user's active transactions.
@@ -153,7 +153,7 @@ as a 422 response before parsing the file or issuing a preview token.
 **Search Transactions Across Users**
 ```
 GET /v1/transactions/search
-Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, searchText, createdAfter, createdBefore, updatedAfter, updatedBefore
+Query params: page, size, sort, ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
 Response: PagedResponse<TransactionResponse>
 Permission: transactions:read:any
 Notes: Default sort is date,desc then id,desc. Default page size is 50, maximum is 100. Supported sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt. Unsupported sort fields return 400.
@@ -163,15 +163,14 @@ Contract: content contains TransactionResponse items (ownerId is a first-class f
 **Count Transactions Across Users**
 ```
 GET /v1/transactions/search/count
-Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, searchText, createdAfter, createdBefore, updatedAfter, updatedBefore
+Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCode, minAmount, maxAmount, type, description, createdAfter, createdBefore, updatedAfter, updatedBefore
 Response: long
 Permission: transactions:read:any
 Notes: Cross-user count endpoint. Does not require transactions:read.
 ```
 
-Transaction text filters are explicit: `description` matches transaction
-descriptions only, while `searchText` matches either transaction descriptions
-or bank names. Both text filters are case-insensitive, split multi-word input
+Transaction text filtering uses `description`, which matches transaction
+descriptions only. Text filters are case-insensitive, split multi-word input
 into OR terms, and escape SQL LIKE wildcards.
 
 ### Saved Views
@@ -228,7 +227,7 @@ Saved views persist the user-facing transaction filters below in the
 `criteria` object:
 
 - `dateFrom`, `dateTo` - Inclusive transaction date range.
-- `searchText` - Text matched against transaction descriptions or bank names.
+- `searchText` - Text matched against transaction descriptions.
 - `bankNames`, `accountIds`, `currencyIsoCodes` - Multi-value saved-view
   fields. Any supplied value can match. Blank entries are ignored.
 - `minAmount`, `maxAmount` - Inclusive transaction amount range.

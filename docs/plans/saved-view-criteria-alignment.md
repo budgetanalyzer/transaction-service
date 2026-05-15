@@ -17,10 +17,10 @@ Phase 3 is implemented in `transaction-service`: saved-view `accountIds`,
 `bankNames`, and `currencyIsoCodes` now apply every supplied value instead of
 silently using only the first one. Blank plural-field entries are ignored.
 
-Phase 4 is implemented in `transaction-service`: saved-view `searchText` and
-the transaction-search `searchText` query parameter match transaction
-descriptions or bank names. The existing transaction-search `description`
-query parameter remains description-only for compatibility.
+Phase 4 option A is implemented in `transaction-service`: transaction search
+keeps the `description` query parameter as description-only, and saved-view
+`searchText` also matches transaction descriptions only. No broad transaction
+`searchText` query parameter is exposed.
 
 ## Problem
 
@@ -64,10 +64,9 @@ Saved views also have misleading multi-value fields. `accountIds`,
 `SavedViewService.criteriaToFilter(...)` only uses the first value from each
 set. That makes the API look more capable than the behavior.
 
-Text search is now explicit. The transaction-search `searchText` query
-parameter and saved-view `searchText` both match description or bank name. The
-older transaction-search `description` query parameter remains
-description-only.
+Text search is now explicit. Transaction search uses the `description` query
+parameter for description-only matching. Saved views keep the `searchText`
+field name, but it also matches descriptions only.
 
 ## Target Contract
 
@@ -142,8 +141,8 @@ Benefits:
    - Add `TransactionType type`.
    - Keep plural fields for bank/account/currency if multi-value matching is
      implemented.
-   - Keep `searchText` as the text field name because the intended behavior is
-     broader than description-only matching.
+   - Keep `searchText` as the saved-view text field name, with
+     description-only matching.
 
 2. Change `ViewCriteriaApi`:
    - Match the new `ViewCriteria` field names and fields.
@@ -189,12 +188,9 @@ Benefits:
 
 6. Align text search:
    - Use `searchText` for saved views.
-   - Match the Transactions screen behavior: text search matches description
-     or bank name.
+   - Match transaction descriptions only.
    - Keep transaction search's existing `description` parameter
      description-only.
-   - Add transaction search `searchText` for broad description-or-bank-name
-     matching.
 
 7. Remove saved-view conversion through single-value `TransactionFilter`:
    - Replace `SavedViewService.criteriaToFilter(...)` with mapping to the
@@ -209,7 +205,7 @@ Benefits:
    - Saved view with multiple `currencyIsoCodes` includes all listed
      currencies.
    - Date fields use `dateFrom` and `dateTo`.
-   - Saved-view `searchText` matches description or bank name.
+   - Saved-view `searchText` matches descriptions only.
    - Transaction search still applies supported timestamp filters.
 
 9. Update documentation:
@@ -247,9 +243,9 @@ Benefits:
 
 ## Open Questions
 
-1. Resolved in Phase 4: transaction search's existing `description` parameter
-   remains description-only, and a separate `searchText` query parameter uses
-   the same broad description-or-bank-name behavior as saved views.
+1. Resolved in Phase 4 option A: transaction search's existing `description`
+   parameter remains description-only, and saved-view `searchText` is also
+   description-only.
 
 2. Should currency be added to the Transactions screen as a filter before it is
    retained in saved-view criteria?
@@ -344,8 +340,8 @@ Implementation steps:
    - Make existing `withFilter(TransactionFilter filter)` delegate through the
      mapper for compatibility.
    - Keep the existing text predicate behavior unchanged in this phase. Phase
-     4 later broadened saved-view `searchText` and introduced transaction
-     search `searchText` for description-or-bank-name matching.
+     4 later kept saved-view `searchText` description-only and avoided adding
+     broad transaction `searchText` query semantics.
 4. Update `SavedViewService`:
    - Replace saved-view filtering through `TransactionFilter` with
      `TransactionCriteria`.
@@ -422,19 +418,15 @@ it into the structural refactor.
 Implementation steps:
 
 1. Decide the contract:
-   - Option A: keep transaction search `description` description-only and make
-     saved-view `searchText` description-only.
-   - Option B, chosen: introduce and document broad `searchText` behavior that
+   - Option A, chosen: keep transaction search `description`
+     description-only and make saved-view `searchText` description-only.
+   - Option B: introduce and document broad `searchText` behavior that
      matches description or bank name, matching the Transactions screen.
 2. Implement the chosen predicate behavior in `TransactionSpecifications`.
-3. If Option B is chosen:
-   - Add a query parameter only if needed by the public API.
-   - Keep `description` backward-compatible or clearly document any behavior
-     change.
+3. Do not add a broad transaction-search `searchText` query parameter.
 4. Update tests:
-   - Saved-view `searchText` matches the documented fields.
-   - Transaction search `description` or `searchText` matches the documented
-     fields.
+   - Saved-view `searchText` matches descriptions only.
+   - Transaction search `description` matches descriptions only.
    - Multi-word search behavior remains covered.
 5. Update documentation:
    - `docs/api/README.md`.

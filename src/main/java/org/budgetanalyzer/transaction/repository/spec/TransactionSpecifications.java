@@ -33,7 +33,7 @@ public class TransactionSpecifications {
    *       "amazon" OR "prime")
    *   <li>Special characters (%, _) are escaped to prevent wildcard matching
    *   <li>Description filters match only the description field
-   *   <li>Search-text filters match description or bank name
+   *   <li>Search-text filters match only the description field
    * </ul>
    *
    * <p>For date, timestamp, and numeric range fields, appropriate greater-than / less-than
@@ -86,12 +86,9 @@ public class TransactionSpecifications {
         predicates.add(descriptionPredicate);
       }
 
-      // Search text (case-insensitive LIKE against description or bank name)
+      // Saved-view search text (case-insensitive LIKE against description)
       Predicate searchTextPredicate =
-          createAnyFieldTextFilterPredicate(
-              cb,
-              List.of(root.get("description"), root.get("bankName")),
-              effectiveCriteria.searchText());
+          createTextFilterPredicate(cb, root.get("description"), effectiveCriteria.searchText());
       if (searchTextPredicate != null) {
         predicates.add(searchTextPredicate);
       }
@@ -218,23 +215,6 @@ public class TransactionSpecifications {
     }
 
     return predicates.size() == 1 ? predicates.get(0) : cb.or(predicates.toArray(new Predicate[0]));
-  }
-
-  private static Predicate createAnyFieldTextFilterPredicate(
-      CriteriaBuilder cb, List<Expression<String>> fieldPaths, String filterValue) {
-    if (fieldPaths == null || fieldPaths.isEmpty()) {
-      return null;
-    }
-
-    List<Predicate> fieldPredicates = new ArrayList<>();
-    for (var fieldPath : fieldPaths) {
-      var fieldPredicate = createTextFilterPredicate(cb, fieldPath, filterValue);
-      if (fieldPredicate != null) {
-        fieldPredicates.add(fieldPredicate);
-      }
-    }
-
-    return combineWithOr(cb, fieldPredicates);
   }
 
   /**

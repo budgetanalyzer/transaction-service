@@ -240,7 +240,7 @@ class SavedViewServiceIntegrationTest {
   }
 
   @Test
-  void getViewTransactions_searchTextMatchesDescriptionOrBankName() {
+  void getViewTransactions_searchTextMatchesDescriptionOnly() {
     var descriptionMatch =
         transactionRepository.save(
             createTransaction(
@@ -250,15 +250,14 @@ class SavedViewServiceIntegrationTest {
                 "checking-12345",
                 "Neighborhood Bank",
                 "USD"));
-    var bankMatch =
-        transactionRepository.save(
-            createTransaction(
-                "Grocery store",
-                LocalDate.of(2024, 12, 16),
-                TransactionType.DEBIT,
-                "checking-12345",
-                "Capital One",
-                "USD"));
+    transactionRepository.save(
+        createTransaction(
+            "Grocery store",
+            LocalDate.of(2024, 12, 16),
+            TransactionType.DEBIT,
+            "checking-12345",
+            "Capital One",
+            "USD"));
     transactionRepository.save(
         createTransaction(
             "Fuel stop",
@@ -275,7 +274,7 @@ class SavedViewServiceIntegrationTest {
 
     var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
 
-    assertThat(membership.matched()).containsExactly(descriptionMatch.getId(), bankMatch.getId());
+    assertThat(membership.matched()).containsExactly(descriptionMatch.getId());
   }
 
   @Test
