@@ -15,6 +15,10 @@ duplicate decisions. Documentation now describes the strict financial identity
 candidate lookup, fuzzy description comparison, advisory preview flags, batch
 re-checking, and `allowDuplicate=true` override behavior.
 
+Follow-up false-positive mitigations for numeric description tokens and
+batch-import seen-row tracking are planned in
+[fuzzy-duplicate-false-positive-mitigation.md](fuzzy-duplicate-false-positive-mitigation.md).
+
 ## Problem
 
 Duplicate detection previously required an exact description match. That missed

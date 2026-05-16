@@ -1,6 +1,8 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -25,6 +27,10 @@ final class TransactionDescriptionMatcher {
 
     if (normalizedIncomingDescription.equals(normalizedCandidateDescription)) {
       return TransactionDescriptionMatchResult.match(1.0, candidateId, candidateDescription);
+    }
+
+    if (!haveCompatibleNumericTokens(incomingDescription, candidateDescription)) {
+      return TransactionDescriptionMatchResult.noMatch();
     }
 
     if (!canFuzzyMatch(normalizedIncomingDescription, normalizedCandidateDescription)) {
@@ -61,6 +67,44 @@ final class TransactionDescriptionMatcher {
       String normalizedIncomingDescription, String normalizedCandidateDescription) {
     return normalizedIncomingDescription.length() >= MINIMUM_FUZZY_MATCH_LENGTH
         && normalizedCandidateDescription.length() >= MINIMUM_FUZZY_MATCH_LENGTH;
+  }
+
+  private static boolean haveCompatibleNumericTokens(
+      String incomingDescription, String candidateDescription) {
+    var incomingNumericTokens = extractNumericTokens(incomingDescription);
+    var candidateNumericTokens = extractNumericTokens(candidateDescription);
+    return incomingNumericTokens.isEmpty() && candidateNumericTokens.isEmpty()
+        || incomingNumericTokens.equals(candidateNumericTokens);
+  }
+
+  private static List<String> extractNumericTokens(String description) {
+    var numericTokens = new ArrayList<String>();
+    var numericTokenBuilder = new StringBuilder();
+
+    description
+        .codePoints()
+        .forEach(
+            codePoint -> {
+              if (Character.isDigit(codePoint)) {
+                numericTokenBuilder.appendCodePoint(codePoint);
+                return;
+              }
+
+              addNumericToken(numericTokens, numericTokenBuilder);
+            });
+
+    addNumericToken(numericTokens, numericTokenBuilder);
+    return numericTokens;
+  }
+
+  private static void addNumericToken(
+      List<String> numericTokens, StringBuilder numericTokenBuilder) {
+    if (numericTokenBuilder.isEmpty()) {
+      return;
+    }
+
+    numericTokens.add(numericTokenBuilder.toString());
+    numericTokenBuilder.setLength(0);
   }
 
   private static boolean isComparableCodePoint(int codePoint) {

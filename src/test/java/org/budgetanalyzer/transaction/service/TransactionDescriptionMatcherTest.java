@@ -53,6 +53,47 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
+  void match_doesNotFuzzyMatchDifferentNumericReferences() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match("TRANSFER 1234567890", 16L, "TRANSFER 1234567891");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+    assertThat(transactionDescriptionMatchResult.similarityScore()).isZero();
+  }
+
+  @Test
+  void match_matchesSameNumericReferenceWithPunctuationAndWhitespaceDifferences() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match(
+            "TRANSFER REF# 1234567890", 17L, "TRANSFER REF 1234567890");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
+    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
+  }
+
+  @Test
+  void match_requiresMultipleNumericTokensToMatchInOrder() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match(
+            "SUBSCRIPTION SERVICE PLAN REF 1 AUTH 2 MONTHLY PAYMENT",
+            18L,
+            "SUBSCRIPTION SERVICE PLAN REF 2 AUTH 1 MONTHLY PAYMENT");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+  }
+
+  @Test
+  void match_requiresNumericTokensOnBothDescriptionsForFuzzyMatch() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match(
+            "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE 42",
+            19L,
+            "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+  }
+
+  @Test
   void match_doesNotMatchClearlyDifferentDescriptions() {
     var transactionDescriptionMatchResult =
         transactionDescriptionMatcher.match("RENT PAYMENT MAY", 13L, "STARBUCKS STORE 1234");

@@ -380,7 +380,9 @@ authenticated owner. Both first match strict financial identity fields:
 `accountId` values are equivalent to `null`, and amounts are compared at scale
 2. Candidate descriptions are then matched with normalized exact or
 conservative fuzzy comparison so layout, punctuation, whitespace, and minor
-rendering differences do not hide likely duplicates.
+rendering differences do not hide likely duplicates. Fuzzy comparison is
+blocked when either description contains numeric reference tokens unless the
+ordered token lists match exactly.
 
 Duplicate reasons:
 - `EXISTING_TRANSACTION` - The preview row matches an active transaction
@@ -493,9 +495,9 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
   and `duplicateReason` of `EXISTING_TRANSACTION` or `IN_BATCH`.
 - Preview duplicate marking uses account ID, bank name, date, amount, type, and
   currency to find candidates, then applies normalized exact or conservative
-  fuzzy description matching. Batch import re-checks duplicates with the same
-  rule before persistence. Empty account IDs are treated the same as missing
-  account IDs.
+  fuzzy description matching. Numeric reference tokens must match exactly for
+  fuzzy matches. Batch import re-checks duplicates with the same rule before
+  persistence. Empty account IDs are treated the same as missing account IDs.
 
 ### Empty amounts parsed as zero
 

@@ -120,14 +120,15 @@ authenticated owner. Both first match strict financial identity fields:
 `accountId`, `bankName`, `date`, `amount`, `type`, and `currencyIsoCode`. Empty
 `accountId` values are treated the same as `null`, and amounts are compared at
 scale 2. Candidate descriptions are then matched with normalized exact or
-conservative fuzzy comparison. Preview responses set `duplicate=true` with
-`duplicateReason` of `EXISTING_TRANSACTION` for active owner-owned database
-matches, or `IN_BATCH` for rows that duplicate an earlier row in the same
-preview payload. Preview duplicate metadata is advisory. `/batch` performs the
-final duplicate check with the same rule. `allowDuplicate` defaults to `false`;
-when set to `true`, the row is imported even if it matches an existing
-transaction or an earlier row in the same batch. Batch responses include
-`duplicatesSkipped` and `duplicatesImported` counts.
+conservative fuzzy comparison. Fuzzy description matches require exact ordered
+numeric-token agreement when numeric references are present. Preview responses
+set `duplicate=true` with `duplicateReason` of `EXISTING_TRANSACTION` for
+active owner-owned database matches, or `IN_BATCH` for rows that duplicate an
+earlier row in the same preview payload. Preview duplicate metadata is
+advisory. `/batch` performs the final duplicate check with the same rule.
+`allowDuplicate` defaults to `false`; when set to `true`, the row is imported
+even if it matches an existing transaction or an earlier row in the same batch.
+Batch responses include `duplicatesSkipped` and `duplicatesImported` counts.
 
 Preview responses also include a file-level `fileImport` object. When
 `alreadyImported=true`, `warningCode` is `FILE_ALREADY_IMPORTED` and
@@ -439,10 +440,11 @@ Fields:
 `duplicateReason` is `EXISTING_TRANSACTION` when the row matches an active
 transaction already stored for the authenticated owner after strict financial
 field matching and normalized exact or conservative fuzzy description matching.
-It is `IN_BATCH` when the row duplicates an earlier row in the same preview
-response under the same rule. The preview endpoint does not persist
-transactions and does not return matching transaction IDs. It is omitted when
-`duplicate=false`.
+Fuzzy description matches require exact ordered numeric-token agreement when
+numeric references are present. It is `IN_BATCH` when the row duplicates an
+earlier row in the same preview response under the same rule. The preview
+endpoint does not persist transactions and does not return matching transaction
+IDs. It is omitted when `duplicate=false`.
 
 `fileImport` is file-level metadata, separate from per-row duplicate detection.
 It compares the uploaded file bytes with previous `file_import` records for the
@@ -483,7 +485,7 @@ detection. Set it to `true` only for rows that should be intentionally imported
 despite matching an existing transaction or an earlier row in the same batch.
 Batch duplicate filtering uses the same strict financial identity plus
 normalized exact or conservative fuzzy description rule exposed by preview
-metadata.
+metadata. Numeric reference tokens must match exactly for fuzzy matches.
 `previewImportToken` is required and must be valid, unexpired, and owned by the
 authenticated user. The token is the source-file identity for batch import and
 is verified before validation, duplicate checks, or persistence. If all
