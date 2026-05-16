@@ -2,7 +2,10 @@
 
 ## Status
 
-Phases 1, 2, and 3 complete. Phase 4 remains planned.
+Phases 1 through 4 are complete. Duplicate detection now blocks fuzzy
+description matches when numeric reference tokens differ, batch import tracks
+only accepted rows as in-batch duplicate candidates, and the affected
+documentation reflects both behaviors.
 
 ## Context
 
@@ -161,6 +164,13 @@ Update the affected duplicate-detection documentation in the same change:
 - `docs/database-schema.md`: no schema change is expected, but verify duplicate
   candidate lookup language still says description comparison happens in Java
   after exact financial candidate lookup.
+
+Status: Complete. `docs/plans/fuzzy-description-duplicate-detection.md` now
+links this mitigation as the completed follow-up to the fuzzy duplicate work.
+`docs/statement-import.md` explains that numeric reference tokens must match
+exactly for fuzzy description matches and documents the batch seen-row behavior.
+`docs/database-schema.md` still documents exact financial candidate lookup with
+service-layer description comparison and notes the numeric-token requirement.
 
 ## Acceptance Criteria
 
