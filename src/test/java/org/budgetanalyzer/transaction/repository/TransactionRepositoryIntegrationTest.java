@@ -341,6 +341,30 @@ class TransactionRepositoryIntegrationTest {
     assertThat(duplicateCandidates).isEmpty();
   }
 
+  @Test
+  void findDuplicateCandidates_matchesNonAsciiAndSeparatorLikeFieldValues() {
+    // Given: a transaction exists with values that would be ambiguous in an encoded key
+    var transaction =
+        createTransactionWithDetails(
+            LocalDate.of(2024, 1, 15),
+            BigDecimal.valueOf(123.45),
+            "Coffee Shop",
+            "บัญชี|N|V4:test");
+    transaction.setBankName("Bänk|N|V4:test");
+    transactionRepository.save(transaction);
+
+    // When: checking for candidates using the same structured financial fields
+    var duplicateCandidates =
+        transactionRepository.findDuplicateCandidates(
+            Set.of(candidateKey(transaction)), "test-user");
+
+    // Then: the candidate is matched by fields, not encoded-string parsing
+    assertThat(duplicateCandidates).hasSize(1);
+    assertThat(duplicateCandidates.getFirst().getCandidateCriteria())
+        .isEqualTo(candidateKey(transaction));
+    assertThat(duplicateCandidates.getFirst().getTransactionId()).isEqualTo(transaction.getId());
+  }
+
   // ==================== Helper Methods ====================
 
   private Transaction createTransaction(String description, BigDecimal amount) {

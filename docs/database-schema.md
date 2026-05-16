@@ -103,11 +103,13 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
   duplicate index in migration `V17__replace_duplicate_candidate_index.sql`.
 
 Duplicate detection treats empty `account_id` values as equivalent to `NULL` in
-the lookup query. Only active rows (`deleted = false`) for the same `owner_id`
-are returned as candidates; description comparison is performed in the service
-layer using normalized exact or conservative fuzzy matching, with fuzzy matches
-requiring exact ordered numeric-token agreement when numeric references are
-present.
+the structured field-level lookup query. The repository expands incoming
+candidate criteria into typed field rows and joins on the financial identity
+columns directly; it does not build encoded lookup keys. Only active rows
+(`deleted = false`) for the same `owner_id` are returned as candidates;
+description comparison is performed in the service layer using normalized exact
+or conservative fuzzy matching, with fuzzy matches requiring exact ordered
+numeric-token agreement when numeric references are present.
 
 ### file_import
 

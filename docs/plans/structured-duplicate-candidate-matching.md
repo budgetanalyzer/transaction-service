@@ -2,9 +2,10 @@
 
 ## Status
 
-In progress. Phases 1 and 2 are complete. Phase 2 also completed the
-overlapping duplicate matcher wiring described in phase 4; the encoded SQL
-rewrite remains pending in phase 3.
+In progress. Phases 1 through 6 are complete. Phase 2 also completed the
+overlapping duplicate matcher wiring described in phase 4. The repository SQL
+now expands structured candidate fields with a PostgreSQL `unnest(...)` CTE and
+joins on the financial identity columns directly.
 
 This plan refactors duplicate candidate lookup to use structured field matching
 instead of encoded string keys in repository SQL. The target behavior is
@@ -14,26 +15,26 @@ descriptions.
 
 ## Problem
 
-`TransactionRepository.findDuplicateCandidates(...)` currently accepts
-structured repository criteria, then adapts them to the same length-prefixed
-lookup value that the legacy PostgreSQL query builds internally. The native
-query uses `OCTET_LENGTH(CONVERT_TO(..., 'UTF8'))` so SQL byte counts match the
+`TransactionRepository.findDuplicateCandidates(...)` previously accepted
+structured repository criteria, then adapted them to the same length-prefixed
+lookup value that the legacy PostgreSQL query built internally. The native query
+used `OCTET_LENGTH(CONVERT_TO(..., 'UTF8'))` so SQL byte counts matched the
 repository adapter's Java UTF-8 byte counts.
 
-That encoding is correct for the current key design, but it has drawbacks:
+That encoding was correct for the old key design, but it had drawbacks:
 
-- It duplicates Java key-construction rules in SQL.
-- It makes the repository query hard to read and maintain.
-- It is PostgreSQL-specific.
-- It obscures the real predicate, which is equality across structured
+- It duplicated Java key-construction rules in SQL.
+- It made the repository query hard to read and maintain.
+- It was PostgreSQL-specific.
+- It obscured the real predicate, which is equality across structured
   financial identity fields.
-- It keeps old exact-key machinery visible even though fuzzy duplicate
+- It kept old exact-key machinery visible even though fuzzy duplicate
   detection only needs description-free candidate matching.
 
-Column lengths do not remove the need for the current encoding. Length limits
-cap stored values, but they do not make string concatenation unambiguous, do
-not distinguish null markers from literal values, and do not address embedded
-separator characters. The cleaner fix is to stop concatenating fields for
+Column lengths did not remove the need for unambiguous matching. Length limits
+cap stored values, but they did not make string concatenation unambiguous, did
+not distinguish null markers from literal values, and did not address embedded
+separator characters. The cleaner fix was to stop concatenating fields for
 repository matching.
 
 ## Target Behavior
@@ -106,19 +107,22 @@ Acceptance criteria:
 
 ### Phase 3: Replace Encoded SQL With Field-Level Matching
 
+Status: Complete.
+
 Tasks:
 
 - Replace the `OCTET_LENGTH(CONVERT_TO(...))` query in
-  `findDuplicateCandidates(...)` with a structured predicate.
+  `findDuplicateCandidates(...)` with a structured predicate. Done.
 - Prefer a PostgreSQL CTE that expands candidate values and joins on fields,
-  for example with typed arrays and `unnest(...)`.
-- Match account IDs with empty-string/null equivalence on both sides.
+  for example with typed arrays and `unnest(...)`. Done.
+- Match account IDs with empty-string/null equivalence on both sides. Done.
 - Return the existing projection fields:
   - `candidateKey` or a structured equivalent needed for grouping
   - `transactionId`
   - `description`
+  Done via `StructuredTransactionDuplicateCandidate`.
 - Keep the existing duplicate-candidate index on owner, deleted, account, bank,
-  date, amount, type, and currency.
+  date, amount, type, and currency. Done.
 
 Acceptance criteria:
 
@@ -150,6 +154,8 @@ Acceptance criteria:
 
 ### Phase 5: Test Coverage
 
+Status: Complete.
+
 Tasks:
 
 - Update repository integration tests for structured candidate lookup:
@@ -159,10 +165,11 @@ Tasks:
   - different owner does not match
   - deleted transaction does not match
   - non-ASCII and embedded separator values still match by structured fields
+  Done via `TransactionRepositoryIntegrationTest`.
 - Update service tests to assert repository calls use structured candidates
-  where useful.
+  where useful. Done via existing service tests.
 - Remove tests that exist only to verify encoded-key collision avoidance if the
-  encoded key is gone.
+  encoded key is gone. Done; no encoded-key collision tests remain.
 
 Acceptance criteria:
 
@@ -172,14 +179,18 @@ Acceptance criteria:
 
 ### Phase 6: Documentation
 
+Status: Complete.
+
 Tasks:
 
 - Update `docs/database-schema.md` to describe structured duplicate candidate
-  lookup instead of encoded lookup keys.
+  lookup instead of encoded lookup keys. Done.
 - Verify `docs/statement-import.md` still accurately describes strict
   financial identity matching plus service-layer fuzzy description matching.
+  Done; no change required.
 - Update the completed fuzzy duplicate plans only if they contain stale
-  implementation details that would mislead future maintainers.
+  implementation details that would mislead future maintainers. Done; no
+  misleading implementation details found.
 
 Acceptance criteria:
 
@@ -217,6 +228,6 @@ structured candidates into a Spring Data native query. PostgreSQL arrays with
 `unnest(...)` are likely the best fit for the current database, but they still
 need integration coverage because binding and type inference can be brittle.
 
-Avoid replacing the current encoding with simple concatenation. That would make
-the SQL shorter but would weaken correctness around nulls, literal marker
+Avoid replacing structured field matching with simple concatenation. That would
+make the SQL shorter but would weaken correctness around nulls, literal marker
 values, embedded separators, and Unicode.

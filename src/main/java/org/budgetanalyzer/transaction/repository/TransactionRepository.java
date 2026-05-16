@@ -1,9 +1,9 @@
 package org.budgetanalyzer.transaction.repository;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import org.budgetanalyzer.core.repository.SoftDeleteOperations;
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionType;
 
 public interface TransactionRepository
     extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction, Long> {
@@ -40,15 +41,50 @@ public interface TransactionRepository
     String getDescription();
   }
 
-  /** Legacy SQL projection returned before structured repository SQL is introduced. */
-  interface EncodedTransactionDuplicateCandidate {
+  /** SQL projection returned by structured repository candidate lookup. */
+  interface StructuredTransactionDuplicateCandidate {
 
     /**
-     * Returns the encoded description-free duplicate candidate lookup value.
+     * Returns the normalized account ID.
      *
-     * @return the encoded lookup value
+     * @return the normalized account ID
      */
-    String getCandidateLookupValue();
+    String getAccountId();
+
+    /**
+     * Returns the bank name.
+     *
+     * @return the bank name
+     */
+    String getBankName();
+
+    /**
+     * Returns the transaction date.
+     *
+     * @return the transaction date
+     */
+    LocalDate getDate();
+
+    /**
+     * Returns the transaction amount.
+     *
+     * @return the transaction amount
+     */
+    BigDecimal getAmount();
+
+    /**
+     * Returns the transaction type.
+     *
+     * @return the transaction type
+     */
+    String getType();
+
+    /**
+     * Returns the transaction currency ISO code.
+     *
+     * @return the transaction currency ISO code
+     */
+    String getCurrencyIsoCode();
 
     /**
      * Returns the persisted transaction ID.
@@ -81,68 +117,107 @@ public interface TransactionRepository
       return List.of();
     }
 
-    var criteriaByLookupValue =
-        candidateCriteria.stream()
-            .collect(
-                Collectors.toMap(
-                    TransactionDuplicateCandidateCriteria::toLegacyLookupValue,
-                    criteria -> criteria,
-                    (existingCriteria, duplicateCriteria) -> existingCriteria));
-    return findDuplicateCandidatesByLookupValues(criteriaByLookupValue.keySet(), ownerId).stream()
-        .map(encodedCandidate -> toCandidate(encodedCandidate, criteriaByLookupValue))
+    var candidateCriteriaList = List.copyOf(candidateCriteria);
+    return findDuplicateCandidatesByStructuredCriteria(
+            candidateCriteriaList.stream()
+                .map(TransactionDuplicateCandidateCriteria::accountId)
+                .toArray(String[]::new),
+            candidateCriteriaList.stream()
+                .map(TransactionDuplicateCandidateCriteria::bankName)
+                .toArray(String[]::new),
+            candidateCriteriaList.stream()
+                .map(TransactionDuplicateCandidateCriteria::date)
+                .toArray(LocalDate[]::new),
+            candidateCriteriaList.stream()
+                .map(TransactionDuplicateCandidateCriteria::amount)
+                .toArray(BigDecimal[]::new),
+            candidateCriteriaList.stream()
+                .map(criteria -> criteria.type().name())
+                .toArray(String[]::new),
+            candidateCriteriaList.stream()
+                .map(TransactionDuplicateCandidateCriteria::currencyIsoCode)
+                .toArray(String[]::new),
+            ownerId)
+        .stream()
+        .map(TransactionRepository::toCandidate)
         .toList();
   }
 
   @Query(
       value =
           """
-      WITH duplicate_candidates AS (
+      WITH candidate_criteria AS (
         SELECT
-            id,
-            description,
-            CONCAT(
-                CASE
-                  WHEN NULLIF(account_id, '') IS NULL THEN 'N'
-                  ELSE CONCAT('V', OCTET_LENGTH(CONVERT_TO(account_id, 'UTF8')), ':', account_id)
-                END,
-                '|',
-                CONCAT('V', OCTET_LENGTH(CONVERT_TO(bank_name, 'UTF8')), ':', bank_name),
-                '|',
-                CONCAT('V', OCTET_LENGTH(CONVERT_TO(date::text, 'UTF8')), ':', date::text),
-                '|',
-                CONCAT('V', OCTET_LENGTH(CONVERT_TO(amount::text, 'UTF8')), ':', amount::text),
-                '|',
-                CONCAT('V', OCTET_LENGTH(CONVERT_TO(type, 'UTF8')), ':', type),
-                '|',
-                CONCAT(
-                    'V',
-                    OCTET_LENGTH(CONVERT_TO(currency_iso_code, 'UTF8')),
-                    ':',
-                    currency_iso_code
-                )
-            ) AS duplicate_candidate_key
-        FROM transaction
-        WHERE deleted = false
-          AND owner_id = :ownerId
+            NULLIF(account_id, '') AS account_id,
+            bank_name,
+            transaction_date,
+            amount,
+            transaction_type,
+            currency_iso_code
+        FROM UNNEST(
+            CAST(:accountIds AS text[]),
+            CAST(:bankNames AS text[]),
+            CAST(:dates AS date[]),
+            CAST(:amounts AS numeric[]),
+            CAST(:types AS text[]),
+            CAST(:currencyIsoCodes AS text[])
+        ) AS candidate_criteria(
+            account_id,
+            bank_name,
+            transaction_date,
+            amount,
+            transaction_type,
+            currency_iso_code
+        )
       )
       SELECT
-          duplicate_candidate_key AS "candidateLookupValue",
-          id AS "transactionId",
-          description AS "description"
-      FROM duplicate_candidates
-      WHERE duplicate_candidate_key IN (:candidateKeys)
+          candidate_criteria.account_id AS "accountId",
+          candidate_criteria.bank_name AS "bankName",
+          candidate_criteria.transaction_date AS "date",
+          candidate_criteria.amount AS "amount",
+          candidate_criteria.transaction_type AS "type",
+          candidate_criteria.currency_iso_code AS "currencyIsoCode",
+          transaction.id AS "transactionId",
+          transaction.description AS "description"
+      FROM candidate_criteria
+      JOIN transaction
+        ON transaction.owner_id = :ownerId
+       AND transaction.deleted = false
+       AND (
+            transaction.account_id = candidate_criteria.account_id
+            OR (
+                candidate_criteria.account_id IS NULL
+                AND NULLIF(transaction.account_id, '') IS NULL
+            )
+       )
+       AND transaction.bank_name = candidate_criteria.bank_name
+       AND transaction.date = candidate_criteria.transaction_date
+       AND transaction.amount = candidate_criteria.amount
+       AND transaction.type = candidate_criteria.transaction_type
+       AND transaction.currency_iso_code = candidate_criteria.currency_iso_code
       """,
       nativeQuery = true)
-  List<EncodedTransactionDuplicateCandidate> findDuplicateCandidatesByLookupValues(
-      @Param("candidateKeys") Set<String> candidateKeys, @Param("ownerId") String ownerId);
+  List<StructuredTransactionDuplicateCandidate> findDuplicateCandidatesByStructuredCriteria(
+      @Param("accountIds") String[] accountIds,
+      @Param("bankNames") String[] bankNames,
+      @Param("dates") LocalDate[] dates,
+      @Param("amounts") BigDecimal[] amounts,
+      @Param("types") String[] types,
+      @Param("currencyIsoCodes") String[] currencyIsoCodes,
+      @Param("ownerId") String ownerId);
 
   private static TransactionDuplicateCandidate toCandidate(
-      EncodedTransactionDuplicateCandidate encodedCandidate,
-      Map<String, TransactionDuplicateCandidateCriteria> criteriaByLookupValue) {
+      StructuredTransactionDuplicateCandidate structuredCandidate) {
     return new TransactionDuplicateCandidateResult(
-        criteriaByLookupValue.get(encodedCandidate.getCandidateLookupValue()),
-        encodedCandidate.getTransactionId(),
-        encodedCandidate.getDescription());
+        new TransactionDuplicateCandidateCriteria(
+            structuredCandidate.getAccountId(),
+            structuredCandidate.getBankName(),
+            structuredCandidate.getDate(),
+            structuredCandidate.getAmount(),
+            TransactionType.valueOf(structuredCandidate.getType()),
+            structuredCandidate.getCurrencyIsoCode()),
+        structuredCandidate.getTransactionId(),
+        structuredCandidate.getDescription());
   }
 
   /** Default-method result that exposes structured candidate criteria to service callers. */
