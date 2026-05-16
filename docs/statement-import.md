@@ -401,6 +401,10 @@ verifies it before service-layer validation, duplicate checks, or persistence.
 Missing, invalid, expired, or wrong-owner tokens fail the request. If all
 submitted rows are skipped as transaction duplicates, the request fails with
 `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no `file_import` row is recorded.
+Rows skipped as existing persisted duplicates are not used as in-batch
+duplicate candidates for later submitted rows. Rows accepted for creation,
+including rows with `allowDuplicate=true`, can still cause later submitted rows
+with the same duplicate key to be skipped as in-batch duplicates.
 When rows are created, each token-backed batch transaction is linked to file
 import metadata. If the exact file was already recorded for the user, created
 rows link to the existing `file_import` row instead of creating a duplicate file

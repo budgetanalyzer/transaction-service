@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 complete. Phases 2 through 4 remain planned.
+Phases 1, 2, and 3 complete. Phase 4 remains planned.
 
 ## Context
 
@@ -110,9 +110,24 @@ This preserves the current behavior where accepted in-batch duplicates affect
 later rows, while preventing skipped persisted duplicates from affecting later
 rows.
 
+Status: Complete. `TransactionService.batchImport(...)` now checks persisted
+and already accepted in-batch candidates before deciding whether to skip a row.
+Rows skipped because `allowDuplicate=false` are not added to
+`seenTransactionsByCandidateKey`. Rows accepted for creation, including rows
+accepted through `allowDuplicate=true`, are added after they are mapped for
+persistence so they remain candidates for later rows in the same request.
+
 ## Phase 3: Test Coverage
 
 Add focused tests for the matcher and batch filtering behavior.
+
+Status: Complete. `TransactionDescriptionMatcherTest` covers numeric-token
+guards for one-digit differences, punctuation and whitespace differences,
+matching numeric references with fuzzy description differences, ordered
+multiple-token matching, no-token fuzzy matching, and existing normalization
+guards. `TransactionServiceTest` covers skipped persisted duplicates staying
+out of the in-batch seen set, accepted rows becoming in-batch candidates, and
+`allowDuplicate=true` rows remaining candidates for later duplicate checks.
 
 `TransactionDescriptionMatcherTest` coverage:
 

@@ -297,9 +297,6 @@ public class TransactionService {
               || transactionDuplicateMatcher.matchesSeenTransaction(
                   dto,
                   seenTransactionsByCandidateKey.getOrDefault(transactionCandidateKey, List.of()));
-      seenTransactionsByCandidateKey
-          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
-          .add(dto);
 
       if (duplicate && !dto.allowDuplicate()) {
         duplicatesSkipped++;
@@ -313,6 +310,9 @@ public class TransactionService {
       var entity = mapToEntity(dto);
       entity.setOwnerId(userId);
       toCreate.add(entity);
+      seenTransactionsByCandidateKey
+          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
+          .add(dto);
     }
 
     rejectEmptyImport(toCreate, duplicatesSkipped);

@@ -779,6 +779,45 @@ class TransactionServiceTest {
   }
 
   @Test
+  void batchImport_skippedExistingDuplicateDoesNotBecomeIntraBatchCandidate() {
+    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+    var skippedDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBAAAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var laterDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBBBAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(skippedDto).toLookupValue();
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(skippedDto, laterDto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("STORE PAYMENT BBBBAAAAAAAAAA");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isZero();
+  }
+
+  @Test
   void batchImport_existingFuzzyDuplicateAllowed_importsMatchingTransaction() {
     var dto =
         new PreviewTransaction(
@@ -806,6 +845,47 @@ class TransactionServiceTest {
     assertThat(result.createdTransactions().getFirst().getDescription())
         .isEqualTo("X CORP. PAID FEATURESBASTROPTX");
     assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isEqualTo(1);
+  }
+
+  @Test
+  void batchImport_allowedExistingDuplicateBecomesIntraBatchCandidate() {
+    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+    var allowedDuplicateDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBAAAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null,
+            true);
+    var laterDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBBBAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey =
+        TransactionDuplicateCandidateKey.from(allowedDuplicateDto).toLookupValue();
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(allowedDuplicateDto, laterDto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("STORE PAYMENT BBAAAAAAAAAAAA");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
     assertThat(result.duplicatesImported()).isEqualTo(1);
   }
 

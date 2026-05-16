@@ -72,14 +72,38 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
+  void match_allowsFuzzyMatchWhenNumericReferencesMatch() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match(
+            "PAYPAL DIGITAL SERVICES REF 1234567890 MONTHLY",
+            18L,
+            "PAYPAL DIGITAL SERVICE REF 1234567890 MONTHLY");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
+    assertThat(transactionDescriptionMatchResult.similarityScore()).isGreaterThanOrEqualTo(0.90);
+  }
+
+  @Test
   void match_requiresMultipleNumericTokensToMatchInOrder() {
     var transactionDescriptionMatchResult =
         transactionDescriptionMatcher.match(
             "SUBSCRIPTION SERVICE PLAN REF 1 AUTH 2 MONTHLY PAYMENT",
-            18L,
+            19L,
             "SUBSCRIPTION SERVICE PLAN REF 2 AUTH 1 MONTHLY PAYMENT");
 
     assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+  }
+
+  @Test
+  void match_matchesMultipleNumericTokensInSameOrder() {
+    var transactionDescriptionMatchResult =
+        transactionDescriptionMatcher.match(
+            "BILL PAY REF 100 AUTH 55 MONTHLY PAYMENT",
+            20L,
+            "BILLPAY REF 100 AUTH 55 MONTHLY PAYMENTS");
+
+    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
+    assertThat(transactionDescriptionMatchResult.similarityScore()).isGreaterThanOrEqualTo(0.90);
   }
 
   @Test
@@ -87,7 +111,7 @@ class TransactionDescriptionMatcherTest {
     var transactionDescriptionMatchResult =
         transactionDescriptionMatcher.match(
             "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE 42",
-            19L,
+            21L,
             "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE");
 
     assertThat(transactionDescriptionMatchResult.matched()).isFalse();

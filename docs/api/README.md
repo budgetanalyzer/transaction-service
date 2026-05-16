@@ -128,6 +128,10 @@ earlier row in the same preview payload. Preview duplicate metadata is
 advisory. `/batch` performs the final duplicate check with the same rule.
 `allowDuplicate` defaults to `false`; when set to `true`, the row is imported
 even if it matches an existing transaction or an earlier row in the same batch.
+Rows skipped as existing persisted duplicates are not reused as in-batch
+duplicate candidates for later submitted rows. Rows accepted for creation,
+including rows imported through `allowDuplicate=true`, remain in-batch duplicate
+candidates for later rows.
 Batch responses include `duplicatesSkipped` and `duplicatesImported` counts.
 
 Preview responses also include a file-level `fileImport` object. When
