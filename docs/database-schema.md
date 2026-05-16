@@ -7,7 +7,11 @@
 
 ## Overview
 
-This service uses a dedicated schema in the shared PostgreSQL database with Flyway for version-controlled migrations.
+This service owns the `budget_analyzer` PostgreSQL database and manages its
+tables with Flyway version-controlled migrations. Migrations create unqualified
+table names, so local objects live in the connection's default schema
+(`public` in the standard orchestration database) unless the runtime
+environment explicitly sets a different PostgreSQL search path.
 
 ## Schema Discovery
 
@@ -20,11 +24,14 @@ POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath=
 kubectl exec -it -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
   'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer'
 
-# List all tables in this service's schema
-\dt transaction_service.*
+# List all tables in the active schema
+\dt
+
+# List all tables in the default local schema explicitly
+\dt public.*
 
 # View table structure
-\d transaction_service.transaction
+\d public.transaction
 ```
 
 ## Core Tables
@@ -276,10 +283,10 @@ kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
 **Example:**
 ```sql
 -- V003__add_transaction_notes.sql
-ALTER TABLE transactions
+ALTER TABLE transaction
 ADD COLUMN notes TEXT;
 
-CREATE INDEX idx_transactions_notes ON transactions USING gin(to_tsvector('english', notes));
+CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english', notes));
 ```
 
 ### Rollback Strategy
@@ -339,13 +346,13 @@ CREATE INDEX idx_transactions_notes ON transactions USING gin(to_tsvector('engli
 -- Find missing indexes
 SELECT schemaname, tablename, attname, n_distinct, correlation
 FROM pg_stats
-WHERE schemaname = 'transaction_service'
+WHERE schemaname = 'public'
 ORDER BY abs(correlation) DESC;
 
 -- Check index usage
 SELECT schemaname, tablename, indexname, idx_scan, idx_tup_read, idx_tup_fetch
 FROM pg_stat_user_indexes
-WHERE schemaname = 'transaction_service';
+WHERE schemaname = 'public';
 ```
 
 ## Schema Evolution Guidelines
@@ -354,12 +361,12 @@ WHERE schemaname = 'transaction_service';
 
 ✅ **Safe (backward compatible):**
 ```sql
-ALTER TABLE transactions ADD COLUMN new_field VARCHAR(100);
+ALTER TABLE transaction ADD COLUMN new_field VARCHAR(100);
 ```
 
 ✅ **Safe with default:**
 ```sql
-ALTER TABLE transactions ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE';
+ALTER TABLE transaction ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE';
 ```
 
 ### Renaming Columns
@@ -381,10 +388,10 @@ ALTER TABLE transactions ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE';
 ⚠️ **Risk of data loss - requires careful testing:**
 ```sql
 -- Example: Widening a column (safe)
-ALTER TABLE transactions ALTER COLUMN description TYPE VARCHAR(1000);
+ALTER TABLE transaction ALTER COLUMN description TYPE VARCHAR(1000);
 
 -- Example: Narrowing (check data first!)
-ALTER TABLE transactions ALTER COLUMN currency TYPE VARCHAR(3);
+ALTER TABLE transaction ALTER COLUMN currency_iso_code TYPE VARCHAR(3);
 ```
 
 ## Backup & Recovery
@@ -412,7 +419,7 @@ curl -X POST http://localhost:8082/admin/seed-test-data
 # Clear all data (DANGEROUS - dev only)
 POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
-  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer -c "TRUNCATE TABLE transactions CASCADE;"'
+  'PGPASSWORD="$POSTGRES_TRANSACTION_SERVICE_PASSWORD" psql -U transaction_service -d budget_analyzer -c "TRUNCATE TABLE transaction CASCADE;"'
 ```
 
 ## References

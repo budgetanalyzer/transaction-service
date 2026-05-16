@@ -94,9 +94,10 @@ public class TransactionController {
           "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
               + "before batch import. No data is persisted. The format parameter is required and "
               + "determines which parser to use. The response includes advisory duplicate "
-              + "metadata for existing owner-scoped transactions or earlier rows in the same "
-              + "preview payload, plus file-level import history status for exact reuploads "
-              + "by the authenticated user.")
+              + "metadata using strict owner-scoped financial identity fields plus normalized "
+              + "exact or conservative fuzzy description matching against existing transactions "
+              + "or earlier rows in the same preview payload, plus file-level import history "
+              + "status for exact reuploads by the authenticated user.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -184,11 +185,12 @@ public class TransactionController {
       description =
           "Imports transactions from a batch request (typically from the preview endpoint after "
               + "user edits). Validates all transactions upfront and rejects the entire batch if "
-              + "any fail. Duplicates matching the owner-scoped transaction key are skipped unless "
-              + "allowDuplicate is true on the row. The response reports skipped duplicates and "
-              + "duplicates intentionally imported. previewImportToken from the preview response "
-              + "is required and is verified before batch import processing starts. If duplicate "
-              + "filtering leaves no rows to create, the request fails with "
+              + "any fail. Duplicate filtering uses strict owner-scoped financial identity fields "
+              + "plus normalized exact or conservative fuzzy description matching. Duplicates are "
+              + "skipped unless allowDuplicate is true on the row. The response reports skipped "
+              + "duplicates and duplicates intentionally imported. previewImportToken from the "
+              + "preview response is required and is verified before batch import processing "
+              + "starts. If duplicate filtering leaves no rows to create, the request fails with "
               + "BATCH_IMPORT_NO_TRANSACTIONS_CREATED.")
   @ApiResponses(
       value = {

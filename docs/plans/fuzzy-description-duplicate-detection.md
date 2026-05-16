@@ -2,7 +2,7 @@
 
 ## Status
 
-Phases 1 through 6 are complete. The service now has a description-free
+Phases 1 through 7 are complete. The service now has a description-free
 duplicate candidate key, a description match result model, a deterministic
 description matcher with normalization plus conservative normalized Levenshtein
 scoring, and a repository lookup that retrieves active owner-scoped candidates
@@ -11,7 +11,9 @@ lookup plus fuzzy description matching. Batch import now re-checks duplicates
 through the same candidate and fuzzy matcher flow before persistence. Focused
 unit and repository integration coverage now exercises candidate key
 normalization, description matching, preview marking, and batch import
-duplicate decisions.
+duplicate decisions. Documentation now describes the strict financial identity
+candidate lookup, fuzzy description comparison, advisory preview flags, batch
+re-checking, and `allowDuplicate=true` override behavior.
 
 ## Problem
 
@@ -255,15 +257,17 @@ Acceptance criteria:
 
 ### Phase 7: Documentation Updates
 
+Status: Complete.
+
 Update documentation in the same implementation change.
 
 Tasks:
 
-- Update `docs/statement-import.md` duplicate detection language.
-- Update `docs/database-schema.md` duplicate index and lookup description.
+- Update `docs/statement-import.md` duplicate detection language. Done.
+- Update `docs/database-schema.md` duplicate index and lookup description. Done.
 - Correct schema discovery examples if they still refer to a schema that does
-  not exist in the local database.
-- Update OpenAPI descriptions if they mention exact-description matching.
+  not exist in the local database. Done.
+- Update OpenAPI descriptions if they mention exact-description matching. Done.
 
 Acceptance criteria:
 
