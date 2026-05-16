@@ -223,6 +223,40 @@ class TransactionImportServiceTest {
   }
 
   @Test
+  void previewFile_inPreviewCandidateWithDifferentDescription_doesNotMarkInBatchDuplicate() {
+    var firstTransaction = previewTransaction("Rent Payment May");
+    var secondTransaction = previewTransaction("Starbucks Store 1234");
+    var candidateKey = TransactionDuplicateCandidateKey.from(firstTransaction).toLookupValue();
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(firstTransaction, secondTransaction));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateKey), USER_ID))
+        .thenReturn(List.of());
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().get(0).duplicate()).isFalse();
+    assertThat(result.transactions().get(0).duplicateReason()).isNull();
+    assertThat(result.transactions().get(1).duplicate()).isFalse();
+    assertThat(result.transactions().get(1).duplicateReason()).isNull();
+  }
+
+  @Test
   void previewFile_emptyExtraction_doesNotQueryDuplicateKeys() {
     var multipartFile = multipartFile();
 

@@ -115,16 +115,17 @@ Permission: transactions:write
 Notes: Imports transactions from the preview endpoint after user edits. The previewImportToken is required and verified before batch import processing starts. Validates all upfront; rejects entire batch on failure. Duplicates are skipped unless allowDuplicate is true on the submitted row. If every submitted row is skipped as a duplicate, the request fails with BATCH_IMPORT_NO_TRANSACTIONS_CREATED and no file import is recorded. When at least one transaction is created, the service records file import metadata unless the file was already recorded for the user; created transactions are linked to the new or existing file import row.
 ```
 
-Preview duplicate marking is scoped to the authenticated owner. It first matches
-strict financial identity fields: `accountId`, `bankName`, `date`, `amount`,
-`type`, and `currencyIsoCode`. Empty `accountId` values are treated the same as
-`null`, and amounts are compared at scale 2. Candidate descriptions are then
-matched with normalized exact or conservative fuzzy comparison. Preview
-responses set `duplicate=true` with `duplicateReason` of `EXISTING_TRANSACTION`
-for active owner-owned database matches, or `IN_BATCH` for rows that duplicate
-an earlier row in the same preview payload. Preview duplicate metadata is advisory.
-`/batch` performs the final duplicate check. `allowDuplicate` defaults to
-`false`; when set to `true`, the row is imported even if it matches an existing
+Preview duplicate marking and batch duplicate filtering are scoped to the
+authenticated owner. Both first match strict financial identity fields:
+`accountId`, `bankName`, `date`, `amount`, `type`, and `currencyIsoCode`. Empty
+`accountId` values are treated the same as `null`, and amounts are compared at
+scale 2. Candidate descriptions are then matched with normalized exact or
+conservative fuzzy comparison. Preview responses set `duplicate=true` with
+`duplicateReason` of `EXISTING_TRANSACTION` for active owner-owned database
+matches, or `IN_BATCH` for rows that duplicate an earlier row in the same
+preview payload. Preview duplicate metadata is advisory. `/batch` performs the
+final duplicate check with the same rule. `allowDuplicate` defaults to `false`;
+when set to `true`, the row is imported even if it matches an existing
 transaction or an earlier row in the same batch. Batch responses include
 `duplicatesSkipped` and `duplicatesImported` counts.
 
@@ -480,6 +481,9 @@ Fields:
 Omit `allowDuplicate` or set it to `false` to skip rows that match duplicate
 detection. Set it to `true` only for rows that should be intentionally imported
 despite matching an existing transaction or an earlier row in the same batch.
+Batch duplicate filtering uses the same strict financial identity plus
+normalized exact or conservative fuzzy description rule exposed by preview
+metadata.
 `previewImportToken` is required and must be valid, unexpired, and owned by the
 authenticated user. The token is the source-file identity for batch import and
 is verified before validation, duplicate checks, or persistence. If all

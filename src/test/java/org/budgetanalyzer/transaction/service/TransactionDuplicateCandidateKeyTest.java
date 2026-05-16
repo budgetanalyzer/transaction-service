@@ -39,6 +39,22 @@ class TransactionDuplicateCandidateKeyTest {
   }
 
   @Test
+  void fromPreviewTransaction_usesSameLookupValueForDifferentDescriptions() {
+    var firstPreviewTransaction = previewTransaction("Coffee");
+    var secondPreviewTransaction = previewTransaction("Coffee Shop");
+
+    var firstTransactionDuplicateCandidateKey =
+        TransactionDuplicateCandidateKey.from(firstPreviewTransaction);
+    var secondTransactionDuplicateCandidateKey =
+        TransactionDuplicateCandidateKey.from(secondPreviewTransaction);
+
+    assertThat(firstTransactionDuplicateCandidateKey)
+        .isEqualTo(secondTransactionDuplicateCandidateKey);
+    assertThat(firstTransactionDuplicateCandidateKey.toLookupValue())
+        .isEqualTo(secondTransactionDuplicateCandidateKey.toLookupValue());
+  }
+
+  @Test
   void fromTransaction_includesFinancialIdentityFieldsOnly() {
     var transaction = transaction("checking", new BigDecimal("12.30"));
     transaction.setDescription("Coffee");
@@ -225,5 +241,17 @@ class TransactionDuplicateCandidateKeyTest {
     transaction.setType(TransactionType.DEBIT);
     transaction.setCurrencyIsoCode("USD");
     return transaction;
+  }
+
+  private static PreviewTransaction previewTransaction(String description) {
+    return new PreviewTransaction(
+        LocalDate.of(2024, 1, 15),
+        description,
+        new BigDecimal("12.30"),
+        TransactionType.DEBIT,
+        null,
+        "Test Bank",
+        "USD",
+        "checking");
   }
 }

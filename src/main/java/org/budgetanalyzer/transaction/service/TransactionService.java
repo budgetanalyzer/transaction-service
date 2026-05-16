@@ -2,10 +2,9 @@ package org.budgetanalyzer.transaction.service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +33,8 @@ public class TransactionService {
 
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
+  private final TransactionDuplicateMatcher transactionDuplicateMatcher =
+      new TransactionDuplicateMatcher();
 
   /**
    * Constructs a new TransactionService.
@@ -245,8 +246,8 @@ public class TransactionService {
    * <ul>
    *   <li>Jakarta Bean Validation handles field presence/format at controller layer (400)
    *   <li>Business validation (date rules) is performed here (422 if fails)
-   *   <li>Duplicates are detected by account ID, bank, date, amount, type, currency, and
-   *       description, then skipped unless explicitly allowed on the row
+   *   <li>Duplicates are detected by strict financial identity fields and fuzzy description
+   *       matching, then skipped unless explicitly allowed on the row
    *   <li>Non-duplicate transactions are persisted atomically and linked to file import metadata
    * </ul>
    *
@@ -277,21 +278,28 @@ public class TransactionService {
     validateBusinessRules(transactions);
 
     // Phase 2: Check for duplicates in the database
-    var transactionKeys =
-        transactions.stream().map(this::buildDuplicateKey).collect(Collectors.toSet());
-
-    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys, userId);
-    log.debug("Found {} existing duplicate keys", existingKeys.size());
+    var existingCandidatesByKey =
+        transactionDuplicateMatcher.findExistingCandidatesByKey(
+            transactionRepository, transactions, userId);
+    log.debug("Found duplicate candidates for {} key(s)", existingCandidatesByKey.size());
 
     // Phase 3: Filter out duplicates and persist non-duplicates
     var toCreate = new ArrayList<Transaction>();
-    var seenKeys = new HashSet<String>(); // Track duplicates within the batch too
+    var seenTransactionsByCandidateKey = new HashMap<String, List<PreviewTransaction>>();
     var duplicatesSkipped = 0;
     var duplicatesImported = 0;
 
     for (var dto : transactions) {
-      var key = buildDuplicateKey(dto);
-      var duplicate = existingKeys.contains(key) || seenKeys.contains(key);
+      var transactionCandidateKey = TransactionDuplicateMatcher.candidateLookupValue(dto);
+      var duplicate =
+          transactionDuplicateMatcher.matchesExistingTransaction(
+                  dto, existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))
+              || transactionDuplicateMatcher.matchesSeenTransaction(
+                  dto,
+                  seenTransactionsByCandidateKey.getOrDefault(transactionCandidateKey, List.of()));
+      seenTransactionsByCandidateKey
+          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
+          .add(dto);
 
       if (duplicate && !dto.allowDuplicate()) {
         duplicatesSkipped++;
@@ -302,7 +310,6 @@ public class TransactionService {
         duplicatesImported++;
       }
 
-      seenKeys.add(key);
       var entity = mapToEntity(dto);
       entity.setOwnerId(userId);
       toCreate.add(entity);
@@ -410,16 +417,6 @@ public class TransactionService {
       log.warn("Batch validation failed with {} error(s)", errors.size());
       throw new BatchValidationException(errors);
     }
-  }
-
-  /**
-   * Builds a duplicate key from a transaction DTO.
-   *
-   * @param dto the transaction DTO
-   * @return encoded composite duplicate key
-   */
-  private String buildDuplicateKey(PreviewTransaction dto) {
-    return TransactionDuplicateKey.from(dto).toLookupValue();
   }
 
   /**

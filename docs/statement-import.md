@@ -374,13 +374,13 @@ returned by the preview endpoint.
 Preview duplicate flags are advisory. Batch import always re-checks duplicates
 before persistence because stored transactions can change after preview.
 
-Preview duplicate marking is scoped to the authenticated owner. It first matches
-strict financial identity fields: `accountId`, `bankName`, `date`, `amount`,
-`type`, and `currencyIsoCode`. Empty `accountId` values are equivalent to
-`null`, and amounts are compared at scale 2. Candidate descriptions are then
-matched with normalized exact or conservative fuzzy comparison so layout,
-punctuation, whitespace, and minor rendering differences do not hide likely
-duplicates.
+Preview duplicate marking and batch duplicate filtering are scoped to the
+authenticated owner. Both first match strict financial identity fields:
+`accountId`, `bankName`, `date`, `amount`, `type`, and `currencyIsoCode`. Empty
+`accountId` values are equivalent to `null`, and amounts are compared at scale
+2. Candidate descriptions are then matched with normalized exact or
+conservative fuzzy comparison so layout, punctuation, whitespace, and minor
+rendering differences do not hide likely duplicates.
 
 Duplicate reasons:
 - `EXISTING_TRANSACTION` - The preview row matches an active transaction
@@ -493,7 +493,8 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
   and `duplicateReason` of `EXISTING_TRANSACTION` or `IN_BATCH`.
 - Preview duplicate marking uses account ID, bank name, date, amount, type, and
   currency to find candidates, then applies normalized exact or conservative
-  fuzzy description matching. Empty account IDs are treated the same as missing
+  fuzzy description matching. Batch import re-checks duplicates with the same
+  rule before persistence. Empty account IDs are treated the same as missing
   account IDs.
 
 ### Empty amounts parsed as zero

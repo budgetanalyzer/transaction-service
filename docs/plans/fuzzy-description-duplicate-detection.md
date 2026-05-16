@@ -2,17 +2,20 @@
 
 ## Status
 
-Phases 1 through 4 are complete. The service now has a description-free
+Phases 1 through 6 are complete. The service now has a description-free
 duplicate candidate key, a description match result model, a deterministic
 description matcher with normalization plus conservative normalized Levenshtein
 scoring, and a repository lookup that retrieves active owner-scoped candidates
 without requiring description equality. Preview marking now uses that candidate
-lookup plus fuzzy description matching. Batch import behavior is still unchanged
-and remains planned for later phases.
+lookup plus fuzzy description matching. Batch import now re-checks duplicates
+through the same candidate and fuzzy matcher flow before persistence. Focused
+unit and repository integration coverage now exercises candidate key
+normalization, description matching, preview marking, and batch import
+duplicate decisions.
 
 ## Problem
 
-Duplicate detection currently requires an exact description match. That misses
+Duplicate detection previously required an exact description match. That missed
 transactions that are clearly the same financial event when two statement
 formats render the merchant description differently.
 
@@ -25,10 +28,9 @@ Both rows have the same owner, blank account ID, bank name, date, amount, type,
 and currency. They differ only by description rendering and source file
 metadata.
 
-The current exact-description behavior is implemented through
+The original exact-description behavior was implemented through
 `TransactionDuplicateKey`, `TransactionRepository.findExistingDuplicateKeys`,
-preview duplicate marking, and batch import duplicate checks. The statement
-import documentation also describes descriptions as exact matches.
+preview duplicate marking, and batch import duplicate checks.
 
 ## Target Behavior
 
@@ -99,8 +101,8 @@ Tasks:
   `TransactionDuplicateCandidateKey`.
 - Keep the existing full exact key behavior available only where tests need to
   prove old assumptions, or replace it cleanly if no callers need it. Done;
-  `TransactionDuplicateKey` remains the exact-description key used by current
-  import paths.
+  `TransactionDuplicateKey` remains available for exact-description key tests
+  and legacy repository coverage, but import paths use the candidate matcher.
 - Add a small description match result type. Done via
   `TransactionDescriptionMatchResult`, containing:
   - matched or not matched
@@ -203,15 +205,18 @@ Acceptance criteria:
 
 ### Phase 5: Wire Batch Import Duplicate Re-check
 
+Status: Complete.
+
 Update batch import to use the same duplicate matcher as preview.
 
 Tasks:
 
 - Replace exact description key duplicate checks in `TransactionService` with
-  the shared candidate and fuzzy matcher flow.
-- Preserve `allowDuplicate=true` behavior.
+  the shared candidate and fuzzy matcher flow. Done.
+- Preserve `allowDuplicate=true` behavior. Done.
 - Preserve the current "all rows skipped as duplicates" failure behavior.
-- Keep source file tracking behavior unchanged.
+  Done.
+- Keep source file tracking behavior unchanged. Done.
 
 Acceptance criteria:
 
@@ -223,16 +228,22 @@ Acceptance criteria:
 
 ### Phase 6: Test Coverage
 
+Status: Complete.
+
 Add focused tests around matching behavior and the import paths.
 
 Tasks:
 
-- Unit-test candidate key normalization.
-- Unit-test description normalization and similarity scoring.
+- Unit-test candidate key normalization. Done via
+  `TransactionDuplicateCandidateKeyTest`.
+- Unit-test description normalization and similarity scoring. Done via
+  `TransactionDescriptionMatcherTest`.
 - Unit-test preview duplicate marking for exact, fuzzy, non-match, and in-batch
-  cases.
-- Unit-test batch import skip/import behavior for fuzzy duplicates.
-- Add repository integration tests for candidate lookup.
+  cases. Done via `TransactionImportServiceTest`.
+- Unit-test batch import skip/import behavior for fuzzy duplicates. Done via
+  `TransactionServiceTest`.
+- Add repository integration tests for candidate lookup. Done via
+  `TransactionRepositoryIntegrationTest`.
 
 Acceptance criteria:
 
