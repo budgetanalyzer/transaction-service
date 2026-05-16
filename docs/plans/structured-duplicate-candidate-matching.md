@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 1 through 6 are complete. Phase 2 also completed the
+Complete. Phases 1 through 7 are complete. Phase 2 also completed the
 overlapping duplicate matcher wiring described in phase 4. The repository SQL
 now expands structured candidate fields with a PostgreSQL `unnest(...)` CTE and
 joins on the financial identity columns directly.
@@ -198,6 +198,8 @@ Acceptance criteria:
 - No follow-up documentation work is left for the refactor.
 
 ### Phase 7: Verification
+
+Status: Complete.
 
 Run focused tests first:
 
