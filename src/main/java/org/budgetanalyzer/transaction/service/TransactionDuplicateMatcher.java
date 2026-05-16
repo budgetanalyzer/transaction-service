@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
@@ -27,11 +28,12 @@ final class TransactionDuplicateMatcher {
 
     var existingCandidatesByKey =
         findExistingCandidatesByKey(transactionRepository, previewTransactions, userId);
-    var seenTransactionsByCandidateKey = new HashMap<String, List<PreviewTransaction>>();
+    var seenTransactionsByCandidateKey =
+        new HashMap<TransactionDuplicateCandidateKey, List<PreviewTransaction>>();
     var markedPreviewTransactions = new ArrayList<PreviewTransaction>(previewTransactions.size());
 
     for (var previewTransaction : previewTransactions) {
-      var transactionCandidateKey = candidateLookupValue(previewTransaction);
+      var transactionCandidateKey = candidateKey(previewTransaction);
       if (matchesExistingTransaction(
           previewTransaction,
           existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))) {
@@ -53,20 +55,30 @@ final class TransactionDuplicateMatcher {
     return markedPreviewTransactions;
   }
 
-  Map<String, List<TransactionDuplicateCandidate>> findExistingCandidatesByKey(
-      TransactionRepository transactionRepository,
-      List<PreviewTransaction> previewTransactions,
-      String userId) {
+  Map<TransactionDuplicateCandidateKey, List<TransactionDuplicateCandidate>>
+      findExistingCandidatesByKey(
+          TransactionRepository transactionRepository,
+          List<PreviewTransaction> previewTransactions,
+          String userId) {
     if (previewTransactions.isEmpty()) {
       return Map.of();
     }
 
     var transactionCandidateKeys =
         previewTransactions.stream()
-            .map(TransactionDuplicateMatcher::candidateLookupValue)
+            .map(TransactionDuplicateMatcher::candidateKey)
             .collect(Collectors.toSet());
-    return transactionRepository.findDuplicateCandidates(transactionCandidateKeys, userId).stream()
-        .collect(Collectors.groupingBy(TransactionDuplicateCandidate::getCandidateKey));
+    var transactionCandidateCriteria =
+        transactionCandidateKeys.stream()
+            .map(TransactionDuplicateMatcher::toCandidateCriteria)
+            .collect(Collectors.toSet());
+    return transactionRepository
+        .findDuplicateCandidates(transactionCandidateCriteria, userId)
+        .stream()
+        .collect(
+            Collectors.groupingBy(
+                transactionDuplicateCandidate ->
+                    candidateKey(transactionDuplicateCandidate.getCandidateCriteria())));
   }
 
   boolean matchesExistingTransaction(
@@ -98,7 +110,29 @@ final class TransactionDuplicateMatcher {
     return false;
   }
 
-  static String candidateLookupValue(PreviewTransaction previewTransaction) {
-    return TransactionDuplicateCandidateKey.from(previewTransaction).toLookupValue();
+  static TransactionDuplicateCandidateKey candidateKey(PreviewTransaction previewTransaction) {
+    return TransactionDuplicateCandidateKey.from(previewTransaction);
+  }
+
+  private static TransactionDuplicateCandidateKey candidateKey(
+      TransactionDuplicateCandidateCriteria transactionDuplicateCandidateCriteria) {
+    return new TransactionDuplicateCandidateKey(
+        transactionDuplicateCandidateCriteria.accountId(),
+        transactionDuplicateCandidateCriteria.bankName(),
+        transactionDuplicateCandidateCriteria.date(),
+        transactionDuplicateCandidateCriteria.amount(),
+        transactionDuplicateCandidateCriteria.type(),
+        transactionDuplicateCandidateCriteria.currencyIsoCode());
+  }
+
+  private static TransactionDuplicateCandidateCriteria toCandidateCriteria(
+      TransactionDuplicateCandidateKey transactionDuplicateCandidateKey) {
+    return new TransactionDuplicateCandidateCriteria(
+        transactionDuplicateCandidateKey.accountId(),
+        transactionDuplicateCandidateKey.bankName(),
+        transactionDuplicateCandidateKey.date(),
+        transactionDuplicateCandidateKey.amount(),
+        transactionDuplicateCandidateKey.type(),
+        transactionDuplicateCandidateKey.currencyIsoCode());
   }
 }

@@ -285,12 +285,13 @@ public class TransactionService {
 
     // Phase 3: Filter out duplicates and persist non-duplicates
     var toCreate = new ArrayList<Transaction>();
-    var seenTransactionsByCandidateKey = new HashMap<String, List<PreviewTransaction>>();
+    var seenTransactionsByCandidateKey =
+        new HashMap<TransactionDuplicateCandidateKey, List<PreviewTransaction>>();
     var duplicatesSkipped = 0;
     var duplicatesImported = 0;
 
     for (var dto : transactions) {
-      var transactionCandidateKey = TransactionDuplicateMatcher.candidateLookupValue(dto);
+      var transactionCandidateKey = TransactionDuplicateMatcher.candidateKey(dto);
       var duplicate =
           transactionDuplicateMatcher.matchesExistingTransaction(
                   dto, existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))

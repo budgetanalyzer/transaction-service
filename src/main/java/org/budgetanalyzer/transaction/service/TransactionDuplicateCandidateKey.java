@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Objects;
 
@@ -29,12 +30,14 @@ public record TransactionDuplicateCandidateKey(
     TransactionType type,
     String currencyIsoCode) {
 
+  private static final int AMOUNT_SCALE = 2;
+
   /** Creates a normalized duplicate candidate key. */
   public TransactionDuplicateCandidateKey {
-    accountId = TransactionDuplicateKeySupport.normalizeAccountId(accountId);
+    accountId = normalizeAccountId(accountId);
     bankName = Objects.requireNonNull(bankName, "bankName");
     date = Objects.requireNonNull(date, "date");
-    amount = TransactionDuplicateKeySupport.canonicalizeAmount(amount);
+    amount = canonicalizeAmount(amount);
     type = Objects.requireNonNull(type, "type");
     currencyIsoCode = Objects.requireNonNull(currencyIsoCode, "currencyIsoCode");
   }
@@ -73,13 +76,14 @@ public record TransactionDuplicateCandidateKey(
         transaction.getCurrencyIsoCode());
   }
 
-  /**
-   * Returns the canonical lookup value used for string-based candidate matching.
-   *
-   * @return the canonical lookup value
-   */
-  public String toLookupValue() {
-    return TransactionDuplicateKeySupport.encodeComponents(
-        accountId, bankName, date.toString(), amount.toPlainString(), type.name(), currencyIsoCode);
+  private static String normalizeAccountId(String accountId) {
+    if (accountId == null || accountId.isEmpty()) {
+      return null;
+    }
+    return accountId;
+  }
+
+  private static BigDecimal canonicalizeAmount(BigDecimal amount) {
+    return Objects.requireNonNull(amount, "amount").setScale(AMOUNT_SCALE, RoundingMode.HALF_UP);
   }
 }

@@ -39,7 +39,7 @@ class TransactionDuplicateCandidateKeyTest {
   }
 
   @Test
-  void fromPreviewTransaction_usesSameLookupValueForDifferentDescriptions() {
+  void fromPreviewTransaction_usesSameKeyForDifferentDescriptions() {
     var firstPreviewTransaction = previewTransaction("Coffee");
     var secondPreviewTransaction = previewTransaction("Coffee Shop");
 
@@ -50,8 +50,6 @@ class TransactionDuplicateCandidateKeyTest {
 
     assertThat(firstTransactionDuplicateCandidateKey)
         .isEqualTo(secondTransactionDuplicateCandidateKey);
-    assertThat(firstTransactionDuplicateCandidateKey.toLookupValue())
-        .isEqualTo(secondTransactionDuplicateCandidateKey.toLookupValue());
   }
 
   @Test
@@ -79,8 +77,6 @@ class TransactionDuplicateCandidateKeyTest {
 
     assertThat(firstTransactionDuplicateCandidateKey)
         .isNotEqualTo(secondTransactionDuplicateCandidateKey);
-    assertThat(firstTransactionDuplicateCandidateKey.toLookupValue())
-        .isNotEqualTo(secondTransactionDuplicateCandidateKey.toLookupValue());
   }
 
   @Test
@@ -193,7 +189,6 @@ class TransactionDuplicateCandidateKeyTest {
 
     assertThat(emptyAccountKey).isEqualTo(nullAccountKey);
     assertThat(emptyAccountKey.accountId()).isNull();
-    assertThat(emptyAccountKey.toLookupValue()).isEqualTo(nullAccountKey.toLookupValue());
   }
 
   @Test

@@ -38,6 +38,7 @@ import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
@@ -678,7 +679,7 @@ class TransactionServiceTest {
             null);
 
     // Simulate that dto1's key already exists
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto1).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto1);
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto1.description())));
     when(transactionRepository.saveAll(any()))
@@ -715,7 +716,7 @@ class TransactionServiceTest {
             "USD",
             null,
             true);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
@@ -760,7 +761,7 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(duplicateDto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(duplicateDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
@@ -801,7 +802,7 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(skippedDto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(skippedDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
@@ -830,7 +831,7 @@ class TransactionServiceTest {
             "USD",
             null,
             true);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
@@ -872,8 +873,7 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey =
-        TransactionDuplicateCandidateKey.from(allowedDuplicateDto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(allowedDuplicateDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
@@ -901,7 +901,7 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, "Starbucks Store 1234")));
@@ -1328,7 +1328,7 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
 
@@ -1395,17 +1395,31 @@ class TransactionServiceTest {
   }
 
   private static TransactionDuplicateCandidate duplicateCandidate(
-      String candidateKey, Long transactionId, String description) {
-    return new TestTransactionDuplicateCandidate(candidateKey, transactionId, description);
+      TransactionDuplicateCandidateKey candidateKey, Long transactionId, String description) {
+    return new TestTransactionDuplicateCandidate(
+        candidateCriteria(candidateKey), transactionId, description);
+  }
+
+  private static TransactionDuplicateCandidateCriteria candidateCriteria(
+      TransactionDuplicateCandidateKey candidateKey) {
+    return new TransactionDuplicateCandidateCriteria(
+        candidateKey.accountId(),
+        candidateKey.bankName(),
+        candidateKey.date(),
+        candidateKey.amount(),
+        candidateKey.type(),
+        candidateKey.currencyIsoCode());
   }
 
   private record TestTransactionDuplicateCandidate(
-      String candidateKey, Long transactionId, String description)
+      TransactionDuplicateCandidateCriteria candidateCriteria,
+      Long transactionId,
+      String description)
       implements TransactionDuplicateCandidate {
 
     @Override
-    public String getCandidateKey() {
-      return candidateKey;
+    public TransactionDuplicateCandidateCriteria getCandidateCriteria() {
+      return candidateCriteria;
     }
 
     @Override

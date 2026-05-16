@@ -34,9 +34,11 @@ Both rows have the same owner, blank account ID, bank name, date, amount, type,
 and currency. They differ only by description rendering and source file
 metadata.
 
-The original exact-description behavior was implemented through
-`TransactionDuplicateKey`, `TransactionRepository.findExistingDuplicateKeys`,
-preview duplicate marking, and batch import duplicate checks.
+The original exact-description behavior was implemented through an encoded
+full duplicate key repository lookup, preview duplicate marking, and batch
+import duplicate checks. That exact-key repository path has since been removed;
+current duplicate detection uses description-free candidate lookup followed by
+service-layer description matching.
 
 ## Target Behavior
 
@@ -107,8 +109,8 @@ Tasks:
   `TransactionDuplicateCandidateKey`.
 - Keep the existing full exact key behavior available only where tests need to
   prove old assumptions, or replace it cleanly if no callers need it. Done;
-  `TransactionDuplicateKey` remains available for exact-description key tests
-  and legacy repository coverage, but import paths use the candidate matcher.
+  the legacy full exact key type and repository lookup have been removed, and
+  import paths use the candidate matcher.
 - Add a small description match result type. Done via
   `TransactionDescriptionMatchResult`, containing:
   - matched or not matched
