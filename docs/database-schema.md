@@ -102,14 +102,9 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
   `amount`, `type`, and `currency_iso_code`. It replaced the exact-description
   duplicate index in migration `V17__replace_duplicate_candidate_index.sql`.
 
-Duplicate detection treats empty `account_id` values as equivalent to `NULL` in
-the structured field-level lookup query. The repository expands incoming
-candidate criteria into typed field rows and joins on the financial identity
-columns directly; it does not build encoded lookup keys. Only active rows
-(`deleted = false`) for the same `owner_id` are returned as candidates;
-description comparison is performed in the service layer using normalized exact
-or conservative fuzzy matching, with fuzzy matches requiring exact ordered
-numeric-token agreement when numeric references are present.
+The database returns only structured duplicate candidates. Description matching
+and batch skip/import semantics are service-layer behavior documented in
+[Transaction Duplicate Detection](duplicate-detection.md).
 
 ### file_import
 
@@ -144,22 +139,14 @@ CREATE INDEX idx_file_import_imported_at ON file_import(imported_at);
 
 Preview uses `content_hash` and `imported_by` to populate the file-level
 `fileImport` status for exact file reuploads by the authenticated user. The API
-returns previous import metadata but does not expose `content_hash`.
-
-Batch import requires a valid `previewImportToken` from the preview endpoint.
-The token carries the source-file identity verified during preview, including
-the content hash, original filename, format, account ID, file size, and owner.
-When at least one transaction is created, the service records source-file
-identity in `file_import`. If the same `(content_hash, imported_by)` already
-exists, the batch is not rejected and no duplicate `file_import` row is created;
-transaction duplicate rules remain authoritative.
+returns previous import metadata but does not expose `content_hash`. See
+[Transaction Duplicate Detection](duplicate-detection.md) for the preview token
+and exact-file reupload contract.
 
 Newly created token-backed batch transactions are linked through
 `transaction.file_import_id` to either the new `file_import` row or the existing
 matching row. `transaction.file_import_id` remains nullable only for legacy or
-service-created transactions that did not originate from an uploaded source
-file. If duplicate filtering leaves no rows to create, the batch fails with
-`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no file import row is recorded.
+service-created transactions that did not originate from an uploaded source file.
 
 ### saved_view
 
@@ -190,69 +177,10 @@ CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
 - `open_ended` - Allows the view to ignore the upper date bound when resolving
   memberships
 
-Migration `V16__delete_legacy_saved_views.sql` removes rows written with the old
-`startDate` and `endDate` criteria JSON shape. Pinned and excluded IDs are
-stored on the same row, so no child tables require cascading.
-
-### budgets
-
-**Purpose:** Stores budget definitions
-
-```sql
-CREATE TABLE budgets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(200) NOT NULL,
-    amount DECIMAL(19,2) NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    category VARCHAR(100),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT budgets_date_range CHECK (end_date > start_date)
-);
-
-CREATE INDEX idx_budgets_dates ON budgets(start_date, end_date);
-CREATE INDEX idx_budgets_category ON budgets(category);
-```
-
-**Key Columns:**
-- `id` - UUID primary key
-- `name` - User-friendly budget name
-- `amount` - Budget limit
-- `start_date`, `end_date` - Budget period
-- `category` - Optional category constraint
-
-**Constraints:**
-- `budgets_date_range` - Ensures valid date range
-
-### categories
-
-**Purpose:** Hierarchical category structure
-
-```sql
-CREATE TABLE categories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) NOT NULL,
-    parent_id UUID REFERENCES categories(id),
-    category_type VARCHAR(10) NOT NULL, -- 'INCOME' or 'EXPENSE'
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT categories_unique_name_parent UNIQUE(name, parent_id)
-);
-
-CREATE INDEX idx_categories_parent_id ON categories(parent_id);
-CREATE INDEX idx_categories_type ON categories(category_type);
-```
-
-**Key Columns:**
-- `id` - UUID primary key
-- `name` - Category name (unique within parent)
-- `parent_id` - Self-referencing for hierarchy
-- `category_type` - INCOME or EXPENSE
-
-**Constraints:**
-- `categories_unique_name_parent` - Prevents duplicate names under same parent
-- Self-referencing foreign key for hierarchy
+Saved-view criteria, open-ended date behavior, and pinned/excluded membership
+rules are documented in [Saved Views](saved-views.md). Migration
+`V16__delete_legacy_saved_views.sql` removes rows written with the old
+`startDate` and `endDate` criteria JSON shape.
 
 ## Migration Strategy
 
@@ -261,8 +189,8 @@ CREATE INDEX idx_categories_type ON categories(category_type);
 **Location:** `src/main/resources/db/migration/`
 
 **Naming:** `V{version}__{description}.sql`
-- Example: `V001__create_transactions_table.sql`
-- Example: `V002__add_category_column.sql`
+- Example: `V18__add_transaction_notes.sql`
+- Example: `V19__add_transaction_notes_index.sql`
 
 **Discovery:**
 ```bash
@@ -313,14 +241,14 @@ CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english
 ### Dates
 
 **Type:** `DATE` for business dates, `TIMESTAMP` for audit trails
-- `transaction_date` - Business date (DATE)
+- `transaction.date` - Business date (DATE)
 - `created_at`, `updated_at` - Audit timestamps (TIMESTAMP)
 
 ### UUIDs
 
 **Type:** `UUID`
-- PostgreSQL native UUID type
-- Generated: `gen_random_uuid()` (PostgreSQL 13+)
+- Used by `saved_view.id`
+- Generated by the application through JPA
 
 ### Enums
 
@@ -335,14 +263,19 @@ CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english
 
 **Most common queries:**
 1. Get transactions by account and date range
-2. Search transactions by category
-3. Find budgets overlapping date range
-4. List categories by type
+2. Search transactions by bank, currency, amount, type, and description
+3. Count or page cross-user transaction search results
+4. Resolve owner-scoped duplicate candidates during import
+5. List saved views by user
 
 **Index strategy:**
-- Index foreign keys (`account_id`, `parent_id`)
+- Index foreign keys and ownership columns (`file_import_id`, `owner_id`,
+  `user_id`)
 - Index date columns for range queries
-- Index frequently filtered columns (`category`, `category_type`)
+- Index frequently filtered transaction columns (`account_id`, `bank_name`,
+  `currency_iso_code`, `type`, `deleted`)
+- Keep duplicate candidate lookup aligned with the strict financial identity
+  fields in [Transaction Duplicate Detection](duplicate-detection.md)
 
 ### Performance Monitoring
 

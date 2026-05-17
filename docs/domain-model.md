@@ -5,164 +5,159 @@
 
 ## Overview
 
-This document describes the business domain entities and their relationships in the transaction service.
+This document summarizes the current domain entities owned by the transaction
+service. Schema-level details live in [Database Schema](database-schema.md);
+endpoint contracts live in [API Documentation](api/README.md).
 
 ## Core Entities
 
 ### Transaction
 
-**Purpose:** Represents a single financial transaction
+**Purpose:** Represents a single financial transaction owned by a user.
 
 **Key Attributes:**
-- `id` (UUID) - Unique identifier
-- `accountId` (UUID) - Reference to account
-- `amount` (BigDecimal) - Transaction amount
-- `currency` (String) - Currency code (USD, THB, etc.)
-- `transactionDate` (LocalDate) - When transaction occurred
-- `description` (String) - Transaction description
-- `category` (String) - Optional categorization
-- `type` (Enum) - DEBIT or CREDIT
+
+- `id` (`Long`) - Database-generated transaction identifier.
+- `ownerId` (`String`) - Authenticated user that owns the transaction.
+- `accountId` (`String`) - Optional account identifier supplied by the client or
+  import flow.
+- `bankName` (`String`) - Bank where the transaction occurred.
+- `date` (`LocalDate`) - Business date of the transaction.
+- `currencyIsoCode` (`String`) - ISO currency code.
+- `amount` (`BigDecimal`) - Positive transaction amount.
+- `type` (`TransactionType`) - `DEBIT` or `CREDIT`.
+- `description` (`String`) - Bank-provided transaction description.
+- `fileImport` (`FileImport`) - Optional source file record for token-backed
+  batch imports.
 
 **Business Rules:**
-- Amount must be positive
-- Currency must be valid ISO code
-- Transaction date cannot be in future
-- Description required for all transactions
 
-**Discovery:**
-```bash
-# Find Transaction entity
-grep -r "class Transaction" src/main/java
-```
+- Transactions are soft-deleted through `SoftDeletableEntity`.
+- Queries for normal user workflows exclude soft-deleted rows.
+- Duplicate detection is owner-scoped and documented in
+  [Transaction Duplicate Detection](duplicate-detection.md).
 
-### Budget
+### FileImport
 
-**Purpose:** Represents a budget allocation
+**Purpose:** Tracks uploaded source files that produced batch-imported
+transactions.
 
 **Key Attributes:**
-- `id` (UUID) - Unique identifier
-- `name` (String) - Budget name
-- `amount` (BigDecimal) - Budget amount
-- `currency` (String) - Currency code
-- `startDate` (LocalDate) - Budget period start
-- `endDate` (LocalDate) - Budget period end
-- `category` (String) - Budget category
+
+- `id` (`Long`) - Database-generated file import identifier.
+- `contentHash` (`String`) - SHA-256 hash of the uploaded file bytes.
+- `originalFilename` (`String`) - Filename supplied in the multipart upload.
+- `format` (`String`) - Statement format key used for parsing.
+- `accountId` (`String`) - Optional account ID applied during import.
+- `fileSizeBytes` (`Long`) - Uploaded file size.
+- `transactionCount` (`Integer`) - Number of transactions linked to the import.
+- `importedBy` (`String`) - User that imported the file.
+- `importedAt` (`Instant`) - Import completion timestamp.
 
 **Business Rules:**
-- Start date must be before end date
-- Amount must be positive
-- Period must not overlap with existing budgets in same category
 
-**Discovery:**
-```bash
-# Find Budget entity
-grep -r "class Budget" src/main/java
-```
+- Exact-file reupload detection is scoped by `(contentHash, importedBy)`.
+- The API exposes prior import metadata but never exposes `contentHash`.
+- Created token-backed batch transactions link to either the new file import row
+  or an existing matching row.
 
-### Category
+### StatementFormat
 
-**Purpose:** Hierarchical categorization for transactions and budgets
+**Purpose:** Stores database-driven statement parsing configuration.
 
 **Key Attributes:**
-- `id` (UUID) - Unique identifier
-- `name` (String) - Category name
-- `parentId` (UUID) - Optional parent category
-- `type` (Enum) - INCOME or EXPENSE
+
+- `id` (`Long`) - Database-generated statement format identifier.
+- `formatKey` (`String`) - Stable format key used by preview requests.
+- `formatType` (`FormatType`) - `CSV`, `PDF`, or `XLSX`.
+- `bankName` (`String`) - Bank name assigned to imported transactions.
+- `defaultCurrencyIsoCode` (`String`) - Default currency for parsed rows.
+- `displayName` (`String`) - UI-friendly format label.
+- CSV column mapping fields such as `dateHeader`, `descriptionHeader`,
+  `creditHeader`, `debitHeader`, `typeHeader`, and `categoryHeader`.
+- `enabled` (`boolean`) - Whether the format is available for use.
 
 **Business Rules:**
-- Category names must be unique within parent
-- Circular references not allowed
-- Maximum 3 levels of nesting
 
-**Discovery:**
-```bash
-# Find Category entity
-grep -r "class Category" src/main/java
-```
+- CSV formats are configuration-driven and can usually be added without code
+  changes.
+- PDF formats use dedicated extractors; `StatementFormat` stores metadata and
+  enables format discovery.
+- Import setup and examples are documented in
+  [Statement Import System](statement-import.md).
+
+### SavedView
+
+**Purpose:** Stores a user-owned transaction filter with optional pinned and
+excluded transaction overrides.
+
+**Key Attributes:**
+
+- `id` (`UUID`) - Database-generated saved view identifier.
+- `userId` (`String`) - User that owns the view.
+- `name` (`String`) - User-facing view name.
+- `criteria` (`ViewCriteria`) - Transaction filter criteria.
+- `openEnded` (`boolean`) - Whether a missing upper date bound resolves to the
+  current date.
+- `pinnedIds` (`Set<Long>`) - Transaction IDs explicitly included.
+- `excludedIds` (`Set<Long>`) - Transaction IDs explicitly excluded.
+- `createdAt`, `updatedAt` (`Instant`) - Audit timestamps.
+
+**Business Rules:**
+
+- Saved-view criteria cannot supply an owner ID; the service injects the
+  authenticated user.
+- Pinning a transaction removes it from exclusions. Excluding a transaction
+  removes it from pins.
+- Membership semantics are documented in [Saved Views](saved-views.md).
+
+### ViewCriteria
+
+**Purpose:** Value object for saved-view transaction filters.
+
+**Fields:**
+
+- `dateFrom`, `dateTo`
+- `accountIds`
+- `bankNames`
+- `currencyIsoCodes`
+- `minAmount`, `maxAmount`
+- `type`
+- `searchText`
+
+All fields are optional. Null fields are not applied as filters.
 
 ## Domain Relationships
 
-```
-Budget 1 ──→ * Transaction (via category)
-Category 1 ──→ * Transaction
-Category 1 ──→ * Budget
-Category 0..1 ──→ * Category (hierarchical)
-Account 1 ──→ * Transaction
+```text
+Transaction 0..1 -> 1 FileImport
+SavedView 1 -> * Transaction IDs through pinnedIds and excludedIds
+StatementFormat -> Transaction import flow through formatKey metadata
 ```
 
-## Aggregates
+## Enums
 
-### Transaction Aggregate
-**Root:** Transaction
-**Entities:** Transaction only (no child entities currently)
-**Value Objects:** Money (amount + currency), TransactionType
-
-### Budget Aggregate
-**Root:** Budget
-**Entities:** Budget only
-**Value Objects:** DateRange (startDate + endDate), Money
-
-## Value Objects
-
-### Money
-**Components:**
-- `amount` (BigDecimal)
-- `currency` (String)
-
-**Business Rules:**
-- Currency must be valid ISO 4217 code
-- Amount precision: 2 decimal places
-- Immutable
-
-### DateRange
-**Components:**
-- `startDate` (LocalDate)
-- `endDate` (LocalDate)
-
-**Business Rules:**
-- End date must be after start date
-- No null dates allowed
-- Immutable
-
-## Domain Events (Future)
-
-### TransactionCreated
-- Published when new transaction created
-- Contains: transactionId, accountId, amount, currency, date
-
-### BudgetExceeded
-- Published when spending exceeds budget
-- Contains: budgetId, category, exceeded amount, date
-
-### CategoryChanged
-- Published when transaction category updated
-- Contains: transactionId, old category, new category
+- `TransactionType` - `DEBIT`, `CREDIT`
+- `FormatType` - `CSV`, `PDF`, `XLSX`
+- `MembershipType` - `MATCHED`, `PINNED`
 
 ## Discovery Commands
 
 ```bash
-# Find all entities
-find src/main/java -name "*Entity*.java" -o -name "*entity*"
+# Find all domain entities
+find src/main/java/org/budgetanalyzer/transaction/domain -maxdepth 1 -name "*.java" -type f
 
-# Find repositories
-grep -r "@Repository" src/
+# View repositories
+find src/main/java/org/budgetanalyzer/transaction/repository -name "*.java" -type f
 
-# Find domain services
-grep -r "@Service" src/ | grep -i domain
-
-# View database schema
-cat src/main/resources/db/migration/V*.sql
+# View database migrations
+ls src/main/resources/db/migration/
 ```
-
-## Database Mapping
-
-See: [database-schema.md](database-schema.md) for complete schema details.
-
-**JPA Strategy:** Pure JPA (Jakarta Persistence API), no Hibernate-specific features
-- See: [@service-common/docs/spring-boot-conventions.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/spring-boot-conventions.md#persistence-layer-pure-jpa)
 
 ## References
 
-- **Spring Boot Patterns:** [@service-common/docs/spring-boot-conventions.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/spring-boot-conventions.md)
-- **Database Schema:** [database-schema.md](database-schema.md)
-- **API Spec:** [api/README.md](api/README.md)
+- [Database Schema](database-schema.md)
+- [API Documentation](api/README.md)
+- [Statement Import System](statement-import.md)
+- [Transaction Duplicate Detection](duplicate-detection.md)
+- [Saved Views](saved-views.md)
