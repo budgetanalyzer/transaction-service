@@ -1,5 +1,11 @@
 # Bulk Saved-View Pin And Exclude Plan
 
+## Implementation Status
+
+- Phase 1: Completed.
+- Phase 2: Completed.
+- Phases 3-7: Pending.
+
 ## Goal
 
 Add bulk pin and bulk exclude operations to saved views. The behavior should
