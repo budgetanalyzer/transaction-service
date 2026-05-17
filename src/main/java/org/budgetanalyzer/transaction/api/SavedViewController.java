@@ -24,6 +24,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -31,8 +32,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.transaction.api.request.BulkViewTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.CreateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
+import org.budgetanalyzer.transaction.api.response.BulkViewTransactionResponse;
 import org.budgetanalyzer.transaction.api.response.SavedViewResponse;
 import org.budgetanalyzer.transaction.api.response.ViewMembershipResponse;
 import org.budgetanalyzer.transaction.service.SavedViewService;
@@ -228,6 +231,145 @@ public class SavedViewController {
 
     var membership = savedViewService.getViewTransactions(id, userId);
     return ViewMembershipResponse.from(membership);
+  }
+
+  @PreAuthorize("hasAuthority('views:write')")
+  @Operation(
+      summary = "Bulk pin transactions",
+      description =
+          "Pins multiple transactions to the view. Returns updatedCount and notFoundIds for IDs "
+              + "that are missing, deleted, or not owned by the caller.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "Bulk pin operation completed",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "All pinned",
+                            summary = "All requested IDs were pinned",
+                            value =
+                                """
+                      {
+                        "updatedCount": 3,
+                        "notFoundIds": []
+                      }
+                      """))),
+        @ApiResponse(
+            responseCode = "200",
+            description = "Some transactions were not found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Partial success",
+                            summary = "Some IDs were not pinned",
+                            value =
+                                """
+                      {
+                        "updatedCount": 2,
+                        "notFoundIds": [999, 1000]
+                      }
+                      """))),
+        @ApiResponse(
+            responseCode = "400",
+            description = "Invalid request (empty ID list)",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class))),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Saved view not found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/pin", consumes = "application/json", produces = "application/json")
+  public BulkViewTransactionResponse bulkPinTransactions(
+      @PathVariable("id") UUID id, @Valid @RequestBody BulkViewTransactionRequest request) {
+    var userId = getCurrentUserId();
+    log.info("Bulk pin request for {} IDs on view {} by user {}", request.ids().size(), id, userId);
+
+    var result = savedViewService.bulkPinTransactions(id, userId, request.ids());
+    return new BulkViewTransactionResponse(result.updatedCount(), result.notFoundIds());
+  }
+
+  @PreAuthorize("hasAuthority('views:write')")
+  @Operation(
+      summary = "Bulk exclude transactions",
+      description =
+          "Excludes multiple transactions from the view. Returns updatedCount and notFoundIds for "
+              + "IDs that are missing, deleted, or not owned by the caller.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "Bulk exclude operation completed",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "All excluded",
+                            summary = "All requested IDs were excluded",
+                            value =
+                                """
+                      {
+                        "updatedCount": 3,
+                        "notFoundIds": []
+                      }
+                      """))),
+        @ApiResponse(
+            responseCode = "200",
+            description = "Some transactions were not found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
+                    examples =
+                        @ExampleObject(
+                            name = "Partial success",
+                            summary = "Some IDs were not excluded",
+                            value =
+                                """
+                      {
+                        "updatedCount": 2,
+                        "notFoundIds": [999, 1000]
+                      }
+                      """))),
+        @ApiResponse(
+            responseCode = "400",
+            description = "Invalid request (empty ID list)",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class))),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Saved view not found",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/exclude", consumes = "application/json", produces = "application/json")
+  public BulkViewTransactionResponse bulkExcludeTransactions(
+      @PathVariable("id") UUID id, @Valid @RequestBody BulkViewTransactionRequest request) {
+    var userId = getCurrentUserId();
+    log.info(
+        "Bulk exclude request for {} IDs on view {} by user {}", request.ids().size(), id, userId);
+
+    var result = savedViewService.bulkExcludeTransactions(id, userId, request.ids());
+    return new BulkViewTransactionResponse(result.updatedCount(), result.notFoundIds());
   }
 
   @PreAuthorize("hasAuthority('views:write')")

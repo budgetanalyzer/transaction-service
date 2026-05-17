@@ -4,7 +4,9 @@
 
 - Phase 1: Completed.
 - Phase 2: Completed.
-- Phases 3-7: Pending.
+- Phase 3: Completed.
+- Phase 4: Completed.
+- Phases 5-7: Pending.
 
 ## Goal
 

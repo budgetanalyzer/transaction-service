@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -192,11 +193,9 @@ public class SavedViewService {
   public SavedView pinTransaction(UUID viewId, String userId, Long transactionId) {
     var view = getView(viewId, userId);
 
-    // Verify transaction exists
-    transactionRepository
-        .findByIdNotDeleted(transactionId)
-        .orElseThrow(
-            () -> new ResourceNotFoundException("Transaction not found with id: " + transactionId));
+    if (!isTransactionActiveAndOwnedByUser(transactionId, userId)) {
+      throw new ResourceNotFoundException("Transaction not found with id: " + transactionId);
+    }
 
     view.pinTransaction(transactionId);
     log.info("Pinned transaction {} to view {} for user {}", transactionId, viewId, userId);
@@ -231,15 +230,73 @@ public class SavedViewService {
   public SavedView excludeTransaction(UUID viewId, String userId, Long transactionId) {
     var view = getView(viewId, userId);
 
-    // Verify transaction exists
-    transactionRepository
-        .findByIdNotDeleted(transactionId)
-        .orElseThrow(
-            () -> new ResourceNotFoundException("Transaction not found with id: " + transactionId));
+    if (!isTransactionActiveAndOwnedByUser(transactionId, userId)) {
+      throw new ResourceNotFoundException("Transaction not found with id: " + transactionId);
+    }
 
     view.excludeTransaction(transactionId);
     log.info("Excluded transaction {} from view {} for user {}", transactionId, viewId, userId);
     return savedViewRepository.save(view);
+  }
+
+  /**
+   * Bulk-pins transactions to a view.
+   *
+   * @param viewId the view ID
+   * @param userId the user ID
+   * @param ids the transaction IDs to pin
+   * @return result containing updated count and IDs not found for this user
+   */
+  @Transactional
+  public BulkViewUpdateResult bulkPinTransactions(UUID viewId, String userId, List<Long> ids) {
+    var view = getView(viewId, userId);
+    var notFoundIds = new java.util.ArrayList<Long>();
+    var validIds = new LinkedHashSet<Long>();
+    var updatedCount = 0;
+
+    for (var id : ids) {
+      if (isTransactionActiveAndOwnedByUser(id, userId)) {
+        validIds.add(id);
+        updatedCount++;
+      } else {
+        notFoundIds.add(id);
+      }
+    }
+
+    view.pinTransactions(validIds);
+    savedViewRepository.save(view);
+
+    return new BulkViewUpdateResult(updatedCount, notFoundIds);
+  }
+
+  /**
+   * Bulk-excludes transactions from a view.
+   *
+   * @param viewId the view ID
+   * @param userId the user ID
+   * @param ids the transaction IDs to exclude
+   * @return result containing updated count and IDs not found for this user
+   */
+  @Transactional
+  public BulkViewUpdateResult bulkExcludeTransactions(UUID viewId, String userId, List<Long> ids) {
+    var view = getView(viewId, userId);
+    var notFoundIds = new java.util.ArrayList<Long>();
+    var validIds = new LinkedHashSet<Long>();
+    var updatedCount = 0;
+
+    for (var id : ids) {
+      if (isTransactionActiveAndOwnedByUser(id, userId)) {
+        validIds.add(id);
+        updatedCount++;
+      } else {
+        notFoundIds.add(id);
+      }
+    }
+
+    view.excludeTransactions(validIds);
+    savedViewRepository.save(view);
+
+    return new BulkViewUpdateResult(updatedCount, notFoundIds);
   }
 
   /**
@@ -310,4 +367,19 @@ public class SavedViewService {
         .filter(transaction -> ownerId.equals(transaction.getOwnerId()))
         .toList();
   }
+
+  private boolean isTransactionActiveAndOwnedByUser(Long transactionId, String userId) {
+    return transactionRepository
+        .findByIdNotDeleted(transactionId)
+        .map(transaction -> userId.equals(transaction.getOwnerId()))
+        .orElse(false);
+  }
+
+  /**
+   * Result object for bulk saved-view pin/exclude operations.
+   *
+   * @param updatedCount the number of transactions successfully pinned or excluded
+   * @param notFoundIds transaction IDs that were missing, deleted, or owned by another user
+   */
+  public record BulkViewUpdateResult(int updatedCount, List<Long> notFoundIds) {}
 }
