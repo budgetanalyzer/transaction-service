@@ -71,7 +71,8 @@ public record BatchImportTransactionRequest(
     @Schema(
             description =
                 "Whether to import this row even when it duplicates an existing transaction or "
-                    + "earlier row in the same batch",
+                    + "earlier row in the same batch under the strict financial identity plus "
+                    + "normalized exact or conservative fuzzy description rule",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             example = "false",
             defaultValue = "false")

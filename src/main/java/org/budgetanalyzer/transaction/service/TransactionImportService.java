@@ -1,10 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +10,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
-import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
@@ -35,6 +31,8 @@ public class TransactionImportService {
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
   private final PreviewImportTokenService previewImportTokenService;
+  private final TransactionDuplicateMatcher transactionDuplicateMatcher =
+      new TransactionDuplicateMatcher();
 
   /**
    * Constructs a new TransactionImportService.
@@ -159,33 +157,6 @@ public class TransactionImportService {
 
   private List<PreviewTransaction> markDuplicates(
       List<PreviewTransaction> transactions, String userId) {
-    if (transactions.isEmpty()) {
-      return transactions;
-    }
-
-    var transactionKeys =
-        transactions.stream()
-            .map(
-                previewTransaction ->
-                    TransactionDuplicateKey.from(previewTransaction).toLookupValue())
-            .collect(Collectors.toSet());
-    var existingKeys = transactionRepository.findExistingDuplicateKeys(transactionKeys, userId);
-    var seenKeys = new HashSet<String>();
-    var markedTransactions = new ArrayList<PreviewTransaction>(transactions.size());
-
-    for (var previewTransaction : transactions) {
-      var transactionKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
-      if (existingKeys.contains(transactionKey)) {
-        markedTransactions.add(
-            previewTransaction.withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION));
-      } else if (seenKeys.contains(transactionKey)) {
-        markedTransactions.add(previewTransaction.withDuplicate(PreviewDuplicateReason.IN_BATCH));
-      } else {
-        markedTransactions.add(previewTransaction);
-      }
-      seenKeys.add(transactionKey);
-    }
-
-    return markedTransactions;
+    return transactionDuplicateMatcher.markDuplicates(transactionRepository, transactions, userId);
   }
 }

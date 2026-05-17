@@ -27,7 +27,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
@@ -53,7 +55,8 @@ class TransactionImportServiceTest {
   @Test
   void previewFile_existingDatabaseDuplicate_marksTransactionWithExistingReason() {
     var previewTransaction = previewTransaction("Coffee Shop");
-    var duplicateKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
+    var candidateKey = TransactionDuplicateCandidateKey.from(previewTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
     var multipartFile = multipartFile();
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
@@ -70,8 +73,8 @@ class TransactionImportServiceTest {
         .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
-    when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
-        .thenReturn(Set.of(duplicateKey));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of(duplicateCandidate(candidateKey, 1L, "Coffee Shop")));
 
     var result =
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
@@ -84,14 +87,81 @@ class TransactionImportServiceTest {
     assertThat(result.transactions().getFirst().duplicate()).isTrue();
     assertThat(result.transactions().getFirst().duplicateReason())
         .isEqualTo(PreviewDuplicateReason.EXISTING_TRANSACTION);
-    verify(transactionRepository).findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID);
+    verify(transactionRepository).findDuplicateCandidates(Set.of(candidateCriteria), USER_ID);
+  }
+
+  @Test
+  void previewFile_existingFuzzyDatabaseDuplicate_marksTransactionWithExistingReason() {
+    var previewTransaction = previewTransaction("X CORP. PAID FEATURESBASTROPTX");
+    var candidateKey = TransactionDuplicateCandidateKey.from(previewTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(previewTransaction));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(
+            List.of(duplicateCandidate(candidateKey, 42L, "X CORP. PAID FEATURES BASTROP     TX")));
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.transactions()).hasSize(1);
+    assertThat(result.transactions().getFirst().duplicate()).isTrue();
+    assertThat(result.transactions().getFirst().duplicateReason())
+        .isEqualTo(PreviewDuplicateReason.EXISTING_TRANSACTION);
+  }
+
+  @Test
+  void previewFile_existingCandidateWithDifferentDescription_doesNotMarkDuplicate() {
+    var previewTransaction = previewTransaction("Rent Payment May");
+    var candidateKey = TransactionDuplicateCandidateKey.from(previewTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(previewTransaction));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of(duplicateCandidate(candidateKey, 43L, "Starbucks Store 1234")));
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.transactions()).hasSize(1);
+    assertThat(result.transactions().getFirst().duplicate()).isFalse();
+    assertThat(result.transactions().getFirst().duplicateReason()).isNull();
   }
 
   @Test
   void previewFile_inPreviewDuplicate_marksLaterTransactionWithInBatchReason() {
     var firstTransaction = previewTransaction("Coffee Shop");
     var secondTransaction = previewTransaction("Coffee Shop");
-    var duplicateKey = TransactionDuplicateKey.from(firstTransaction).toLookupValue();
+    var candidateKey = TransactionDuplicateCandidateKey.from(firstTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
     var multipartFile = multipartFile();
 
     when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
@@ -108,8 +178,8 @@ class TransactionImportServiceTest {
         .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(firstTransaction, secondTransaction));
-    when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
-        .thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of());
 
     var result =
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
@@ -120,6 +190,77 @@ class TransactionImportServiceTest {
     assertThat(result.transactions().get(1).duplicate()).isTrue();
     assertThat(result.transactions().get(1).duplicateReason())
         .isEqualTo(PreviewDuplicateReason.IN_BATCH);
+  }
+
+  @Test
+  void previewFile_inPreviewFuzzyDuplicate_marksLaterTransactionWithInBatchReason() {
+    var firstTransaction = previewTransaction("X CORP. PAID FEATURES BASTROP     TX");
+    var secondTransaction = previewTransaction("X CORP. PAID FEATURESBASTROPTX");
+    var candidateKey = TransactionDuplicateCandidateKey.from(firstTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(firstTransaction, secondTransaction));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of());
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().get(0).duplicate()).isFalse();
+    assertThat(result.transactions().get(0).duplicateReason()).isNull();
+    assertThat(result.transactions().get(1).duplicate()).isTrue();
+    assertThat(result.transactions().get(1).duplicateReason())
+        .isEqualTo(PreviewDuplicateReason.IN_BATCH);
+  }
+
+  @Test
+  void previewFile_inPreviewCandidateWithDifferentDescription_doesNotMarkInBatchDuplicate() {
+    var firstTransaction = previewTransaction("Rent Payment May");
+    var secondTransaction = previewTransaction("Starbucks Store 1234");
+    var candidateKey = TransactionDuplicateCandidateKey.from(firstTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
+    var multipartFile = multipartFile();
+
+    when(extractorRegistry.findByFormat("capital-one")).thenReturn(Optional.of(statementExtractor));
+    when(statementExtractor.getFormatKey()).thenReturn("capital-one");
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq("capital-one"),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(statementExtractor.extract(any(byte[].class), eq("checking")))
+        .thenReturn(List.of(firstTransaction, secondTransaction));
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of());
+
+    var result =
+        transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().get(0).duplicate()).isFalse();
+    assertThat(result.transactions().get(0).duplicateReason()).isNull();
+    assertThat(result.transactions().get(1).duplicate()).isFalse();
+    assertThat(result.transactions().get(1).duplicateReason()).isNull();
   }
 
   @Test
@@ -144,13 +285,14 @@ class TransactionImportServiceTest {
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
 
     assertThat(result.transactions()).isEmpty();
-    verify(transactionRepository, never()).findExistingDuplicateKeys(any(), any());
+    verify(transactionRepository, never()).findDuplicateCandidates(any(), any());
   }
 
   @Test
   void previewFile_duplicateLookupFailure_surfacesInfrastructureException() {
     var previewTransaction = previewTransaction("Coffee Shop");
-    var duplicateKey = TransactionDuplicateKey.from(previewTransaction).toLookupValue();
+    var candidateKey = TransactionDuplicateCandidateKey.from(previewTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
     var multipartFile = multipartFile();
     var dataAccessException = new DataAccessResourceFailureException("database unavailable");
 
@@ -168,7 +310,7 @@ class TransactionImportServiceTest {
         .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
-    when(transactionRepository.findExistingDuplicateKeys(Set.of(duplicateKey), USER_ID))
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenThrow(dataAccessException);
 
     assertThatThrownBy(
@@ -199,7 +341,7 @@ class TransactionImportServiceTest {
         .thenReturn("preview-token");
     when(statementExtractor.extract(any(byte[].class), eq("checking")))
         .thenReturn(List.of(previewTransaction));
-    when(transactionRepository.findExistingDuplicateKeys(any(), eq(USER_ID))).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), eq(USER_ID))).thenReturn(List.of());
 
     var result =
         transactionImportService.previewFile("capital-one", "checking", multipartFile, USER_ID);
@@ -339,5 +481,44 @@ class TransactionImportServiceTest {
         originalFilename,
         "text/csv",
         "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+  }
+
+  private static TransactionDuplicateCandidate duplicateCandidate(
+      TransactionDuplicateCandidateKey candidateKey, Long transactionId, String description) {
+    return new TestTransactionDuplicateCandidate(
+        candidateCriteria(candidateKey), transactionId, description);
+  }
+
+  private static TransactionDuplicateCandidateCriteria candidateCriteria(
+      TransactionDuplicateCandidateKey candidateKey) {
+    return new TransactionDuplicateCandidateCriteria(
+        candidateKey.accountId(),
+        candidateKey.bankName(),
+        candidateKey.date(),
+        candidateKey.amount(),
+        candidateKey.type(),
+        candidateKey.currencyIsoCode());
+  }
+
+  private record TestTransactionDuplicateCandidate(
+      TransactionDuplicateCandidateCriteria candidateCriteria,
+      Long transactionId,
+      String description)
+      implements TransactionDuplicateCandidate {
+
+    @Override
+    public TransactionDuplicateCandidateCriteria getCandidateCriteria() {
+      return candidateCriteria;
+    }
+
+    @Override
+    public Long getTransactionId() {
+      return transactionId;
+    }
+
+    @Override
+    public String getDescription() {
+      return description;
+    }
   }
 }

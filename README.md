@@ -12,11 +12,10 @@ Spring Boot microservice for managing financial transactions in Budget Analyzer 
 
 The Transaction Service is responsible for:
 
-- Managing financial transactions (income, expenses, transfers)
-- Tracking accounts and balances
-- Importing transactions from files (CSV, PDF)
-- Providing transaction history and analytics
-- Supporting multi-currency transactions
+- Managing financial transactions
+- Importing transactions from CSV and PDF statement files
+- Supporting multi-account and multi-currency transaction records
+- Providing saved transaction views and advanced search
 
 ## Features
 
@@ -24,6 +23,8 @@ The Transaction Service is responsible for:
 - PostgreSQL persistence with Flyway migrations
 - OpenAPI/Swagger documentation
 - CSV and PDF transaction import
+- Duplicate detection for preview-to-batch imports
+- Saved transaction views with pinned and excluded rows
 - JPA/Hibernate for data access
 - Spring Boot Actuator for health checks
 - Input validation and error handling
@@ -52,14 +53,9 @@ The Transaction Service is responsible for:
 
 **Database configuration**: See [database-setup.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/database-setup.md)
 
-**Service-common artifact resolution**: Local builds resolve [service-common](https://github.com/budgetanalyzer/service-common)
-from `mavenLocal()` — no GitHub credentials required. Default GitHub Actions
-`build.yml` runs and release builds resolve the pinned `serviceCommon` version
-from GitHub Packages. The full contract is documented in orchestration:
-[service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
-This service imports `org.budgetanalyzer:spring-platform` for shared Spring
-dependency management and keeps `org.budgetanalyzer:service-web` explicit for
-runtime utilities.
+**Service configuration**: See [Configuration](docs/configuration.md) for local
+environment variables, preview import token settings, and service-common
+artifact resolution.
 
 ### Running Locally
 
@@ -75,25 +71,8 @@ export PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET=replace_with_a_long_random_secret
 ./gradlew bootRun
 ```
 
-`SPRING_DATASOURCE_USERNAME` already defaults to `transaction_service`, and the
-host defaults to `localhost:5432`. If you are reusing values from
-`../orchestration/.env`, map `POSTGRES_TRANSACTION_SERVICE_PASSWORD` to
-`SPRING_DATASOURCE_PASSWORD`. This service has no RabbitMQ dependency in the
-Phase 1 local baseline.
-
-Preview import tokens are encrypted by the transaction service. Configure
-`PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET` with a non-empty text secret before
-startup. The service normalizes the UTF-8 secret with SHA-256 and uses the
-result as deterministic AES-GCM key material; changing it invalidates
-outstanding preview tokens. `PREVIEW_IMPORT_TOKEN_TTL` defaults to `PT30M` and
-accepts any Spring `Duration` value, such as `PT15M` or `1h`.
-
-| Environment variable | Property | Required | Default |
-| --- | --- | --- | --- |
-| `PREVIEW_IMPORT_TOKEN_ENCRYPTION_SECRET` | `budgetanalyzer.transaction.preview-import-token.encryption-secret` | Yes | none |
-| `PREVIEW_IMPORT_TOKEN_TTL` | `budgetanalyzer.transaction.preview-import-token.ttl` | No | `PT30M` |
-
-The service runs on port 8082 for development/debugging.
+The service runs on port 8082 for development/debugging. See
+[Configuration](docs/configuration.md) for environment variable details.
 
 ### API Access
 
@@ -135,7 +114,17 @@ This project enforces:
 
 ## API Documentation
 
-Full endpoint reference, request/response examples, and authentication details are in [docs/api/](docs/api/README.md).
+Full endpoint reference, request/response examples, and authentication details
+are in [docs/api/](docs/api/README.md).
+
+Focused docs:
+
+- [Configuration](docs/configuration.md)
+- [Statement Import System](docs/statement-import.md)
+- [Transaction Duplicate Detection](docs/duplicate-detection.md)
+- [Saved Views](docs/saved-views.md)
+- [Database Schema](docs/database-schema.md)
+- [Domain Model](docs/domain-model.md)
 
 ## Project Structure
 

@@ -18,7 +18,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -39,7 +38,9 @@ import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
@@ -601,7 +602,7 @@ class TransactionServiceTest {
             "USD",
             "account-123");
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -636,7 +637,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -678,9 +679,9 @@ class TransactionServiceTest {
             null);
 
     // Simulate that dto1's key already exists
-    var existingKey = TransactionDuplicateKey.from(dto1).toLookupValue();
-    when(transactionRepository.findExistingDuplicateKeys(any(), any()))
-        .thenReturn(Set.of(existingKey));
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto1);
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto1.description())));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -715,10 +716,10 @@ class TransactionServiceTest {
             "USD",
             null,
             true);
-    var existingKey = TransactionDuplicateKey.from(dto).toLookupValue();
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any()))
-        .thenReturn(Set.of(existingKey));
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -736,6 +737,181 @@ class TransactionServiceTest {
     assertThat(result.duplicatesImported()).isEqualTo(1);
     assertThat(result.createdTransactions().get(0).getDescription())
         .isEqualTo("Existing Transaction");
+  }
+
+  @Test
+  void batchImport_existingFuzzyDuplicate_skipsMatchingTransaction() {
+    var duplicateDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "X CORP. PAID FEATURESBASTROPTX",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var newDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 16),
+            "New Transaction",
+            BigDecimal.valueOf(200.00),
+            TransactionType.CREDIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(duplicateDto);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(
+                duplicateCandidate(
+                    existingCandidateKey, 1L, "X CORP. PAID FEATURES BASTROP     TX")));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(duplicateDto, newDto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("New Transaction");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isZero();
+  }
+
+  @Test
+  void batchImport_skippedExistingDuplicateDoesNotBecomeIntraBatchCandidate() {
+    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+    var skippedDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBAAAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var laterDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBBBAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(skippedDto);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(skippedDto, laterDto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("STORE PAYMENT BBBBAAAAAAAAAA");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isZero();
+  }
+
+  @Test
+  void batchImport_existingFuzzyDuplicateAllowed_importsMatchingTransaction() {
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "X CORP. PAID FEATURESBASTROPTX",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null,
+            true);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(
+                duplicateCandidate(
+                    existingCandidateKey, 1L, "X CORP. PAID FEATURES BASTROP     TX")));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(dto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("X CORP. PAID FEATURESBASTROPTX");
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isEqualTo(1);
+  }
+
+  @Test
+  void batchImport_allowedExistingDuplicateBecomesIntraBatchCandidate() {
+    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+    var allowedDuplicateDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBAAAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null,
+            true);
+    var laterDto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "STORE PAYMENT BBBBAAAAAAAAAA",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(allowedDuplicateDto);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(
+            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(allowedDuplicateDto, laterDto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("STORE PAYMENT BBAAAAAAAAAAAA");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isEqualTo(1);
+  }
+
+  @Test
+  void batchImport_existingCandidateWithDifferentDescription_importsTransaction() {
+    var dto =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Rent Payment May",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, "Starbucks Store 1234")));
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(dto));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isZero();
   }
 
   @Test
@@ -762,7 +938,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -807,7 +983,7 @@ class TransactionServiceTest {
             null,
             true);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -828,9 +1004,75 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_emptyList_throwsNoTransactionsCreated() {
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+  void batchImport_intraBatchFuzzyDuplicate_skipsSecondOccurrence() {
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "X CORP. PAID FEATURES BASTROP     TX",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "X CORP. PAID FEATURESBASTROPTX",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
 
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(dto1, dto2));
+
+    assertThat(result.createdTransactions()).hasSize(1);
+    assertThat(result.createdTransactions().getFirst().getDescription())
+        .isEqualTo("X CORP. PAID FEATURES BASTROP     TX");
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isZero();
+  }
+
+  @Test
+  void batchImport_intraBatchCandidateWithDifferentDescription_importsBothTransactions() {
+    var dto1 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Rent Payment May",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+    var dto2 =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "Starbucks Store 1234",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            null);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result = batchImport(List.of(dto1, dto2));
+
+    assertThat(result.createdTransactions()).hasSize(2);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isZero();
+  }
+
+  @Test
+  void batchImport_emptyList_throwsNoTransactionsCreated() {
     assertThatThrownBy(() -> transactionService.batchImport(List.of(), USER_ID, fileImportSource()))
         .isInstanceOf(BusinessException.class)
         .satisfies(
@@ -859,7 +1101,7 @@ class TransactionServiceTest {
     assertThatThrownBy(() -> transactionService.batchImport(List.of(dto), USER_ID, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("fileImportSource is required");
-    verify(transactionRepository, never()).findExistingDuplicateKeys(any(), anyString());
+    verify(transactionRepository, never()).findDuplicateCandidates(any(), anyString());
     verify(transactionRepository, never()).saveAll(any());
     verify(fileImportTrackingService, never()).checkHash(anyString(), anyString());
   }
@@ -934,7 +1176,7 @@ class TransactionServiceTest {
             "USD",
             null);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -947,7 +1189,7 @@ class TransactionServiceTest {
     batchImport(List.of(dto));
 
     // Then: duplicate detection is called with the owner's userId
-    verify(transactionRepository).findExistingDuplicateKeys(any(), eq(USER_ID));
+    verify(transactionRepository).findDuplicateCandidates(any(), eq(USER_ID));
   }
 
   @Test
@@ -1011,7 +1253,7 @@ class TransactionServiceTest {
             1,
             USER_ID);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(fileImportTrackingService.checkHash(fileImportSource.contentHash(), USER_ID))
         .thenReturn(
             new FileImportTrackingService.FileCheckResult(
@@ -1059,7 +1301,7 @@ class TransactionServiceTest {
             3,
             USER_ID);
 
-    when(transactionRepository.findExistingDuplicateKeys(any(), any())).thenReturn(Set.of());
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(fileImportTrackingService.checkHash(fileImportSource.contentHash(), USER_ID))
         .thenReturn(
             new FileImportTrackingService.FileCheckResult(
@@ -1086,9 +1328,9 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingKey = TransactionDuplicateKey.from(dto).toLookupValue();
-    when(transactionRepository.findExistingDuplicateKeys(any(), any()))
-        .thenReturn(Set.of(existingKey));
+    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+    when(transactionRepository.findDuplicateCandidates(any(), any()))
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
 
     assertThatThrownBy(
             () -> transactionService.batchImport(List.of(dto), USER_ID, fileImportSource()))
@@ -1150,5 +1392,44 @@ class TransactionServiceTest {
         "capital-one",
         "account-123",
         1024L);
+  }
+
+  private static TransactionDuplicateCandidate duplicateCandidate(
+      TransactionDuplicateCandidateKey candidateKey, Long transactionId, String description) {
+    return new TestTransactionDuplicateCandidate(
+        candidateCriteria(candidateKey), transactionId, description);
+  }
+
+  private static TransactionDuplicateCandidateCriteria candidateCriteria(
+      TransactionDuplicateCandidateKey candidateKey) {
+    return new TransactionDuplicateCandidateCriteria(
+        candidateKey.accountId(),
+        candidateKey.bankName(),
+        candidateKey.date(),
+        candidateKey.amount(),
+        candidateKey.type(),
+        candidateKey.currencyIsoCode());
+  }
+
+  private record TestTransactionDuplicateCandidate(
+      TransactionDuplicateCandidateCriteria candidateCriteria,
+      Long transactionId,
+      String description)
+      implements TransactionDuplicateCandidate {
+
+    @Override
+    public TransactionDuplicateCandidateCriteria getCandidateCriteria() {
+      return candidateCriteria;
+    }
+
+    @Override
+    public Long getTransactionId() {
+      return transactionId;
+    }
+
+    @Override
+    public String getDescription() {
+      return description;
+    }
   }
 }

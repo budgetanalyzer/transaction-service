@@ -208,14 +208,15 @@ Review the returned `transactions` array. Rows with `duplicate=true` are likely
 duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
 `IN_BATCH`. The preview response no longer contains a top-level `warnings`
 array; exact-file reupload status is represented by `fileImport`, and
-transaction duplicate status is represented on each transaction row.
+transaction duplicate status is represented on each transaction row. See
+[Transaction Duplicate Detection](duplicate-detection.md) for matching rules and
+file reupload behavior.
 
 Review the returned `fileImport` object before batch import. If
 `alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
-record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`.
-Keep `previewImportToken` as opaque client state. The token identifies the
-uploaded source file without exposing the raw content hash or client-decodable
-payload fields and must be sent back with the reviewed batch request.
+record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`. Keep
+`previewImportToken` as opaque client state and send it back with the reviewed
+batch request.
 The multipart `file` part must include a non-blank filename. Preview rejects
 uploads with a missing or whitespace-only original filename before parsing the
 file or returning `previewImportToken`.
@@ -372,34 +373,13 @@ returned by the preview endpoint.
 ### Duplicate Detection
 
 Preview duplicate flags are advisory. Batch import always re-checks duplicates
-before persistence because stored transactions can change after preview.
+before persistence because stored transactions can change after preview. Use
+`allowDuplicate=true` only for rows that should be intentionally imported
+despite duplicate detection.
 
-Duplicate detection is scoped to the authenticated owner and uses `accountId`,
-`bankName`, `date`, `amount`, `type`, `currencyIsoCode`, and `description`.
-Empty `accountId` values are equivalent to `null`, amounts are compared at
-scale 2, and descriptions are exact matches.
-
-Duplicate reasons:
-- `EXISTING_TRANSACTION` - The preview row matches an active transaction
-  already stored for the owner.
-- `IN_BATCH` - The row duplicates an earlier row in the same preview payload.
-
-File reupload status is separate from transaction duplicate detection. Preview
-sets `fileImport.alreadyImported=true` only when the exact uploaded bytes match a
-previous `file_import` record for the authenticated user. The response includes
-`warningCode=FILE_ALREADY_IMPORTED` plus previous import metadata
-(`originalFilename`, `importedAt`, `format`, `accountId`, and
-`transactionCount`) and never exposes the raw content hash. The encrypted
-`previewImportToken` is returned on every successful preview and expires based
-on transaction service configuration. Batch import requires the token and
-verifies it before service-layer validation, duplicate checks, or persistence.
-Missing, invalid, expired, or wrong-owner tokens fail the request. If all
-submitted rows are skipped as transaction duplicates, the request fails with
-`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no `file_import` row is recorded.
-When rows are created, each token-backed batch transaction is linked to file
-import metadata. If the exact file was already recorded for the user, created
-rows link to the existing `file_import` row instead of creating a duplicate file
-import record.
+See [Transaction Duplicate Detection](duplicate-detection.md) for the
+authoritative matching rules, `duplicateReason` values, file reupload tracking,
+`previewImportToken` behavior, and empty-import failure semantics.
 
 ## Implementation Details
 
@@ -488,9 +468,8 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
   that should be intentionally imported despite matching duplicate detection.
 - Preview responses mark likely duplicates before import with `duplicate=true`
   and `duplicateReason` of `EXISTING_TRANSACTION` or `IN_BATCH`.
-- Duplicate detection uses account ID, bank name, date, amount, type, currency,
-  and description. Empty account IDs are treated the same as missing account
-  IDs.
+- See [Transaction Duplicate Detection](duplicate-detection.md) for the exact
+  matching rules and batch re-check behavior.
 
 ### Empty amounts parsed as zero
 
