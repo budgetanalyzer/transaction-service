@@ -6,7 +6,9 @@
 - Phase 2: Completed.
 - Phase 3: Completed.
 - Phase 4: Completed.
-- Phases 5-7: Pending.
+- Phase 5: Completed.
+- Phase 6: Completed.
+- Phase 7: Completed.
 
 ## Goal
 
@@ -138,3 +140,8 @@ cd ../service-common
 cd ../transaction-service
 ./gradlew clean build
 ```
+
+Verification run completed:
+
+- `./gradlew test --tests "*SavedViewServiceTest" --tests "*SavedViewControllerAuthorizationTest"`: `BUILD SUCCESSFUL`
+- `./gradlew clean build`: `BUILD SUCCESSFUL`

@@ -212,7 +212,10 @@ Body: { "ids": [1, 2, 3] }
 Response: BulkViewTransactionResponse
 Permission: views:write
 Notes: Returns updatedCount and notFoundIds. notFoundIds includes IDs that are
-missing, soft-deleted, or owned by another user.
+missing, soft-deleted, or owned by another user. Returns 200 for full and
+partial success, 400 for null/empty ids, and 404 only when the saved view is
+missing.
+Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
 **Unpin Transaction from View**
@@ -236,7 +239,10 @@ Body: { "ids": [1, 2, 3] }
 Response: BulkViewTransactionResponse
 Permission: views:write
 Notes: Returns updatedCount and notFoundIds. notFoundIds includes IDs that are
-missing, soft-deleted, or owned by another user.
+missing, soft-deleted, or owned by another user. Returns 200 for full and
+partial success, 400 for null/empty ids, and 404 only when the saved view is
+missing.
+Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
 **Remove Exclusion from View**
