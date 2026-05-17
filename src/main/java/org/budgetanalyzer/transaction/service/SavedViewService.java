@@ -252,12 +252,10 @@ public class SavedViewService {
     var view = getView(viewId, userId);
     var notFoundIds = new java.util.ArrayList<Long>();
     var validIds = new LinkedHashSet<Long>();
-    var updatedCount = 0;
 
     for (var id : ids) {
       if (isTransactionActiveAndOwnedByUser(id, userId)) {
         validIds.add(id);
-        updatedCount++;
       } else {
         notFoundIds.add(id);
       }
@@ -266,7 +264,7 @@ public class SavedViewService {
     view.pinTransactions(validIds);
     savedViewRepository.save(view);
 
-    return new BulkViewUpdateResult(updatedCount, notFoundIds);
+    return new BulkViewUpdateResult(validIds.size(), notFoundIds);
   }
 
   /**
@@ -282,12 +280,10 @@ public class SavedViewService {
     var view = getView(viewId, userId);
     var notFoundIds = new java.util.ArrayList<Long>();
     var validIds = new LinkedHashSet<Long>();
-    var updatedCount = 0;
 
     for (var id : ids) {
       if (isTransactionActiveAndOwnedByUser(id, userId)) {
         validIds.add(id);
-        updatedCount++;
       } else {
         notFoundIds.add(id);
       }
@@ -296,7 +292,7 @@ public class SavedViewService {
     view.excludeTransactions(validIds);
     savedViewRepository.save(view);
 
-    return new BulkViewUpdateResult(updatedCount, notFoundIds);
+    return new BulkViewUpdateResult(validIds.size(), notFoundIds);
   }
 
   /**

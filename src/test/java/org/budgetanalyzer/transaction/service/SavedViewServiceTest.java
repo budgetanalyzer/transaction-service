@@ -660,6 +660,19 @@ class SavedViewServiceTest {
   }
 
   @Test
+  void bulkPinTransactions_duplicateValidIds_countsUniqueTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  @Test
   void bulkPinTransactions_partialSuccess_returnsNotFoundIds() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
@@ -741,6 +754,19 @@ class SavedViewServiceTest {
     assertThat(result.notFoundIds()).isEmpty();
     assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L, 3L);
     verify(savedViewRepository).save(testView);
+  }
+
+  @Test
+  void bulkExcludeTransactions_duplicateValidIds_countsUniqueTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L);
   }
 
   @Test

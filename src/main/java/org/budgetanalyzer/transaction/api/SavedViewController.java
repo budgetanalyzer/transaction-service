@@ -237,8 +237,8 @@ public class SavedViewController {
   @Operation(
       summary = "Bulk pin transactions",
       description =
-          "Pins multiple transactions to the view. Returns updatedCount and notFoundIds for IDs "
-              + "that are missing, deleted, or not owned by the caller.")
+          "Pins multiple transactions to the view. Returns updatedCount for unique valid IDs and "
+              + "notFoundIds for IDs that are missing, deleted, or not owned by the caller.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -306,8 +306,9 @@ public class SavedViewController {
   @Operation(
       summary = "Bulk exclude transactions",
       description =
-          "Excludes multiple transactions from the view. Returns updatedCount and notFoundIds for "
-              + "IDs that are missing, deleted, or not owned by the caller.")
+          "Excludes multiple transactions from the view. Returns updatedCount for unique valid "
+              + "IDs and notFoundIds for IDs that are missing, deleted, or not owned by the "
+              + "caller.")
   @ApiResponses(
       value = {
         @ApiResponse(

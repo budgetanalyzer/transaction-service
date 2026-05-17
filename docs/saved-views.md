@@ -75,7 +75,8 @@ Bulk endpoints are also owner-scoped:
 
 Both operations process every requested ID and return:
 
-- `updatedCount` for successfully processed IDs.
+- `updatedCount` for unique successfully processed IDs. Duplicate valid IDs are
+  applied once and counted once.
 - `notFoundIds` for IDs that are missing, soft-deleted, or owned by another
   user.
 

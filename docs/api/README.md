@@ -211,10 +211,11 @@ POST /v1/views/{id}/pin
 Body: { "ids": [1, 2, 3] }
 Response: BulkViewTransactionResponse
 Permission: views:write
-Notes: Returns updatedCount and notFoundIds. notFoundIds includes IDs that are
-missing, soft-deleted, or owned by another user. Returns 200 for full and
-partial success, 400 for null/empty ids, and 404 only when the saved view is
-missing.
+Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
+IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
+includes IDs that are missing, soft-deleted, or owned by another user. Returns
+200 for full and partial success, 400 for null/empty ids, and 404 only when the
+saved view is missing.
 Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
@@ -238,10 +239,11 @@ POST /v1/views/{id}/exclude
 Body: { "ids": [1, 2, 3] }
 Response: BulkViewTransactionResponse
 Permission: views:write
-Notes: Returns updatedCount and notFoundIds. notFoundIds includes IDs that are
-missing, soft-deleted, or owned by another user. Returns 200 for full and
-partial success, 400 for null/empty ids, and 404 only when the saved view is
-missing.
+Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
+IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
+includes IDs that are missing, soft-deleted, or owned by another user. Returns
+200 for full and partial success, 400 for null/empty ids, and 404 only when the
+saved view is missing.
 Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
