@@ -205,6 +205,20 @@ Response: SavedViewResponse
 Permission: views:write
 ```
 
+**Bulk Pin Transactions to View**
+```
+POST /v1/views/{id}/pin
+Body: { "ids": [1, 2, 3] }
+Response: BulkViewTransactionResponse
+Permission: views:write
+Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
+IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
+includes IDs that are missing, soft-deleted, or owned by another user. Returns
+200 for full and partial success, 400 for null/empty ids, and 404 only when the
+saved view is missing.
+Response shape: { "updatedCount": 2, "notFoundIds": [99] }
+```
+
 **Unpin Transaction from View**
 ```
 DELETE /v1/views/{id}/pin/{txnId}
@@ -217,6 +231,20 @@ Permission: views:write
 POST /v1/views/{id}/exclude/{txnId}
 Response: SavedViewResponse
 Permission: views:write
+```
+
+**Bulk Exclude Transactions from View**
+```
+POST /v1/views/{id}/exclude
+Body: { "ids": [1, 2, 3] }
+Response: BulkViewTransactionResponse
+Permission: views:write
+Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
+IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
+includes IDs that are missing, soft-deleted, or owned by another user. Returns
+200 for full and partial success, 400 for null/empty ids, and 404 only when the
+saved view is missing.
+Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
 **Remove Exclusion from View**
@@ -497,6 +525,9 @@ This service uses trusted claims-header-based security from `service-common`.
   `X-Permissions: transactions:read` and are always scoped to the requesting user.
 - Write endpoints require `transactions:write`. Delete endpoints require `transactions:delete`.
 - Saved view endpoints require `views:read`, `views:write`, or `views:delete` respectively.
+- `POST /v1/views/{id}/pin` and `POST /v1/views/{id}/exclude` are owner-scoped bulk operations:
+  they return `200` with `updatedCount` plus `notFoundIds` for IDs that are missing, deleted, or
+  not owned by the caller; they return `404` only when the saved view is missing.
 - `GET /v1/transactions/search` and `GET /v1/transactions/search/count` require
   `transactions:read:any` in `X-Permissions`. They do not require `transactions:read`.
 - The `:any` variants of the per-resource permissions

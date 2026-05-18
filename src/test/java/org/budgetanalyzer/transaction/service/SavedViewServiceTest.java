@@ -641,6 +641,191 @@ class SavedViewServiceTest {
     assertThat(result.getPinnedIds()).doesNotContain(1L);
   }
 
+  // ==================== bulkPinTransactions ====================
+
+  @Test
+  void bulkPinTransactions_allTransactionsFound_pinsAllTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 3L));
+
+    assertThat(result.updatedCount()).isEqualTo(3);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L, 3L);
+
+    verify(savedViewRepository).save(testView);
+  }
+
+  @Test
+  void bulkPinTransactions_duplicateValidIds_countsUniqueTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  @Test
+  void bulkPinTransactions_partialSuccess_returnsNotFoundIds() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 999L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).containsExactly(999L);
+    assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  @Test
+  void bulkPinTransactions_removesPinnedIdsFromExclusions() {
+    testView.setExcludedIds(new HashSet<>(Set.of(1L, 2L)));
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
+
+    assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L);
+    assertThat(testView.getExcludedIds()).isEmpty();
+  }
+
+  @Test
+  void bulkPinTransactions_nonOwnedTransactions_returnedInNotFoundIds() {
+    var foreignTransaction =
+        createTransaction(2L, "Foreign", LocalDate.of(2024, 12, 2), "usr_other");
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(foreignTransaction));
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(2L);
+    assertThat(testView.getPinnedIds()).containsExactly(1L);
+  }
+
+  @Test
+  void bulkPinTransactions_missingOrSoftDeletedTransactions_returnedInNotFoundIds() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(1000L)).thenReturn(Optional.empty());
+
+    var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 999L, 1000L));
+
+    assertThat(result.updatedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(999L, 1000L);
+    assertThat(testView.getPinnedIds()).containsExactly(1L);
+  }
+
+  @Test
+  void bulkPinTransactions_missingView_throwsResourceNotFoundException() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L)))
+        .isInstanceOf(ResourceNotFoundException.class)
+        .hasMessageContaining("Saved view not found");
+
+    verify(savedViewRepository, never()).save(any());
+  }
+
+  // ==================== bulkExcludeTransactions ====================
+
+  @Test
+  void bulkExcludeTransactions_allTransactionsFound_excludesAllTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+
+    var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 3L));
+
+    assertThat(result.updatedCount()).isEqualTo(3);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L, 3L);
+    verify(savedViewRepository).save(testView);
+  }
+
+  @Test
+  void bulkExcludeTransactions_duplicateValidIds_countsUniqueTransactions() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).isEmpty();
+    assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  @Test
+  void bulkExcludeTransactions_partialSuccess_returnsNotFoundIds() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+
+    var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 999L));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).containsExactly(999L);
+    assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  @Test
+  void bulkExcludeTransactions_removesExcludedIdsFromPins() {
+    testView.setPinnedIds(new HashSet<>(Set.of(1L, 2L)));
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+
+    savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
+
+    assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L);
+    assertThat(testView.getPinnedIds()).isEmpty();
+  }
+
+  @Test
+  void bulkExcludeTransactions_nonOwnedTransactions_returnedInNotFoundIds() {
+    var foreignTransaction =
+        createTransaction(2L, "Foreign", LocalDate.of(2024, 12, 2), "usr_other");
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(foreignTransaction));
+
+    var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
+
+    assertThat(result.updatedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(2L);
+    assertThat(testView.getExcludedIds()).containsExactly(1L);
+  }
+
+  @Test
+  void bulkExcludeTransactions_missingOrSoftDeletedTransactions_returnedInNotFoundIds() {
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
+    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+    when(transactionRepository.findByIdNotDeleted(1000L)).thenReturn(Optional.empty());
+
+    var result =
+        savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 999L, 1000L));
+
+    assertThat(result.updatedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(999L, 1000L);
+    assertThat(testView.getExcludedIds()).containsExactly(1L);
+  }
+
   // ==================== Helper Methods ====================
 
   private SavedView createSavedView(UUID id, String userId, String name) {

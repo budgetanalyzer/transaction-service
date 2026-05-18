@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -309,6 +310,55 @@ class SavedViewServiceIntegrationTest {
     var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
 
     assertThat(membership.matched()).containsExactly(capitalOneTransaction.getId());
+  }
+
+  @Test
+  void bulkExcludeTransactions_persistsExcludedIdsAndAffectsMembership() {
+    var includedTransaction =
+        transactionRepository.save(
+            createTransaction("Included", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    var excludedMatchTransaction =
+        transactionRepository.save(
+            createTransaction("Excluded Match", LocalDate.of(2024, 12, 16), TransactionType.DEBIT));
+    var excludedNonMatchTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Excluded Non Match", LocalDate.of(2025, 1, 10), TransactionType.DEBIT));
+
+    var criteria =
+        new ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("December only", criteria, false));
+
+    var result =
+        savedViewService.bulkExcludeTransactions(
+            view.getId(),
+            USER_ID,
+            List.of(excludedMatchTransaction.getId(), excludedNonMatchTransaction.getId()));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).isEmpty();
+
+    var persistedView = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(persistedView.getExcludedIds())
+        .containsExactlyInAnyOrder(
+            excludedMatchTransaction.getId(), excludedNonMatchTransaction.getId());
+
+    var membership = savedViewService.getViewTransactions(view.getId(), USER_ID);
+    assertThat(membership.matched()).containsExactly(includedTransaction.getId());
+    assertThat(membership.excluded())
+        .containsExactlyInAnyOrder(
+            excludedMatchTransaction.getId(), excludedNonMatchTransaction.getId());
   }
 
   private Transaction createTransaction(

@@ -68,6 +68,22 @@ row:
 Pinned and excluded IDs are filtered to active transactions owned by the view
 owner before membership is returned.
 
+Bulk endpoints are also owner-scoped:
+
+- `POST /v1/views/{id}/pin` with body `{ "ids": [...] }`
+- `POST /v1/views/{id}/exclude` with body `{ "ids": [...] }`
+
+Both operations process every requested ID and return:
+
+- `updatedCount` for unique successfully processed IDs. Duplicate valid IDs are
+  applied once and counted once.
+- `notFoundIds` for IDs that are missing, soft-deleted, or owned by another
+  user.
+
+Both endpoints return `200 OK` for full or partial success, return `400 Bad
+Request` for null or empty ID lists, and return `404 Not Found` only when the
+saved view itself does not exist for the authenticated user.
+
 ## Membership Response
 
 `GET /v1/views/{id}/transactions` returns transaction IDs grouped by membership

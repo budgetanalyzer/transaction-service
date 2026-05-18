@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -27,6 +28,7 @@ import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.service.SavedViewService;
+import org.budgetanalyzer.transaction.service.SavedViewService.BulkViewUpdateResult;
 
 @WebMvcTest(SavedViewController.class)
 @Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
@@ -105,6 +107,81 @@ class SavedViewControllerAuthorizationTest {
                       "name": "My View",
                       "criteria": {},
                       "openEnded": false
+                    }
+                    """))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void bulkPinEndpoint_withWritePermission_returns200() throws Exception {
+    when(savedViewService.bulkPinTransactions(any(), anyString(), any()))
+        .thenReturn(new BulkViewUpdateResult(2, List.of()));
+
+    mockMvc
+        .perform(
+            post("/v1/views/" + UUID.randomUUID() + "/pin")
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "ids": [1, 2]
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.updatedCount").value(2))
+        .andExpect(jsonPath("$.notFoundIds").isEmpty());
+  }
+
+  @Test
+  void bulkExcludeEndpoint_partialSuccess_returns200WithNotFoundIds() throws Exception {
+    when(savedViewService.bulkExcludeTransactions(any(), anyString(), any()))
+        .thenReturn(new BulkViewUpdateResult(1, List.of(999L)));
+
+    mockMvc
+        .perform(
+            post("/v1/views/" + UUID.randomUUID() + "/exclude")
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "ids": [1, 999]
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.updatedCount").value(1))
+        .andExpect(jsonPath("$.notFoundIds.length()").value(1))
+        .andExpect(jsonPath("$.notFoundIds[0]").value(999));
+  }
+
+  @Test
+  void bulkPinEndpoint_emptyIdList_returns400() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views/" + UUID.randomUUID() + "/pin")
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "ids": []
+                    }
+                    """))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void bulkExcludeEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views/" + UUID.randomUUID() + "/exclude")
+                .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("views:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "ids": [1]
                     }
                     """))
         .andExpect(status().isForbidden());

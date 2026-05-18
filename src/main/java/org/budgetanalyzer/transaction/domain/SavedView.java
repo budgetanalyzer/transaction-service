@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.domain;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -136,6 +137,12 @@ public class SavedView {
     excludedIds.remove(transactionId);
   }
 
+  /** Pins multiple transactions to this view. */
+  public void pinTransactions(Collection<Long> transactionIds) {
+    pinnedIds.addAll(transactionIds);
+    excludedIds.removeAll(transactionIds);
+  }
+
   /** Removes a pin from this view. */
   public void unpinTransaction(Long transactionId) {
     pinnedIds.remove(transactionId);
@@ -145,6 +152,12 @@ public class SavedView {
   public void excludeTransaction(Long transactionId) {
     excludedIds.add(transactionId);
     pinnedIds.remove(transactionId);
+  }
+
+  /** Excludes multiple transactions from this view. */
+  public void excludeTransactions(Collection<Long> transactionIds) {
+    excludedIds.addAll(transactionIds);
+    pinnedIds.removeAll(transactionIds);
   }
 
   /** Removes an exclusion from this view. */
