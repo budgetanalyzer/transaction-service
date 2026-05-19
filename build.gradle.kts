@@ -93,6 +93,7 @@ tasks.withType<BootRun> {
 tasks.withType<Test> {
     useJUnitPlatform()
     jvmArgs = jvmArgsList
+    finalizedBy(tasks.jacocoTestReport)
 }
 
 tasks.withType<Javadoc> {
