@@ -98,12 +98,19 @@ The service runs on port 8082 for development/debugging. See
 # Run tests
 ./gradlew test
 
+# Run tests and generate JaCoCo coverage reports
+./gradlew test jacocoTestReport
+
 # Check code style
 ./gradlew spotlessCheck
 
 # Apply code formatting
 ./gradlew clean spotlessApply
 ```
+
+Coverage reports are written to `build/reports/jacoco/test/html/index.html` and
+`build/reports/jacoco/test/jacocoTestReport.xml`. `check` enforces the
+configured coverage gates.
 
 ### Code Quality
 

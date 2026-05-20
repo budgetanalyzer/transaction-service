@@ -93,6 +93,7 @@ tasks.withType<BootRun> {
 tasks.withType<Test> {
     useJUnitPlatform()
     jvmArgs = jvmArgsList
+    finalizedBy(tasks.jacocoTestReport)
 }
 
 tasks.withType<Javadoc> {
@@ -116,6 +117,24 @@ tasks.jacocoTestReport {
     }
 }
 
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = "0.75".toBigDecimal()
+            }
+        }
+    }
+}
+
 tasks.named("check") {
-    dependsOn("spotlessCheck")
+    dependsOn("spotlessCheck", tasks.jacocoTestCoverageVerification)
 }
