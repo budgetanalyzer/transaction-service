@@ -109,8 +109,10 @@ The service runs on port 8082 for development/debugging. See
 ```
 
 Coverage reports are written to `build/reports/jacoco/test/html/index.html` and
-`build/reports/jacoco/test/jacocoTestReport.xml`. Coverage thresholds are not
-enforced during the report-only baseline rollout.
+`build/reports/jacoco/test/jacocoTestReport.xml`. `check` enforces the Phase 2
+coverage gates: 80% line coverage and 75% branch coverage. The recorded baseline
+is 85.16% line / 78.59% branch; ratchet after targeted CSV import, search, and
+soft-delete tests.
 
 ### Code Quality
 
