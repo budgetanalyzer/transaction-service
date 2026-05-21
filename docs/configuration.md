@@ -21,6 +21,21 @@ host defaults to `localhost:5432`. If you are reusing values from
 
 This service has no RabbitMQ dependency in the Phase 1 local baseline.
 
+## Statement Import Uploads
+
+Statement preview uses multipart upload limits from Spring Boot. The service
+defaults to `25MB` for both the uploaded file and full multipart request.
+
+| Environment variable | Property | Required | Default |
+| --- | --- | --- | --- |
+| `TRANSACTION_IMPORT_MAX_FILE_SIZE` | `spring.servlet.multipart.max-file-size` | No | `25MB` |
+| `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` | `spring.servlet.multipart.max-request-size` | No | `25MB` |
+
+Set both values when importing larger bank statement PDFs. When requests go
+through the gateway, the gateway body-size limit must be at least as large as
+these service limits or the client will receive `413 Request Entity Too Large`
+before the request reaches transaction-service.
+
 ## Preview Import Tokens
 
 Preview import tokens are encrypted by the transaction service. Configure

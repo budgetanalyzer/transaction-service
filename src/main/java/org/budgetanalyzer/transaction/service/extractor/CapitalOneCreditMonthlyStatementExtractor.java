@@ -66,7 +66,32 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
       Pattern.compile("Payments, Credits and Adjustments", Pattern.CASE_INSENSITIVE);
 
   private static final Pattern TRANSACTIONS_SECTION_PATTERN =
-      Pattern.compile("^\\s*Transactions\\s*$|:#\\d+:\\s*Transactions", Pattern.CASE_INSENSITIVE);
+      Pattern.compile(
+          "^\\s*Transactions(?: \\(Continued\\))?\\s*$|:#\\d+:\\s*Transactions",
+          Pattern.CASE_INSENSITIVE);
+
+  private static final Pattern TRANSACTION_TABLE_HEADER_PATTERN =
+      Pattern.compile(
+          "Trans Date\\s+Post Date\\s+Description\\s+Amount",
+          Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+  private static final Pattern SPLIT_COLUMN_DATE_PATTERN =
+      Pattern.compile("^(\\w{3})\\s+(\\d{1,2})$");
+
+  private static final Pattern SPLIT_COLUMN_AMOUNT_PATTERN =
+      Pattern.compile("^(-\\s*)?\\$([\\d,]+\\.\\d{2})$");
+
+  private static final Pattern SPLIT_COLUMN_DETAIL_PATTERN =
+      Pattern.compile(
+          "^([\\d,]+\\.\\d{2}\\s+)?(THB|HKD)\\b.*|"
+              + "^Exchange Rate\\b.*|"
+              + "^\\d+(\\.\\d+)?\\s+USD\\b.*",
+          Pattern.CASE_INSENSITIVE);
+
+  private static final Pattern SPLIT_COLUMN_STOP_PATTERN =
+      Pattern.compile(
+          "^(Fees|Interest Charge|Interest Charged|Year-to-Date Totals)\\b.*",
+          Pattern.CASE_INSENSITIVE);
 
   // Lines to skip
   private static final Pattern SKIP_PATTERN =
@@ -186,6 +211,29 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
 
   private List<PreviewTransaction> parseTransactions(
       String text, StatementPeriod period, String accountId) {
+    var transactions = parseSingleLineTransactions(text, period, accountId);
+    if (!transactions.isEmpty()) {
+      log.debug("Parsed Capital One Credit Monthly Statement with single-line parser");
+      return transactions;
+    }
+
+    log.debug("Single-line parser returned no rows; trying split-column parser");
+    transactions = parseSplitColumnTransactions(text, period, accountId);
+    if (!transactions.isEmpty()) {
+      return transactions;
+    }
+
+    if (containsTransactionTable(text)) {
+      throw new BusinessException(
+          "Could not parse transaction rows from Capital One Credit Monthly Statement PDF",
+          BudgetAnalyzerError.PDF_PARSING_ERROR.name());
+    }
+
+    return transactions;
+  }
+
+  private List<PreviewTransaction> parseSingleLineTransactions(
+      String text, StatementPeriod period, String accountId) {
     List<PreviewTransaction> transactions = new ArrayList<>();
     boolean inPaymentsSection = false;
     boolean inTransactionsSection = false;
@@ -232,6 +280,145 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
     }
 
     return transactions;
+  }
+
+  private List<PreviewTransaction> parseSplitColumnTransactions(
+      String text, StatementPeriod period, String accountId) {
+    var transactions = new ArrayList<PreviewTransaction>();
+    var section = SplitColumnSection.NONE;
+    SplitColumnPendingTransaction pendingTransaction = null;
+
+    String[] lines = text.split("\\r?\\n");
+    for (String rawLine : lines) {
+      var line = normalizeLine(rawLine);
+      if (line.isEmpty()) {
+        continue;
+      }
+
+      if (PAYMENTS_SECTION_PATTERN.matcher(line).find()) {
+        section = SplitColumnSection.PAYMENTS;
+        pendingTransaction = null;
+        log.debug("Entered split-column Payments section");
+        continue;
+      }
+
+      if (TRANSACTIONS_SECTION_PATTERN.matcher(line).find() || line.endsWith(": Transactions")) {
+        section = SplitColumnSection.TRANSACTIONS;
+        pendingTransaction = null;
+        log.debug("Entered split-column Transactions section");
+        continue;
+      }
+
+      if (section == SplitColumnSection.NONE) {
+        continue;
+      }
+
+      if (isSplitColumnAmountLine(line)) {
+        if (pendingTransaction != null && pendingTransaction.isReadyForAmount()) {
+          transactions.add(toPreviewTransaction(line, pendingTransaction, period, accountId));
+          pendingTransaction = null;
+        }
+        continue;
+      }
+
+      if (shouldStopSplitColumnParsing(line, pendingTransaction)) {
+        break;
+      }
+
+      if (shouldSkipSplitColumnLine(line)) {
+        continue;
+      }
+
+      var dateMatcher = SPLIT_COLUMN_DATE_PATTERN.matcher(line);
+      if (dateMatcher.matches()) {
+        if (pendingTransaction == null) {
+          pendingTransaction =
+              new SplitColumnPendingTransaction(
+                  dateMatcher.group(1),
+                  Integer.parseInt(dateMatcher.group(2)),
+                  section == SplitColumnSection.PAYMENTS);
+        } else if (!pendingTransaction.hasPostDate()) {
+          pendingTransaction.setPostDate();
+        } else {
+          pendingTransaction.addDescriptionLine(line);
+        }
+        continue;
+      }
+
+      if (pendingTransaction != null && pendingTransaction.hasPostDate()) {
+        pendingTransaction.addDescriptionLine(line);
+      }
+    }
+
+    log.debug(
+        "Split-column parser extracted {} Capital One Credit Monthly Statement rows",
+        transactions.size());
+    return transactions;
+  }
+
+  private String normalizeLine(String line) {
+    return line.trim().replaceAll("\\s+", " ");
+  }
+
+  private boolean isSplitColumnAmountLine(String line) {
+    return SPLIT_COLUMN_AMOUNT_PATTERN.matcher(line).matches();
+  }
+
+  private boolean shouldStopSplitColumnParsing(
+      String line, SplitColumnPendingTransaction pendingTransaction) {
+    return pendingTransaction == null && SPLIT_COLUMN_STOP_PATTERN.matcher(line).find();
+  }
+
+  private boolean shouldSkipSplitColumnLine(String line) {
+    return SKIP_PATTERN.matcher(line).find() || SPLIT_COLUMN_DETAIL_PATTERN.matcher(line).find();
+  }
+
+  private boolean containsTransactionTable(String text) {
+    return containsTransactionSection(text)
+        && TRANSACTION_TABLE_HEADER_PATTERN.matcher(text).find();
+  }
+
+  private boolean containsTransactionSection(String text) {
+    String[] lines = text.split("\\r?\\n");
+    for (String rawLine : lines) {
+      var line = normalizeLine(rawLine);
+      if (PAYMENTS_SECTION_PATTERN.matcher(line).find()
+          || TRANSACTIONS_SECTION_PATTERN.matcher(line).find()
+          || line.endsWith(": Transactions")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private PreviewTransaction toPreviewTransaction(
+      String amountLine,
+      SplitColumnPendingTransaction pendingTransaction,
+      StatementPeriod period,
+      String accountId) {
+    var amountMatcher = SPLIT_COLUMN_AMOUNT_PATTERN.matcher(amountLine);
+    if (!amountMatcher.matches()) {
+      throw new IllegalArgumentException("Invalid split-column amount line");
+    }
+
+    var date =
+        parseDate(
+            pendingTransaction.transactionMonth(), pendingTransaction.transactionDay(), period);
+    var amount = parseAmount(amountMatcher.group(2));
+    var type =
+        pendingTransaction.creditSection() || amountMatcher.group(1) != null
+            ? TransactionType.CREDIT
+            : TransactionType.DEBIT;
+
+    return new PreviewTransaction(
+        date,
+        pendingTransaction.description(),
+        amount,
+        type,
+        null,
+        BANK_NAME,
+        CURRENCY_CODE,
+        accountId);
   }
 
   private PreviewTransaction parseTransactionLine(
@@ -300,4 +487,58 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
   /** Represents the statement period with start and end dates. */
   private record StatementPeriod(
       Month startMonth, int startDay, int startYear, Month endMonth, int endDay, int endYear) {}
+
+  private enum SplitColumnSection {
+    NONE,
+    PAYMENTS,
+    TRANSACTIONS
+  }
+
+  private static final class SplitColumnPendingTransaction {
+
+    private final String transactionMonth;
+    private final int transactionDay;
+    private final boolean creditSection;
+    private final List<String> descriptionLines = new ArrayList<>();
+    private boolean hasPostDate;
+
+    private SplitColumnPendingTransaction(
+        String transactionMonth, int transactionDay, boolean creditSection) {
+      this.transactionMonth = transactionMonth;
+      this.transactionDay = transactionDay;
+      this.creditSection = creditSection;
+    }
+
+    private String transactionMonth() {
+      return transactionMonth;
+    }
+
+    private int transactionDay() {
+      return transactionDay;
+    }
+
+    private boolean creditSection() {
+      return creditSection;
+    }
+
+    private boolean hasPostDate() {
+      return hasPostDate;
+    }
+
+    private void setPostDate() {
+      hasPostDate = true;
+    }
+
+    private void addDescriptionLine(String descriptionLine) {
+      descriptionLines.add(descriptionLine);
+    }
+
+    private boolean isReadyForAmount() {
+      return hasPostDate() && !descriptionLines.isEmpty();
+    }
+
+    private String description() {
+      return String.join(" ", descriptionLines);
+    }
+  }
 }
