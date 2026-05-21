@@ -308,6 +308,12 @@ Verify:
 - `format` (string, required) - Format key from configuration
 - `accountId` (string, optional) - Account to associate with previewed transactions
 
+The service accepts statement preview uploads up to `25MB` by default. Override
+`TRANSACTION_IMPORT_MAX_FILE_SIZE` and `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` for
+larger files, and keep any gateway body-size limit aligned with those values to
+avoid `413 Request Entity Too Large` responses before the service handles the
+request.
+
 **Example:**
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \

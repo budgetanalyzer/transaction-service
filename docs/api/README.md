@@ -103,7 +103,7 @@ Content-Type: multipart/form-data
 Params: format (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. The multipart file part must include a non-blank filename. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. The multipart file part must include a non-blank filename. Uploads are limited by TRANSACTION_IMPORT_MAX_FILE_SIZE and TRANSACTION_IMPORT_MAX_REQUEST_SIZE, both defaulting to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
 ```
 
 **Batch Import Transactions**
