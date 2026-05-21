@@ -128,6 +128,33 @@ shape are ignored; ambiguous rows with both amount columns populated or no
 populated amount column fail with `PDF_PARSING_ERROR`. CSV-specific
 configuration columns remain null for this format.
 
+### Capital One Credit Monthly PDF (`capital-one-credit-monthly-statement`)
+
+The seeded PDF format uses display name `Capital One Credit - Monthly
+Statement`, bank name `Capital One`, and default currency `USD`. The dedicated
+PDF extractor detects monthly credit card statements from Capital One credit
+card text, a statement period, and the billing-cycle marker.
+
+The extractor first parses the original single-line table shape, for example
+`Nov 20 Nov 21 ONLINE PAYMENT THANK YOU $500.00`. If that path finds no rows,
+it falls back to split-column text produced by some real PDFs where PDFBox
+extracts each table cell as a separate line:
+
+```text
+May 2
+May 2
+CREDIT-CASH BACK REWARD
+- $450.68
+```
+
+Both shapes use the same `capital-one-credit-monthly-statement` format key.
+Payments, credits, and negative amounts import as `CREDIT`; purchase rows import
+as `DEBIT`. Foreign-currency detail lines, exchange-rate detail lines, airline
+ticket detail lines, page continuations, and summary totals are ignored. If the
+statement contains a transaction table but neither parser can extract rows, the
+preview fails with `PDF_PARSING_ERROR` instead of returning an empty transaction
+list.
+
 ## Date Format Patterns
 
 Uses Java `DateTimeFormatter` patterns:
