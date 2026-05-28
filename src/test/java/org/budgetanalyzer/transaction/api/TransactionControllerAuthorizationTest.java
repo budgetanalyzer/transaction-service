@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.api;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -84,11 +85,11 @@ class TransactionControllerAuthorizationTest {
     when(transactionService.countNotDeleted(any())).thenReturn(0L);
 
     when(transactionImportService.previewFile(
-            anyString(), any(), any(MultipartFile.class), anyString()))
+            anyLong(), any(), any(MultipartFile.class), anyString()))
         .thenReturn(
             new PreviewResult(
                 "test.csv",
-                "capital-one",
+                1L,
                 "preview-token",
                 PreviewFileImportStatus.notPreviouslyImported(),
                 List.of()));
@@ -194,7 +195,7 @@ class TransactionControllerAuthorizationTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("transactions:read")))
@@ -214,7 +215,7 @@ class TransactionControllerAuthorizationTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .with(ClaimsHeaderTestBuilder.user("usr_test123").withPermissions("accounts:read")))
         .andExpect(status().isForbidden());
   }

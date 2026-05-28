@@ -17,10 +17,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.domain.StatementFormatScope;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
@@ -30,6 +34,7 @@ import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegist
 class StatementFormatServiceTest {
 
   @Mock private StatementFormatRepository statementFormatRepository;
+  @Mock private ParserRevisionRepository parserRevisionRepository;
   @Mock private StatementExtractorRegistry statementExtractorRegistry;
 
   private StatementFormatService statementFormatService;
@@ -37,7 +42,11 @@ class StatementFormatServiceTest {
   @BeforeEach
   void setUp() {
     statementFormatService =
-        new StatementFormatService(statementFormatRepository, statementExtractorRegistry);
+        new StatementFormatService(
+            statementFormatRepository,
+            parserRevisionRepository,
+            statementExtractorRegistry,
+            new ObjectMapper().findAndRegisterModules());
   }
 
   @Nested
@@ -64,6 +73,45 @@ class StatementFormatServiceTest {
       var result = statementFormatService.getAllFormats();
 
       assertThat(result).isEmpty();
+    }
+  }
+
+  @Nested
+  class Visibility {
+
+    @Test
+    void getVisibleFormatsReturnsAllFormatsWhenReadAnyAllowed() {
+      var systemFormat =
+          StatementFormat.createSystemPdfFormat("System Format", "System Bank", "USD");
+      when(statementFormatRepository.findAll()).thenReturn(List.of(systemFormat));
+
+      var result = statementFormatService.getVisibleFormats("usr_owner", true);
+
+      assertThat(result).containsExactly(systemFormat);
+    }
+
+    @Test
+    void getVisibleFormatsReturnsUserVisibleFormatsWhenReadAnyNotAllowed() {
+      var userFormat =
+          StatementFormat.createCsvFormat("User Format", "User Bank", "USD", "usr_owner");
+      when(statementFormatRepository.findVisibleToUser("usr_owner"))
+          .thenReturn(List.of(userFormat));
+
+      var result = statementFormatService.getVisibleFormats("usr_owner", false);
+
+      assertThat(result).containsExactly(userFormat);
+    }
+
+    @Test
+    void getByIdUsesVisibleLookupWithoutReadAny() {
+      var userFormat =
+          StatementFormat.createCsvFormat("User Format", "User Bank", "USD", "usr_owner");
+      when(statementFormatRepository.findVisibleToUserById(7L, "usr_owner"))
+          .thenReturn(Optional.of(userFormat));
+
+      var result = statementFormatService.getById(7L, "usr_owner", false);
+
+      assertThat(result).isSameAs(userFormat);
     }
   }
 
@@ -121,6 +169,78 @@ class StatementFormatServiceTest {
       assertThat(result.getFormatKey()).isEqualTo("new-pdf-format");
       assertThat(result.getFormatType()).isEqualTo(FormatType.PDF);
       verify(statementExtractorRegistry, never()).refreshCsvExtractors();
+    }
+
+    @Test
+    void createsUserScopedFormatByDefault() {
+      var request =
+          new StatementFormatCommand(
+              "User Bank",
+              FormatType.PDF,
+              "User Bank",
+              "USD",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+      when(statementFormatRepository.save(any(StatementFormat.class)))
+          .thenAnswer(invocation -> invocation.getArgument(0));
+
+      var result = statementFormatService.createFormat(request, "usr_owner", false);
+
+      assertThat(result.getScope()).isEqualTo(StatementFormatScope.USER);
+      assertThat(result.getOwnerId()).isEqualTo("usr_owner");
+    }
+
+    @Test
+    void createsSystemFormatWhenWriteAnyAllowed() {
+      var request =
+          new StatementFormatCommand(
+              "System Bank",
+              FormatType.PDF,
+              "System Bank",
+              "USD",
+              StatementFormatScope.SYSTEM,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+      when(statementFormatRepository.save(any(StatementFormat.class)))
+          .thenAnswer(invocation -> invocation.getArgument(0));
+
+      var result = statementFormatService.createFormat(request, "usr_admin", true);
+
+      assertThat(result.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
+      assertThat(result.getOwnerId()).isNull();
+    }
+
+    @Test
+    void rejectsSystemFormatWithoutWriteAny() {
+      var request =
+          new StatementFormatCommand(
+              "System Bank",
+              FormatType.PDF,
+              "System Bank",
+              "USD",
+              StatementFormatScope.SYSTEM,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
+
+      assertThatThrownBy(() -> statementFormatService.createFormat(request, "usr_owner", false))
+          .isInstanceOf(BusinessException.class)
+          .hasMessageContaining("statementformats:write:any");
     }
 
     @Test

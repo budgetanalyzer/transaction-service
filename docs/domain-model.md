@@ -47,7 +47,10 @@ transactions.
 - `id` (`Long`) - Database-generated file import identifier.
 - `contentHash` (`String`) - SHA-256 hash of the uploaded file bytes.
 - `originalFilename` (`String`) - Filename supplied in the multipart upload.
-- `format` (`String`) - Statement format key used for parsing.
+- `format` (`String`) - Legacy statement format key retained only for
+  historical imports.
+- `statementFormatId` (`Long`) - Statement format selected for the import.
+- `parserRevisionId` (`Long`) - Parser revision that parsed the import.
 - `accountId` (`String`) - Optional account ID applied during import.
 - `fileSizeBytes` (`Long`) - Uploaded file size.
 - `transactionCount` (`Integer`) - Number of transactions linked to the import.
@@ -63,28 +66,60 @@ transactions.
 
 ### StatementFormat
 
-**Purpose:** Stores database-driven statement parsing configuration.
+**Purpose:** Stores the user-facing saved statement format selected for file
+imports.
 
 **Key Attributes:**
 
 - `id` (`Long`) - Database-generated statement format identifier.
-- `formatKey` (`String`) - Stable format key used by preview requests.
 - `formatType` (`FormatType`) - `CSV`, `PDF`, or `XLSX`.
 - `bankName` (`String`) - Bank name assigned to imported transactions.
 - `defaultCurrencyIsoCode` (`String`) - Default currency for parsed rows.
 - `displayName` (`String`) - UI-friendly format label.
-- CSV column mapping fields such as `dateHeader`, `descriptionHeader`,
-  `creditHeader`, `debitHeader`, `typeHeader`, and `categoryHeader`.
+- `scope` (`StatementFormatScope`) - `SYSTEM` for built-in formats or `USER`
+  for user-created formats.
+- `ownerId` (`String`) - Owner ID for user-scoped formats; null for system
+  formats.
 - `enabled` (`boolean`) - Whether the format is available for use.
 
 **Business Rules:**
 
 - CSV formats are configuration-driven and can usually be added without code
   changes.
-- PDF formats use dedicated extractors; `StatementFormat` stores metadata and
-  enables format discovery.
+- Parser details are hidden in `ParserRevision` rows. CSV formats use
+  serialized column mapping config; static PDF formats use internal handler
+  keys.
+- Preview, get, and update requests use `StatementFormat.id` as the public
+  identity.
 - Import setup and examples are documented in
   [Statement Import System](statement-import.md).
+
+### ParserRevision
+
+**Purpose:** Stores deterministic parser configuration or static extractor
+routing for a statement format.
+
+**Key Attributes:**
+
+- `id` (`Long`) - Database-generated parser revision identifier.
+- `statementFormat` (`StatementFormat`) - Parent format visible to users.
+- `revisionNumber` (`Integer`) - Version under the parent format.
+- `parserType` (`ParserType`) - `STATIC_HANDLER`, `CSV_COLUMN_CONFIG`, or
+  `PDF_TEXT_TABLE_CONFIG`.
+- `handlerKey` (`String`) - Internal static extractor key for built-in parser
+  implementations.
+- `configSchemaVersion` (`Integer`) - Parser config schema version.
+- `parserConfig` (`String`) - Serialized parser configuration, such as CSV
+  column mapping JSON.
+- `priority` (`Integer`) - Parser selection priority.
+- `enabled` (`boolean`) - Whether the parser revision can be selected.
+
+**Business Rules:**
+
+- Preview selects an enabled parser revision for the selected visible statement
+  format.
+- Preview tokens and file import records carry both the statement format ID and
+  parser revision ID for provenance.
 
 ### SavedView
 
@@ -131,14 +166,19 @@ All fields are optional. Null fields are not applied as filters.
 
 ```text
 Transaction 0..1 -> 1 FileImport
+FileImport -> StatementFormat by statementFormatId
+FileImport -> ParserRevision by parserRevisionId
+StatementFormat 1 -> * ParserRevision
 SavedView 1 -> * Transaction IDs through pinnedIds and excludedIds
-StatementFormat -> Transaction import flow through formatKey metadata
+StatementFormat -> Transaction import flow through public ID metadata
 ```
 
 ## Enums
 
 - `TransactionType` - `DEBIT`, `CREDIT`
 - `FormatType` - `CSV`, `PDF`, `XLSX`
+- `StatementFormatScope` - `SYSTEM`, `USER`
+- `ParserType` - `STATIC_HANDLER`, `CSV_COLUMN_CONFIG`, `PDF_TEXT_TABLE_CONFIG`
 - `MembershipType` - `MATCHED`, `PINNED`
 
 ## Discovery Commands

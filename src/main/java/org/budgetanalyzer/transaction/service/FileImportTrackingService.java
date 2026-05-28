@@ -107,7 +107,52 @@ public class FileImportTrackingService {
    *
    * @param contentHash the SHA-256 hash of the file content
    * @param originalFilename the original filename
-   * @param format the CSV format used
+   * @param statementFormatId the selected statement format ID
+   * @param parserRevisionId the selected parser revision ID
+   * @param accountId the account ID (nullable)
+   * @param fileSizeBytes the file size in bytes
+   * @param transactionCount the number of transactions imported
+   * @param importedBy the user ID who performed the import
+   * @return the created file import record
+   */
+  public FileImport recordImport(
+      String contentHash,
+      String originalFilename,
+      Long statementFormatId,
+      Long parserRevisionId,
+      String accountId,
+      Long fileSizeBytes,
+      Integer transactionCount,
+      String importedBy) {
+    var fileImport =
+        FileImport.create(
+            contentHash,
+            originalFilename,
+            statementFormatId,
+            parserRevisionId,
+            accountId,
+            fileSizeBytes,
+            transactionCount,
+            importedBy);
+
+    log.info(
+        "Recording file import: filename='{}' hash='{}' statementFormatId={} "
+            + "parserRevisionId={} transactions={}",
+        originalFilename,
+        contentHash.substring(0, 8) + "...",
+        statementFormatId,
+        parserRevisionId,
+        transactionCount);
+
+    return fileImportRepository.save(fileImport);
+  }
+
+  /**
+   * Records a successful legacy file import by format key.
+   *
+   * @param contentHash the SHA-256 hash of the file content
+   * @param originalFilename the original filename
+   * @param format legacy format key
    * @param accountId the account ID (nullable)
    * @param fileSizeBytes the file size in bytes
    * @param transactionCount the number of transactions imported
@@ -131,14 +176,6 @@ public class FileImportTrackingService {
             fileSizeBytes,
             transactionCount,
             importedBy);
-
-    log.info(
-        "Recording file import: filename='{}' hash='{}' format='{}' transactions={}",
-        originalFilename,
-        contentHash.substring(0, 8) + "...",
-        format,
-        transactionCount);
-
     return fileImportRepository.save(fileImport);
   }
 

@@ -10,19 +10,28 @@ import jakarta.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.budgetanalyzer.core.csv.CsvParser;
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.FormatType;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
+import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
+import org.budgetanalyzer.transaction.service.dto.StatementParserSelection;
 
 /**
- * Registry for statement extractors, managing both static (PDF) and dynamic (CSV) extractors.
+ * Registry for statement extractors, managing static handlers and dynamic CSV parser revisions.
  *
- * <p>Static extractors are Spring components that implement StatementExtractor (e.g., PDF
- * extractors). Dynamic extractors are created from database StatementFormat entities for CSV
- * formats.
+ * <p>Static extractors are Spring components that implement StatementExtractor. Dynamic CSV
+ * extractors are created from hidden ParserRevision rows.
  */
 @Service
 public class StatementExtractorRegistry {
@@ -30,25 +39,53 @@ public class StatementExtractorRegistry {
   private static final Logger log = LoggerFactory.getLogger(StatementExtractorRegistry.class);
 
   private final List<StatementExtractor> staticExtractors;
-  private final StatementFormatRepository formatRepository;
+  private final ParserRevisionRepository parserRevisionRepository;
+  private final StatementFormatRepository legacyStatementFormatRepository;
   private final CsvParser csvParser;
+  private final ObjectMapper objectMapper;
 
-  private final Map<String, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
+  private final Map<Long, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
+  private final Map<String, StatementExtractor> legacyCsvExtractorCache = new ConcurrentHashMap<>();
+  private final Map<String, StatementExtractor> staticExtractorsByHandlerKey =
+      new ConcurrentHashMap<>();
 
   /**
    * Constructs a new StatementExtractorRegistry.
    *
-   * @param staticExtractors list of static extractors (PDF components)
-   * @param formatRepository repository for statement format entities
+   * @param staticExtractors list of static extractors
+   * @param parserRevisionRepository repository for parser revision entities
+   * @param csvParser the CSV parser to use for dynamic extractors
+   * @param objectMapper JSON mapper for parser configuration
+   */
+  @Autowired
+  public StatementExtractorRegistry(
+      List<StatementExtractor> staticExtractors,
+      ParserRevisionRepository parserRevisionRepository,
+      CsvParser csvParser,
+      ObjectMapper objectMapper) {
+    this.staticExtractors = staticExtractors;
+    this.parserRevisionRepository = parserRevisionRepository;
+    this.legacyStatementFormatRepository = null;
+    this.csvParser = csvParser;
+    this.objectMapper = objectMapper;
+  }
+
+  /**
+   * Constructs a legacy test registry that can still resolve by format key.
+   *
+   * @param staticExtractors list of static extractors
+   * @param statementFormatRepository legacy statement format repository
    * @param csvParser the CSV parser to use for dynamic extractors
    */
   public StatementExtractorRegistry(
       List<StatementExtractor> staticExtractors,
-      StatementFormatRepository formatRepository,
+      StatementFormatRepository statementFormatRepository,
       CsvParser csvParser) {
     this.staticExtractors = staticExtractors;
-    this.formatRepository = formatRepository;
+    this.parserRevisionRepository = null;
+    this.legacyStatementFormatRepository = statementFormatRepository;
     this.csvParser = csvParser;
+    this.objectMapper = new ObjectMapper().findAndRegisterModules();
   }
 
   @PostConstruct
@@ -56,79 +93,148 @@ public class StatementExtractorRegistry {
     log.info(
         "StatementExtractorRegistry initialized with {} static extractors",
         staticExtractors.size());
-    for (var extractor : staticExtractors) {
-      log.info("  - {} ({})", extractor.getFormatKey(), extractor.getClass().getSimpleName());
+    for (var statementExtractor : staticExtractors) {
+      log.info(
+          "  - {} ({})",
+          statementExtractor.getFormatKey(),
+          statementExtractor.getClass().getSimpleName());
+      staticExtractorsByHandlerKey.put(statementExtractor.getFormatKey(), statementExtractor);
     }
     refreshCsvExtractors();
   }
 
   /**
-   * Finds an extractor by format key.
+   * Finds an extractor for the highest-priority enabled parser revision under a statement format.
    *
-   * <p>First checks static extractors (PDF components), then looks up CSV formats from the
-   * database.
-   *
-   * @param formatKey the format identifier
-   * @return the extractor if found, empty otherwise
+   * @param statementFormat selected top-level statement format
+   * @return selected parser revision and extractor if available
    */
-  public Optional<StatementExtractor> findByFormat(String formatKey) {
-    // Check static extractors first (PDF @Components)
-    for (var extractor : staticExtractors) {
-      if (extractor.getFormatKey().equals(formatKey)) {
-        return Optional.of(extractor);
-      }
+  public Optional<StatementParserSelection> findByStatementFormat(StatementFormat statementFormat) {
+    if (parserRevisionRepository == null) {
+      return Optional.empty();
     }
 
-    // Check CSV extractor cache
-    var csvExtractor = csvExtractorCache.get(formatKey);
-    if (csvExtractor != null) {
-      return Optional.of(csvExtractor);
+    var parserRevisions =
+        parserRevisionRepository
+            .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(
+                statementFormat.getId());
+    if (parserRevisions.isEmpty()) {
+      return Optional.empty();
     }
 
-    // Try to load from database (may be newly added format)
-    return formatRepository
-        .findByFormatKeyAndEnabledTrue(formatKey)
-        .filter(f -> f.getFormatType() == FormatType.CSV)
-        .map(this::createCsvExtractor)
+    var parserRevision = parserRevisions.get(0);
+    return createExtractor(statementFormat, parserRevision)
         .map(
-            extractor -> {
-              csvExtractorCache.put(formatKey, extractor);
-              return extractor;
-            });
+            statementExtractor ->
+                new StatementParserSelection(statementFormat, parserRevision, statementExtractor));
   }
 
   /**
-   * Returns all available extractors (static + dynamic).
+   * Returns all available extractors (static + cached dynamic).
    *
    * @return list of all extractors
    */
   public List<StatementExtractor> getAllExtractors() {
-    var all = new ArrayList<>(staticExtractors);
-    all.addAll(csvExtractorCache.values());
-    return all;
+    var allStatementExtractors = new ArrayList<>(staticExtractors);
+    allStatementExtractors.addAll(csvExtractorCache.values());
+    allStatementExtractors.addAll(legacyCsvExtractorCache.values());
+    return allStatementExtractors;
   }
 
   /**
-   * Refreshes the CSV extractor cache from the database.
+   * Legacy lookup by format key retained for old tests during the ID migration.
    *
-   * <p>Call this after adding or modifying StatementFormat entities.
+   * @param formatKey legacy format key or internal handler key
+   * @return matching extractor if available
+   */
+  public Optional<StatementExtractor> findByFormat(String formatKey) {
+    var staticExtractor = staticExtractorsByHandlerKey.get(formatKey);
+    if (staticExtractor != null) {
+      return Optional.of(staticExtractor);
+    }
+    var csvExtractor = legacyCsvExtractorCache.get(formatKey);
+    if (csvExtractor != null) {
+      return Optional.of(csvExtractor);
+    }
+    if (legacyStatementFormatRepository == null) {
+      return Optional.empty();
+    }
+
+    return legacyStatementFormatRepository
+        .findByFormatKeyAndEnabledTrue(formatKey)
+        .filter(statementFormat -> statementFormat.getFormatType() == FormatType.CSV)
+        .map(
+            statementFormat -> {
+              var statementExtractor =
+                  new ConfigurableCsvStatementExtractor(statementFormat, csvParser);
+              legacyCsvExtractorCache.put(formatKey, statementExtractor);
+              return statementExtractor;
+            });
+  }
+
+  /**
+   * Refreshes the CSV extractor cache from enabled CSV parser revisions.
+   *
+   * <p>Call this after adding or modifying CSV parser revisions.
    */
   public void refreshCsvExtractors() {
     csvExtractorCache.clear();
-
-    var csvFormats = formatRepository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
-    for (var format : csvFormats) {
-      var extractor = createCsvExtractor(format);
-      csvExtractorCache.put(format.getFormatKey(), extractor);
+    legacyCsvExtractorCache.clear();
+    if (parserRevisionRepository == null) {
+      var csvFormats =
+          legacyStatementFormatRepository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
+      for (var statementFormat : csvFormats) {
+        legacyCsvExtractorCache.put(
+            statementFormat.getFormatKey(),
+            new ConfigurableCsvStatementExtractor(statementFormat, csvParser));
+      }
+      return;
     }
 
-    log.info("Refreshed CSV extractors: {} formats loaded", csvFormats.size());
-    for (var format : csvFormats) {
-      log.info("  - {} ({})", format.getFormatKey(), format.getBankName());
+    var csvParserRevisions =
+        parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG);
+    for (var parserRevision : csvParserRevisions) {
+      var statementFormat = parserRevision.getStatementFormat();
+      if (statementFormat.getFormatType() == FormatType.CSV && statementFormat.isEnabled()) {
+        var statementExtractor = createCsvExtractor(statementFormat, parserRevision);
+        csvExtractorCache.put(parserRevision.getId(), statementExtractor);
+      }
     }
+
+    log.info("Refreshed CSV extractors: {} revisions loaded", csvExtractorCache.size());
   }
 
-  private ConfigurableCsvStatementExtractor createCsvExtractor(StatementFormat format) {
-    return new ConfigurableCsvStatementExtractor(format, csvParser);
+  private Optional<StatementExtractor> createExtractor(
+      StatementFormat statementFormat, ParserRevision parserRevision) {
+    if (parserRevision.getParserType() == ParserType.STATIC_HANDLER) {
+      return Optional.ofNullable(staticExtractorsByHandlerKey.get(parserRevision.getHandlerKey()));
+    }
+    if (parserRevision.getParserType() == ParserType.CSV_COLUMN_CONFIG
+        && statementFormat.getFormatType() == FormatType.CSV) {
+      var statementExtractor = csvExtractorCache.get(parserRevision.getId());
+      if (statementExtractor != null) {
+        return Optional.of(statementExtractor);
+      }
+
+      statementExtractor = createCsvExtractor(statementFormat, parserRevision);
+      csvExtractorCache.put(parserRevision.getId(), statementExtractor);
+      return Optional.of(statementExtractor);
+    }
+    return Optional.empty();
+  }
+
+  private ConfigurableCsvStatementExtractor createCsvExtractor(
+      StatementFormat statementFormat, ParserRevision parserRevision) {
+    try {
+      var csvColumnParserConfig =
+          objectMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
+      return new ConfigurableCsvStatementExtractor(
+          statementFormat, parserRevision, csvColumnParserConfig, csvParser);
+    } catch (Exception exception) {
+      throw new BusinessException(
+          "Invalid CSV parser configuration for parser revision " + parserRevision.getId(),
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+          exception);
+    }
   }
 }

@@ -359,10 +359,9 @@ class TransactionControllerTest {
     var previewTransaction =
         createPreviewTransaction(
             LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse =
-        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
+    var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
     when(transactionImportService.previewFile(
-            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -377,12 +376,12 @@ class TransactionControllerTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceFile").value("transactions.csv"))
-        .andExpect(jsonPath("$.detectedFormat").value("capital-one"))
+        .andExpect(jsonPath("$.statementFormatId").value(1))
         .andExpect(jsonPath("$.fileImport.alreadyImported").value(false))
         .andExpect(jsonPath("$.fileImport.warningCode").doesNotExist())
         .andExpect(jsonPath("$.fileImport.previousImport").doesNotExist())
@@ -393,7 +392,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.warnings").doesNotExist());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user"));
+        .previewFile(eq(1L), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   @Test
@@ -402,10 +401,9 @@ class TransactionControllerTest {
     var previewTransaction =
         createPreviewTransaction(
             LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse =
-        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
+    var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
     when(transactionImportService.previewFile(
-            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
+            eq(1L), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -420,15 +418,14 @@ class TransactionControllerTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .param("accountId", "checking-123")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk());
 
     verify(transactionImportService, times(1))
-        .previewFile(
-            eq("capital-one"), eq("checking-123"), any(MultipartFile.class), eq("test-user"));
+        .previewFile(eq(1L), eq("checking-123"), any(MultipartFile.class), eq("test-user"));
   }
 
   @Test
@@ -436,10 +433,9 @@ class TransactionControllerTest {
     var previewTransaction =
         createPreviewTransaction(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
             .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
-    var previewResponse =
-        previewResult("transactions.csv", "capital-one", List.of(previewTransaction));
+    var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
     when(transactionImportService.previewFile(
-            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -453,7 +449,7 @@ class TransactionControllerTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
@@ -467,10 +463,9 @@ class TransactionControllerTest {
     var previewTransaction =
         createPreviewTransaction(
             LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
-    var previewResponse =
-        previewResult("statement.pdf", "capital-one-yearly", List.of(previewTransaction));
+    var previewResponse = previewResult("statement.pdf", 2L, List.of(previewTransaction));
     when(transactionImportService.previewFile(
-            eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user")))
+            eq(2L), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var pdfFile =
@@ -480,40 +475,35 @@ class TransactionControllerTest {
             "application/pdf",
             new byte[] {0x25, 0x50, 0x44, 0x46}); // PDF magic bytes
 
-    // When/Then: POST with format returns 200
+    // When/Then: POST with statement format ID returns 200
     mockMvc
         .perform(
             multipart("/v1/transactions/preview")
                 .file(pdfFile)
-                .param("format", "capital-one-yearly")
+                .param("statementFormatId", "2")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceFile").value("statement.pdf"))
-        .andExpect(jsonPath("$.detectedFormat").value("capital-one-yearly"))
+        .andExpect(jsonPath("$.statementFormatId").value(2))
         .andExpect(jsonPath("$.transactions.length()").value(1));
 
     verify(transactionImportService, times(1))
-        .previewFile(eq("capital-one-yearly"), isNull(), any(MultipartFile.class), eq("test-user"));
+        .previewFile(eq(2L), isNull(), any(MultipartFile.class), eq("test-user"));
   }
 
   @Test
   void previewTransactions_previouslyImportedFile_returnsFileImportStatus() throws Exception {
     var previousFileImport =
         new PreviousFileImport(
-            "statement.csv",
-            Instant.parse("2026-05-01T12:34:56Z"),
-            "capital-one",
-            "checking-12345",
-            42);
+            "statement.csv", Instant.parse("2026-05-01T12:34:56Z"), 1L, "checking-12345", 42);
     var fileImportStatus =
         new PreviewFileImportStatus(
             true, PreviewFileWarningCode.FILE_ALREADY_IMPORTED, previousFileImport);
     var previewResponse =
-        new PreviewResult(
-            "statement.csv", "capital-one", "preview-token", fileImportStatus, List.of());
+        new PreviewResult("statement.csv", 1L, "preview-token", fileImportStatus, List.of());
     when(transactionImportService.previewFile(
-            eq("capital-one"), isNull(), any(MultipartFile.class), eq("test-user")))
+            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
@@ -527,7 +517,7 @@ class TransactionControllerTest {
         .perform(
             multipart("/v1/transactions/preview")
                 .file(csvFile)
-                .param("format", "capital-one")
+                .param("statementFormatId", "1")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
@@ -536,7 +526,7 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.fileImport.warningCode").value("FILE_ALREADY_IMPORTED"))
         .andExpect(jsonPath("$.fileImport.previousImport.originalFilename").value("statement.csv"))
         .andExpect(jsonPath("$.fileImport.previousImport.importedAt").value("2026-05-01T12:34:56Z"))
-        .andExpect(jsonPath("$.fileImport.previousImport.format").value("capital-one"))
+        .andExpect(jsonPath("$.fileImport.previousImport.statementFormatId").value(1))
         .andExpect(jsonPath("$.fileImport.previousImport.accountId").value("checking-12345"))
         .andExpect(jsonPath("$.fileImport.previousImport.transactionCount").value(42));
   }
@@ -746,7 +736,8 @@ class TransactionControllerTest {
     assertThat(fileImportSourceCaptor.getValue().contentHash())
         .isEqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     assertThat(fileImportSourceCaptor.getValue().originalFilename()).isEqualTo("statement.csv");
-    assertThat(fileImportSourceCaptor.getValue().detectedFormat()).isEqualTo("capital-one");
+    assertThat(fileImportSourceCaptor.getValue().statementFormatId()).isEqualTo(1L);
+    assertThat(fileImportSourceCaptor.getValue().parserRevisionId()).isEqualTo(1L);
     assertThat(fileImportSourceCaptor.getValue().accountId()).isEqualTo("checking-12345");
     assertThat(fileImportSourceCaptor.getValue().fileSizeBytes()).isEqualTo(1024L);
   }
@@ -1235,10 +1226,10 @@ class TransactionControllerTest {
   }
 
   private PreviewResult previewResult(
-      String sourceFile, String detectedFormat, List<PreviewTransaction> transactions) {
+      String sourceFile, Long statementFormatId, List<PreviewTransaction> transactions) {
     return new PreviewResult(
         sourceFile,
-        detectedFormat,
+        statementFormatId,
         "preview-token",
         PreviewFileImportStatus.notPreviouslyImported(),
         transactions);

@@ -20,10 +20,10 @@ public record PreviewResponse(
             example = "cap-one-2024.csv")
         String sourceFile,
     @Schema(
-            description = "Detected format key used for parsing (informational)",
+            description = "Statement format ID used for parsing",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "capital-one-ytd")
-        String detectedFormat,
+            example = "123")
+        Long statementFormatId,
     @Schema(
             description =
                 "Opaque encrypted source-file token required for token-backed batch import",
@@ -46,7 +46,7 @@ public record PreviewResponse(
   public static PreviewResponse from(PreviewResult previewResult) {
     return new PreviewResponse(
         previewResult.sourceFile(),
-        previewResult.detectedFormat(),
+        previewResult.statementFormatId(),
         previewResult.previewImportToken(),
         PreviewFileImportStatusResponse.from(previewResult.fileImport()),
         previewResult.transactions().stream().map(PreviewTransactionResponse::from).toList());

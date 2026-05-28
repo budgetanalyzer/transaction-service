@@ -117,8 +117,8 @@ Token behavior:
 
 - The token is encrypted and time-limited.
 - The token carries source-file identity verified during preview: owner,
-  content hash, original filename, detected format, account ID, file size, and
-  expiration timestamps.
+  content hash, original filename, statement format ID, parser revision ID,
+  account ID, file size, and expiration timestamps.
 - Clients must treat the token as opaque and must not decode it or derive source
   metadata from it.
 - Missing, invalid, expired, incomplete, or wrong-owner tokens fail before

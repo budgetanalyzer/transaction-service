@@ -155,7 +155,8 @@ class TransactionOpenApiIntegrationTest {
     assertThat(previousImportSchemaJsonNode.at("/properties/originalFilename").isMissingNode())
         .isFalse();
     assertThat(previousImportSchemaJsonNode.at("/properties/importedAt").isMissingNode()).isFalse();
-    assertThat(previousImportSchemaJsonNode.at("/properties/format").isMissingNode()).isFalse();
+    assertThat(previousImportSchemaJsonNode.at("/properties/statementFormatId").isMissingNode())
+        .isFalse();
     assertThat(previousImportSchemaJsonNode.at("/properties/accountId").isMissingNode()).isFalse();
     assertThat(previousImportSchemaJsonNode.at("/properties/transactionCount").isMissingNode())
         .isFalse();

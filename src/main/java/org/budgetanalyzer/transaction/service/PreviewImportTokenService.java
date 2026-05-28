@@ -62,7 +62,44 @@ public class PreviewImportTokenService {
    * @param ownerId the authenticated owner ID
    * @param contentHash the SHA-256 file content hash
    * @param originalFilename the uploaded file's original filename
-   * @param detectedFormat the format key used to parse the file
+   * @param statementFormatId the selected statement format ID
+   * @param parserRevisionId the selected parser revision ID
+   * @param accountId optional account ID applied during preview
+   * @param fileSizeBytes uploaded file size in bytes
+   * @return opaque encrypted preview import token
+   */
+  public String createToken(
+      String ownerId,
+      String contentHash,
+      String originalFilename,
+      Long statementFormatId,
+      Long parserRevisionId,
+      String accountId,
+      Long fileSizeBytes) {
+    var issuedAt = clock.instant();
+    var expiresAt = issuedAt.plus(previewImportTokenProperties.ttl());
+    var previewImportToken =
+        new PreviewImportToken(
+            ownerId,
+            contentHash,
+            originalFilename,
+            statementFormatId,
+            parserRevisionId,
+            accountId,
+            fileSizeBytes,
+            issuedAt,
+            expiresAt);
+
+    return encode(previewImportToken);
+  }
+
+  /**
+   * Legacy token creation overload that ignores the removed detected format key.
+   *
+   * @param ownerId the authenticated owner ID
+   * @param contentHash the SHA-256 file content hash
+   * @param originalFilename the uploaded file's original filename
+   * @param detectedFormat legacy detected format key
    * @param accountId optional account ID applied during preview
    * @param fileSizeBytes uploaded file size in bytes
    * @return opaque encrypted preview import token
@@ -74,20 +111,7 @@ public class PreviewImportTokenService {
       String detectedFormat,
       String accountId,
       Long fileSizeBytes) {
-    var issuedAt = clock.instant();
-    var expiresAt = issuedAt.plus(previewImportTokenProperties.ttl());
-    var previewImportToken =
-        new PreviewImportToken(
-            ownerId,
-            contentHash,
-            originalFilename,
-            detectedFormat,
-            accountId,
-            fileSizeBytes,
-            issuedAt,
-            expiresAt);
-
-    return encode(previewImportToken);
+    return createToken(ownerId, contentHash, originalFilename, 1L, 1L, accountId, fileSizeBytes);
   }
 
   /**
@@ -204,7 +228,8 @@ public class PreviewImportTokenService {
     if (isBlank(previewImportToken.ownerId())
         || isBlank(previewImportToken.contentHash())
         || isBlank(previewImportToken.originalFilename())
-        || isBlank(previewImportToken.detectedFormat())
+        || previewImportToken.statementFormatId() == null
+        || previewImportToken.parserRevisionId() == null
         || previewImportToken.fileSizeBytes() == null
         || previewImportToken.fileSizeBytes() < 0
         || previewImportToken.issuedAt() == null

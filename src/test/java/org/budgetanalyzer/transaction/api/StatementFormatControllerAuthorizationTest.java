@@ -1,6 +1,8 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -37,11 +39,14 @@ class StatementFormatControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    when(statementFormatService.getAllFormats()).thenReturn(List.of());
-    when(statementFormatService.getByFormatKey(anyString())).thenReturn(createStubFormat());
-    when(statementFormatService.createFormat(any(StatementFormatCommand.class)))
+    when(statementFormatService.getVisibleFormats(anyString(), anyBoolean())).thenReturn(List.of());
+    when(statementFormatService.getById(anyLong(), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
-    when(statementFormatService.updateFormat(anyString(), any(StatementFormatPatch.class)))
+    when(statementFormatService.createFormat(
+            any(StatementFormatCommand.class), anyString(), anyBoolean()))
+        .thenReturn(createStubFormat());
+    when(statementFormatService.updateFormat(
+            anyLong(), any(StatementFormatPatch.class), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
   }
 
@@ -80,7 +85,7 @@ class StatementFormatControllerAuthorizationTest {
   void getEndpoint_withReadPermission_returns200() throws Exception {
     mockMvc
         .perform(
-            get("/v1/statement-formats/capital-one")
+            get("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:read")))
@@ -91,7 +96,7 @@ class StatementFormatControllerAuthorizationTest {
   void getEndpoint_withoutReadPermission_returns403() throws Exception {
     mockMvc
         .perform(
-            get("/v1/statement-formats/capital-one")
+            get("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("transactions:read")))
@@ -130,7 +135,7 @@ class StatementFormatControllerAuthorizationTest {
   void updateEndpoint_withWritePermission_returns200() throws Exception {
     mockMvc
         .perform(
-            put("/v1/statement-formats/capital-one")
+            put("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:write"))
@@ -143,7 +148,7 @@ class StatementFormatControllerAuthorizationTest {
   void updateEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
-            put("/v1/statement-formats/capital-one")
+            put("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:read"))
@@ -192,7 +197,6 @@ class StatementFormatControllerAuthorizationTest {
   private String createValidFormatJson() {
     return """
         {
-          "formatKey": "new-format",
           "displayName": "New Bank - Export",
           "formatType": "CSV",
           "bankName": "New Bank",

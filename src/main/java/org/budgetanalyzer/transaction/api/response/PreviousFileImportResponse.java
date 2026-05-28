@@ -20,10 +20,10 @@ public record PreviousFileImportResponse(
             example = "2026-05-01T12:34:56Z")
         Instant importedAt,
     @Schema(
-            description = "Format key used for the previous import",
+            description = "Statement format ID used for the previous import",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "capital-one")
-        String format,
+            example = "123")
+        Long statementFormatId,
     @Schema(
             description = "Account ID used for the previous import. Omitted when unavailable.",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
@@ -40,7 +40,7 @@ public record PreviousFileImportResponse(
     return new PreviousFileImportResponse(
         previousFileImport.originalFilename(),
         previousFileImport.importedAt(),
-        previousFileImport.format(),
+        previousFileImport.statementFormatId(),
         previousFileImport.accountId(),
         previousFileImport.transactionCount());
   }

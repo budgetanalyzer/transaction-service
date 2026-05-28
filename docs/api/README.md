@@ -100,10 +100,10 @@ Notes: Soft-deletes multiple transactions. Returns deletedCount and notFoundIds.
 ```
 POST /v1/transactions/preview
 Content-Type: multipart/form-data
-Params: format (required), accountId (optional), file (required)
+Params: statementFormatId (required), accountId (optional), file (required)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available format keys. The multipart file part must include a non-blank filename. Uploads are limited by TRANSACTION_IMPORT_MAX_FILE_SIZE and TRANSACTION_IMPORT_MAX_REQUEST_SIZE, both defaulting to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
+Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available statement format IDs. The multipart file part must include a non-blank filename. Uploads are limited by TRANSACTION_IMPORT_MAX_FILE_SIZE and TRANSACTION_IMPORT_MAX_REQUEST_SIZE, both defaulting to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
 ```
 
 **Batch Import Transactions**
@@ -260,21 +260,24 @@ Permission: views:write
 ```
 GET /v1/statement-formats
 Response: List<StatementFormatResponse>
-Permission: statementformats:read
+Permission: statementformats:read or statementformats:read:any
 ```
 
 Seeded import formats include:
-- `bkk-bank-statement-csv`
-- `bkk-bank-statement-pdf`
-- `capital-one-credit-monthly-statement`
-- `capital-one-credit-yearly-statement`
-- `capital-one-bank-monthly-statement`
+- Bangkok Bank CSV
+- Bangkok Bank statement PDF
+- Capital One credit monthly statement
+- Capital One credit yearly statement
+- Capital One bank monthly statement
+
+The response includes each format's `id`. Use that ID for preview, get, and
+update requests.
 
 **Get Statement Format**
 ```
-GET /v1/statement-formats/{formatKey}
+GET /v1/statement-formats/{id}
 Response: StatementFormatResponse
-Permission: statementformats:read
+Permission: statementformats:read or statementformats:read:any
 ```
 
 **Create Statement Format**
@@ -282,15 +285,15 @@ Permission: statementformats:read
 POST /v1/statement-formats
 Body: CreateStatementFormatRequest
 Response: StatementFormatResponse (201 Created)
-Permission: statementformats:write
+Permission: statementformats:write or statementformats:write:any
 ```
 
 **Update Statement Format**
 ```
-PUT /v1/statement-formats/{formatKey}
+PUT /v1/statement-formats/{id}
 Body: UpdateStatementFormatRequest
 Response: StatementFormatResponse
-Permission: statementformats:write
+Permission: statementformats:write or statementformats:write:any
 ```
 
 ## Request/Response Examples
@@ -357,7 +360,7 @@ Permission: statementformats:write
 
 Fields:
 - `sourceFile` - Original uploaded filename.
-- `detectedFormat` - Statement format key used for parsing.
+- `statementFormatId` - Statement format ID used for parsing.
 - `previewImportToken` - Opaque encrypted source-file token required by `/batch`.
 - `fileImport` - Exact-file reupload status for the authenticated user.
 - `transactions` - Editable preview rows with advisory duplicate metadata.
@@ -365,7 +368,7 @@ Fields:
 ```json
 {
   "sourceFile": "statement.csv",
-  "detectedFormat": "bkk-bank-statement-csv",
+  "statementFormatId": 123,
   "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": true,
@@ -373,7 +376,7 @@ Fields:
     "previousImport": {
       "originalFilename": "statement.csv",
       "importedAt": "2026-05-01T12:34:56Z",
-      "format": "bkk-bank-statement-csv",
+      "statementFormatId": 123,
       "accountId": "checking-12345",
       "transactionCount": 42
     }
@@ -538,8 +541,12 @@ This service uses trusted claims-header-based security from `service-common`.
   controller method; `:any` only allows the caller to act on transactions owned by other
   users. The `ADMIN` role bundles all three `:any` permissions in the current
   `permission-service` seed data. `views:*` intentionally has no `:any` variants yet.
-- Statement format endpoints require `statementformats:read` or `statementformats:write`.
-- Disable a statement format through `PUT /v1/statement-formats/{formatKey}` with
+- Statement format endpoints accept `statementformats:read` or
+  `statementformats:read:any` for reads, and `statementformats:write` or
+  `statementformats:write:any` for writes. Users can manage their own
+  user-scoped formats. Creating or updating system formats requires the `:any`
+  write variant.
+- Disable a statement format through `PUT /v1/statement-formats/{id}` with
   `{"enabled": false}`.
 - OpenAPI docs and health endpoints remain public.
 

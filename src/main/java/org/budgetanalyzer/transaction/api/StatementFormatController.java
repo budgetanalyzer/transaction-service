@@ -28,6 +28,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
+import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.response.StatementFormatResponse;
@@ -53,7 +54,7 @@ public class StatementFormatController {
     this.statementFormatService = statementFormatService;
   }
 
-  @PreAuthorize("hasAuthority('statementformats:read')")
+  @PreAuthorize("hasAnyAuthority('statementformats:read', 'statementformats:read:any')")
   @Operation(
       summary = "List all statement formats",
       description = "Returns all configured statement formats (both enabled and disabled).")
@@ -72,15 +73,18 @@ public class StatementFormatController {
   public List<StatementFormatResponse> listFormats() {
     log.info("Received list statement formats request");
 
-    return statementFormatService.getAllFormats().stream()
+    var userId = getCurrentUserId();
+    var canReadAny = SecurityContextUtil.hasAuthority("statementformats:read:any");
+
+    return statementFormatService.getVisibleFormats(userId, canReadAny).stream()
         .map(StatementFormatResponse::from)
         .toList();
   }
 
-  @PreAuthorize("hasAuthority('statementformats:read')")
+  @PreAuthorize("hasAnyAuthority('statementformats:read', 'statementformats:read:any')")
   @Operation(
       summary = "Get statement format details",
-      description = "Returns details of a specific statement format by its format key.")
+      description = "Returns details of a specific statement format by ID.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -103,21 +107,22 @@ public class StatementFormatController {
                                 """
                       {
                         "type": "NOT_FOUND",
-                        "message": "Statement format not found with key: fake-format"
+                        "message": "Statement format not found with id: 999"
                       }
                       """)))
       })
-  @GetMapping(path = "/{formatKey}", produces = "application/json")
+  @GetMapping(path = "/{id}", produces = "application/json")
   public StatementFormatResponse getFormat(
-      @Parameter(description = "Unique format identifier", example = "capital-one")
-          @PathVariable("formatKey")
-          String formatKey) {
-    log.info("Received get statement format request: {}", formatKey);
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id")
+          Long id) {
+    log.info("Received get statement format request: {}", id);
 
-    return StatementFormatResponse.from(statementFormatService.getByFormatKey(formatKey));
+    var userId = getCurrentUserId();
+    var canReadAny = SecurityContextUtil.hasAuthority("statementformats:read:any");
+    return StatementFormatResponse.from(statementFormatService.getById(id, userId, canReadAny));
   }
 
-  @PreAuthorize("hasAuthority('statementformats:write')")
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
   @Operation(
       summary = "Create a new statement format",
       description =
@@ -140,38 +145,29 @@ public class StatementFormatController {
             description = "Validation error"),
         @ApiResponse(
             responseCode = "422",
+            description = "Business rule violation",
             content =
                 @Content(
                     mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class),
-                    examples =
-                        @ExampleObject(
-                            name = "Duplicate Format Key",
-                            summary = "Format key already exists",
-                            value =
-                                """
-                      {
-                        "type": "APPLICATION_ERROR",
-                        "message": "Format key already exists: capital-one",
-                        "code": "FORMAT_KEY_ALREADY_EXISTS"
-                      }
-                      """)))
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
       })
   @PostMapping(consumes = "application/json", produces = "application/json")
   public ResponseEntity<StatementFormatResponse> createFormat(
       @Valid @RequestBody CreateStatementFormatRequest request) {
     log.info(
         "Received create statement format request: {} ({})",
-        request.formatKey(),
+        request.displayName(),
         request.formatType());
 
+    var userId = getCurrentUserId();
+    var canWriteAny = SecurityContextUtil.hasAuthority("statementformats:write:any");
     var command =
         new StatementFormatCommand(
-            request.formatKey(),
             request.displayName(),
             request.formatType(),
             request.bankName(),
             request.defaultCurrencyIsoCode(),
+            request.scope(),
             request.dateHeader(),
             request.dateFormat(),
             request.descriptionHeader(),
@@ -179,23 +175,23 @@ public class StatementFormatController {
             request.debitHeader(),
             request.typeHeader(),
             request.categoryHeader());
-    var created = statementFormatService.createFormat(command);
+    var created = statementFormatService.createFormat(command, userId, canWriteAny);
 
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
-            .path("/{formatKey}")
-            .buildAndExpand(created.getFormatKey())
+            .path("/{id}")
+            .buildAndExpand(created.getId())
             .toUri();
 
     return ResponseEntity.created(location).body(StatementFormatResponse.from(created));
   }
 
-  @PreAuthorize("hasAuthority('statementformats:write')")
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
   @Operation(
       summary = "Update a statement format",
       description =
           "Updates an existing statement format. Only provided fields will be updated. "
-              + "The format key and format type cannot be changed after creation.")
+              + "The ID, scope, owner, and format type cannot be changed after creation.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -212,27 +208,26 @@ public class StatementFormatController {
                     schema = @Schema(implementation = ApiErrorResponse.class)),
             description = "Statement format not found")
       })
-  @PutMapping(path = "/{formatKey}", consumes = "application/json", produces = "application/json")
+  @PutMapping(path = "/{id}", consumes = "application/json", produces = "application/json")
   public StatementFormatResponse updateFormat(
-      @Parameter(description = "Unique format identifier", example = "capital-one")
-          @PathVariable("formatKey")
-          String formatKey,
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id") Long id,
       @Valid @RequestBody UpdateStatementFormatRequest request) {
-    log.info("Received update statement format request: {}", formatKey);
+    log.info("Received update statement format request: {}", id);
 
+    var userId = getCurrentUserId();
+    var canWriteAny = SecurityContextUtil.hasAuthority("statementformats:write:any");
     var patch =
         new StatementFormatPatch(
             request.displayName(),
             request.bankName(),
             request.defaultCurrencyIsoCode(),
-            request.dateHeader(),
-            request.dateFormat(),
-            request.descriptionHeader(),
-            request.creditHeader(),
-            request.debitHeader(),
-            request.typeHeader(),
-            request.categoryHeader(),
             request.enabled());
-    return StatementFormatResponse.from(statementFormatService.updateFormat(formatKey, patch));
+    return StatementFormatResponse.from(
+        statementFormatService.updateFormat(id, patch, userId, canWriteAny));
+  }
+
+  private String getCurrentUserId() {
+    return SecurityContextUtil.getCurrentUserId()
+        .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
   }
 }

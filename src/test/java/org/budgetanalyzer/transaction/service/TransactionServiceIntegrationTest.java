@@ -23,6 +23,8 @@ import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.FileImportRepository;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
+import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
@@ -47,6 +49,10 @@ class TransactionServiceIntegrationTest {
   @Autowired private TransactionRepository transactionRepository;
 
   @Autowired private FileImportRepository fileImportRepository;
+
+  @Autowired private StatementFormatRepository statementFormatRepository;
+
+  @Autowired private ParserRevisionRepository parserRevisionRepository;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
@@ -128,7 +134,8 @@ class TransactionServiceIntegrationTest {
     return new BatchFileImportSource(
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         originalFilename,
-        "capital-one",
+        statementFormatRepository.findByEnabledTrue().getFirst().getId(),
+        parserRevisionRepository.findAll().getFirst().getId(),
         "account-123",
         1024L);
   }

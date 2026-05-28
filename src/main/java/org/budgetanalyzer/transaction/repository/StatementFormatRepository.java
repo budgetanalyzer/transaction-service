@@ -4,28 +4,85 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 
 /** Repository for StatementFormat entities. */
 public interface StatementFormatRepository extends JpaRepository<StatementFormat, Long> {
 
   /**
-   * Finds a statement format by its format key.
+   * Legacy no-op lookup retained for old test fixtures while public identity migrates to ID.
    *
-   * @param formatKey the unique format identifier
-   * @return the statement format if found
+   * @param formatKey legacy format key
+   * @return empty result
    */
-  Optional<StatementFormat> findByFormatKey(String formatKey);
+  default Optional<StatementFormat> findByFormatKey(String formatKey) {
+    return Optional.empty();
+  }
 
   /**
-   * Finds an enabled statement format by its format key.
+   * Legacy no-op enabled lookup retained for old test fixtures.
    *
-   * @param formatKey the unique format identifier
-   * @return the statement format if found and enabled
+   * @param formatKey legacy format key
+   * @return empty result
    */
-  Optional<StatementFormat> findByFormatKeyAndEnabledTrue(String formatKey);
+  default Optional<StatementFormat> findByFormatKeyAndEnabledTrue(String formatKey) {
+    return Optional.empty();
+  }
+
+  /**
+   * Legacy no-op existence check retained for old test fixtures.
+   *
+   * @param formatKey legacy format key
+   * @return false
+   */
+  default boolean existsByFormatKey(String formatKey) {
+    return false;
+  }
+
+  /** Finds all statement formats visible to a user. */
+  @Query(
+      """
+      select statementFormat
+      from StatementFormat statementFormat
+      where statementFormat.scope = org.budgetanalyzer.transaction.domain.StatementFormatScope.SYSTEM
+         or statementFormat.ownerId = :ownerId
+      order by statementFormat.displayName asc, statementFormat.id asc
+      """)
+  List<StatementFormat> findVisibleToUser(@Param("ownerId") String ownerId);
+
+  /** Finds an enabled statement format visible to a user by ID. */
+  @Query(
+      """
+      select statementFormat
+      from StatementFormat statementFormat
+      where statementFormat.id = :id
+        and statementFormat.enabled = true
+        and (
+          statementFormat.scope = org.budgetanalyzer.transaction.domain.StatementFormatScope.SYSTEM
+          or statementFormat.ownerId = :ownerId
+        )
+      """)
+  Optional<StatementFormat> findEnabledVisibleToUser(
+      @Param("id") Long id, @Param("ownerId") String ownerId);
+
+  /** Finds a statement format visible to a user by ID. */
+  @Query(
+      """
+      select statementFormat
+      from StatementFormat statementFormat
+      where statementFormat.id = :id
+        and (
+          statementFormat.scope = org.budgetanalyzer.transaction.domain.StatementFormatScope.SYSTEM
+          or statementFormat.ownerId = :ownerId
+        )
+      """)
+  Optional<StatementFormat> findVisibleToUserById(
+      @Param("id") Long id, @Param("ownerId") String ownerId);
 
   /**
    * Finds all enabled statement formats of a specific type.
@@ -43,10 +100,11 @@ public interface StatementFormatRepository extends JpaRepository<StatementFormat
   List<StatementFormat> findByEnabledTrue();
 
   /**
-   * Checks if a format key already exists.
+   * Finds statement formats by scope and owner.
    *
-   * @param formatKey the format key to check
-   * @return true if the format key exists
+   * @param scope statement format scope
+   * @param ownerId owner ID
+   * @return matching statement formats
    */
-  boolean existsByFormatKey(String formatKey);
+  List<StatementFormat> findByScopeAndOwnerId(StatementFormatScope scope, String ownerId);
 }
