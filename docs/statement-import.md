@@ -25,6 +25,14 @@ managed via the Statement Format API. Hidden `parser_revision` rows store the
 deterministic parser configuration or static extractor handler selected during
 preview. The public import identity is `statement_format.id`, not a format key.
 
+During import preview, the service loads the selected `statement_format.id` and
+tries every enabled parser revision for that format in priority and revision
+order. Each revision produces an in-memory parser attempt: not applicable,
+matched, or failed. The first matched attempt in deterministic order supplies
+the preview rows, and the preview token records both the selected
+`statementFormatId` and the winning `parserRevisionId`. Batch import then
+persists the same provenance on `file_import`.
+
 ### Database Schema
 
 ```sql

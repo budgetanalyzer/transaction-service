@@ -23,13 +23,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.FileImport;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractor;
@@ -44,6 +48,8 @@ class TransactionImportServiceTest {
 
   @Mock private StatementExtractor statementExtractor;
 
+  @Mock private StatementFormatService statementFormatService;
+
   @Mock private TransactionRepository transactionRepository;
 
   @Mock private FileImportTrackingService fileImportTrackingService;
@@ -51,6 +57,80 @@ class TransactionImportServiceTest {
   @Mock private PreviewImportTokenService previewImportTokenService;
 
   @InjectMocks private TransactionImportService transactionImportService;
+
+  @Test
+  void previewFile_statementFormatIdRecordsMatchedParserRevisionInToken() {
+    var statementFormat = statementFormat(42L);
+    var firstParserRevision = parserRevision(statementFormat, 101L, "first-handler");
+    var secondParserRevision = parserRevision(statementFormat, 102L, "second-handler");
+    var previewTransaction = previewTransaction("Coffee Shop");
+    var candidateKey = TransactionDuplicateCandidateKey.from(previewTransaction);
+    var candidateCriteria = candidateCriteria(candidateKey);
+    var multipartFile = multipartFile();
+
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(extractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("transactions.csv"), eq("checking")))
+        .thenReturn(
+            List.of(
+                ParserAttempt.notApplicable(firstParserRevision, "no match"),
+                ParserAttempt.matched(
+                    secondParserRevision, statementExtractor, List.of(previewTransaction))));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq(42L),
+            eq(102L),
+            eq("checking"),
+            any()))
+        .thenReturn("preview-token");
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
+        .thenReturn(List.of());
+
+    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+
+    assertThat(result.statementFormatId()).isEqualTo(42L);
+    assertThat(result.previewImportToken()).isEqualTo("preview-token");
+    assertThat(result.transactions()).hasSize(1);
+    verify(previewImportTokenService)
+        .createToken(
+            eq(USER_ID),
+            eq("hash"),
+            eq("transactions.csv"),
+            eq(42L),
+            eq(102L),
+            eq("checking"),
+            any());
+  }
+
+  @Test
+  void previewFile_statementFormatIdRejectsWhenNoParserRevisionMatches() {
+    var statementFormat = statementFormat(42L);
+    var parserRevision = parserRevision(statementFormat, 101L, "first-handler");
+    var multipartFile = multipartFile();
+
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(extractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("transactions.csv"), eq("checking")))
+        .thenReturn(List.of(ParserAttempt.notApplicable(parserRevision, "no match")));
+
+    assertThatThrownBy(
+            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
+            });
+
+    verifyNoInteractions(previewImportTokenService);
+  }
 
   @Test
   void previewFile_existingDatabaseDuplicate_marksTransactionWithExistingReason() {
@@ -481,6 +561,20 @@ class TransactionImportServiceTest {
         originalFilename,
         "text/csv",
         "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+  }
+
+  private static StatementFormat statementFormat(Long id) {
+    var statementFormat =
+        StatementFormat.createSystemPdfFormat("Test Bank - Statement", "Test Bank", "USD");
+    ReflectionTestUtils.setField(statementFormat, "id", id);
+    return statementFormat;
+  }
+
+  private static ParserRevision parserRevision(
+      StatementFormat statementFormat, Long id, String handlerKey) {
+    var parserRevision = ParserRevision.createStaticHandler(statementFormat, 1, handlerKey);
+    ReflectionTestUtils.setField(parserRevision, "id", id);
+    return parserRevision;
   }
 
   private static TransactionDuplicateCandidate duplicateCandidate(

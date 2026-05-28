@@ -3,6 +3,8 @@ package org.budgetanalyzer.transaction.service.extractor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,16 +14,28 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.core.csv.CsvParser;
+import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.FormatType;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @ExtendWith(MockitoExtension.class)
 class StatementExtractorRegistryTest {
 
   @Mock private StatementFormatRepository formatRepository;
+  @Mock private ParserRevisionRepository parserRevisionRepository;
   @Mock private CsvParser csvParser;
   @Mock private StatementExtractor staticPdfExtractor;
 
@@ -35,6 +49,47 @@ class StatementExtractorRegistryTest {
     registry =
         new StatementExtractorRegistry(List.of(staticPdfExtractor), formatRepository, csvParser);
     registry.initialize();
+  }
+
+  @Nested
+  class AttemptParse {
+
+    @Test
+    void triesEveryActiveRevisionAndMatchesLaterApplicableRevision() {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("Test Bank PDF", "Test Bank", "USD");
+      ReflectionTestUtils.setField(statementFormat, "id", 42L);
+      var firstParserRevision =
+          ParserRevision.createStaticHandler(statementFormat, 1, "first-handler");
+      var secondParserRevision =
+          ParserRevision.createStaticHandler(statementFormat, 2, "second-handler");
+      var matchedTransaction = previewTransaction("Coffee Shop");
+      var firstStatementExtractor = new TestStatementExtractor("first-handler", false, List.of());
+      var secondStatementExtractor =
+          new TestStatementExtractor("second-handler", true, List.of(matchedTransaction));
+      var modernRegistry =
+          new StatementExtractorRegistry(
+              List.of(firstStatementExtractor, secondStatementExtractor),
+              parserRevisionRepository,
+              csvParser,
+              new ObjectMapper().findAndRegisterModules());
+
+      when(parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG))
+          .thenReturn(List.of());
+      when(parserRevisionRepository
+              .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
+          .thenReturn(List.of(firstParserRevision, secondParserRevision));
+      modernRegistry.initialize();
+
+      var parserAttempts =
+          modernRegistry.attemptParse(
+              statementFormat, "pdf".getBytes(), "statement.pdf", "account-123");
+
+      assertThat(parserAttempts)
+          .extracting("status")
+          .containsExactly(ParserAttemptStatus.NOT_APPLICABLE, ParserAttemptStatus.MATCHED);
+      assertThat(parserAttempts.get(1).transactions()).containsExactly(matchedTransaction);
+    }
   }
 
   @Nested
@@ -185,5 +240,52 @@ class StatementExtractorRegistryTest {
 
   private StatementFormat createPdfFormat(String formatKey) {
     return StatementFormat.createPdfFormat(formatKey, "Test Bank - PDF", "Test Bank", "USD");
+  }
+
+  private PreviewTransaction previewTransaction(String description) {
+    return new PreviewTransaction(
+        LocalDate.of(2024, 1, 15),
+        description,
+        new BigDecimal("4.50"),
+        TransactionType.DEBIT,
+        null,
+        "Test Bank",
+        "USD",
+        "checking");
+  }
+
+  private static class TestStatementExtractor implements StatementExtractor {
+
+    private final String formatKey;
+    private final boolean canHandle;
+    private final List<PreviewTransaction> transactions;
+
+    TestStatementExtractor(
+        String formatKey, boolean canHandle, List<PreviewTransaction> transactions) {
+      this.formatKey = formatKey;
+      this.canHandle = canHandle;
+      this.transactions = transactions;
+    }
+
+    @Override
+    public boolean canHandle(byte[] fileContent, String filename) {
+      return canHandle;
+    }
+
+    @Override
+    public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
+      return transactions;
+    }
+
+    @Override
+    public List<Transaction> extractEntities(
+        byte[] fileContent, String accountId, FileImport fileImport) {
+      return List.of();
+    }
+
+    @Override
+    public String getFormatKey() {
+      return formatKey;
+    }
   }
 }

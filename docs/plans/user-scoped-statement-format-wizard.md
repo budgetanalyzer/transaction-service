@@ -443,6 +443,11 @@ still needs user confirmation, deterministic validation, and persisted
 
 ### Phase 2: Revision Selection
 
+Implemented in the transaction service. Preview now attempts every enabled
+parser revision for the selected statement format, records the winning
+`parserRevisionId` in preview tokens, and batch import persists that provenance
+through `file_import`.
+
 - Change import preview to load the selected statement format by ID.
 - Try all active parser revisions for that format.
 - Add transient `ParserAttempt` result handling.

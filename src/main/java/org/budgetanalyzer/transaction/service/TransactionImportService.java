@@ -10,6 +10,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
@@ -72,31 +74,25 @@ public class TransactionImportService {
   public PreviewResult previewFile(
       Long statementFormatId, String accountId, MultipartFile file, String userId) {
     var statementFormat = statementFormatService.getEnabledVisibleById(statementFormatId, userId);
-    var statementParserSelection =
-        extractorRegistry
-            .findByStatementFormat(statementFormat)
-            .orElseThrow(
-                () ->
-                    new BusinessException(
-                        "Statement format has no supported parser revision: " + statementFormatId,
-                        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name()));
-
     var originalFilename = requireOriginalFilename(file);
     if (file.isEmpty()) {
       throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
     }
 
-    var extractor = statementParserSelection.statementExtractor();
-    var parserRevision = statementParserSelection.parserRevision();
+    var fileContent = readFileContent(file);
+    var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
+    var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
+    var parserAttempts =
+        extractorRegistry.attemptParse(statementFormat, fileContent, originalFilename, accountId);
+    var parserAttempt = selectParserAttempt(statementFormatId, parserAttempts);
+    var parserRevision = parserAttempt.parserRevision();
+
     log.info(
         "Previewing file with statementFormatId={} parserRevisionId={}: {}",
         statementFormat.getId(),
         parserRevision.getId(),
         originalFilename);
 
-    var fileContent = readFileContent(file);
-    var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
-    var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
     var previewImportToken =
         previewImportTokenService.createToken(
             userId,
@@ -106,7 +102,7 @@ public class TransactionImportService {
             parserRevision.getId(),
             accountId,
             file.getSize());
-    var extractedTransactions = extractor.extract(fileContent, accountId);
+    var extractedTransactions = parserAttempt.transactions();
 
     log.info(
         "Successfully previewed {} transactions from file {}",
@@ -191,6 +187,41 @@ public class TransactionImportService {
           BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
     }
     return trimmedOriginalFilename;
+  }
+
+  private ParserAttempt selectParserAttempt(
+      Long statementFormatId, List<ParserAttempt> parserAttempts) {
+    var matchedParserAttempts =
+        parserAttempts.stream()
+            .filter(parserAttempt -> parserAttempt.status() == ParserAttemptStatus.MATCHED)
+            .toList();
+    if (!matchedParserAttempts.isEmpty()) {
+      if (matchedParserAttempts.size() > 1) {
+        log.info(
+            "Multiple parser revisions matched statementFormatId={}; selected parserRevisionId={}",
+            statementFormatId,
+            matchedParserAttempts.getFirst().parserRevision().getId());
+      }
+      return matchedParserAttempts.getFirst();
+    }
+
+    if (parserAttempts.size() == 1
+        && parserAttempts.getFirst().status() == ParserAttemptStatus.FAILED) {
+      throw parserAttempts.getFirst().failure();
+    }
+
+    var failedCount =
+        parserAttempts.stream()
+            .filter(parserAttempt -> parserAttempt.status() == ParserAttemptStatus.FAILED)
+            .count();
+    log.info(
+        "No parser revision matched statementFormatId={}; attempts={} failed={}",
+        statementFormatId,
+        parserAttempts.size(),
+        failedCount);
+    throw new BusinessException(
+        "No active parser revision could parse statement format: " + statementFormatId,
+        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
   }
 
   private List<PreviewTransaction> markDuplicates(

@@ -25,7 +25,7 @@ import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
-import org.budgetanalyzer.transaction.service.dto.StatementParserSelection;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 
 /**
  * Registry for statement extractors, managing static handlers and dynamic CSV parser revisions.
@@ -104,29 +104,60 @@ public class StatementExtractorRegistry {
   }
 
   /**
-   * Finds an extractor for the highest-priority enabled parser revision under a statement format.
+   * Attempts every active parser revision under a statement format in deterministic selection
+   * order.
    *
    * @param statementFormat selected top-level statement format
-   * @return selected parser revision and extractor if available
+   * @param fileContent uploaded file bytes
+   * @param filename original uploaded filename
+   * @param accountId optional account ID to pre-fill for all transactions
+   * @return parser attempts in priority and revision order
    */
-  public Optional<StatementParserSelection> findByStatementFormat(StatementFormat statementFormat) {
+  public List<ParserAttempt> attemptParse(
+      StatementFormat statementFormat, byte[] fileContent, String filename, String accountId) {
     if (parserRevisionRepository == null) {
-      return Optional.empty();
+      return List.of();
     }
 
     var parserRevisions =
         parserRevisionRepository
             .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(
                 statementFormat.getId());
-    if (parserRevisions.isEmpty()) {
-      return Optional.empty();
+    var parserAttempts = new ArrayList<ParserAttempt>();
+    for (var parserRevision : parserRevisions) {
+      parserAttempts.add(
+          attemptParse(statementFormat, parserRevision, fileContent, filename, accountId));
     }
+    return parserAttempts;
+  }
 
-    var parserRevision = parserRevisions.get(0);
-    return createExtractor(statementFormat, parserRevision)
-        .map(
-            statementExtractor ->
-                new StatementParserSelection(statementFormat, parserRevision, statementExtractor));
+  private ParserAttempt attemptParse(
+      StatementFormat statementFormat,
+      ParserRevision parserRevision,
+      byte[] fileContent,
+      String filename,
+      String accountId) {
+    try {
+      var statementExtractor = createExtractor(statementFormat, parserRevision);
+      if (statementExtractor.isEmpty()) {
+        return ParserAttempt.notApplicable(
+            parserRevision, "No extractor is registered for parser revision.");
+      }
+      if (!statementExtractor.get().canHandle(fileContent, filename)) {
+        return ParserAttempt.notApplicable(
+            parserRevision, "Extractor cannot handle the uploaded file.");
+      }
+
+      var transactions = statementExtractor.get().extract(fileContent, accountId);
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision, "Extractor parsed no transaction rows.");
+      }
+
+      return ParserAttempt.matched(parserRevision, statementExtractor.get(), transactions);
+    } catch (BusinessException businessException) {
+      return ParserAttempt.failed(
+          parserRevision, businessException.getMessage(), businessException);
+    }
   }
 
   /**
