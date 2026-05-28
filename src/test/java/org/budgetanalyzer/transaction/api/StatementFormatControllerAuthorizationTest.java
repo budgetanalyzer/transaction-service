@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -25,7 +27,9 @@ import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
+import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
@@ -36,6 +40,7 @@ class StatementFormatControllerAuthorizationTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private StatementFormatService statementFormatService;
+  @MockitoBean private CsvStatementFormatWizardService csvStatementFormatWizardService;
 
   @BeforeEach
   void setupServiceMocks() {
@@ -48,6 +53,10 @@ class StatementFormatControllerAuthorizationTest {
     when(statementFormatService.updateFormat(
             anyLong(), any(StatementFormatPatch.class), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
+    when(csvStatementFormatWizardService.analyze(any(byte[].class), anyString()))
+        .thenReturn(
+            new CsvWizardAnalysisResult(
+                List.of(), List.of(), null, 0.0, java.util.Map.of(), List.of()));
   }
 
   // ==================== No authentication ====================
@@ -157,6 +166,30 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
+  @Test
+  void csvWizardAnalyze_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/csv-wizard/analyze")
+                .file(csvFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void csvWizardAnalyze_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/csv-wizard/analyze")
+                .file(csvFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
   // ==================== Admin with full permissions ====================
 
   @Test
@@ -207,5 +240,10 @@ class StatementFormatControllerAuthorizationTest {
           "creditHeader": "Amount"
         }
         """;
+  }
+
+  private MockMultipartFile csvFile() {
+    return new MockMultipartFile(
+        "file", "sample.csv", "text/csv", "Date,Description\n04/12/24,Coffee".getBytes());
   }
 }

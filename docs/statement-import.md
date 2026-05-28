@@ -72,6 +72,12 @@ CREATE TABLE parser_revision (
 - `GET /v1/statement-formats/{id}` - Get a specific format by ID
 - `POST /v1/statement-formats` - Create new format
 - `PUT /v1/statement-formats/{id}` - Update format metadata or enablement
+- `POST /v1/statement-formats/csv-wizard/analyze` - Analyze a CSV sample and
+  infer a column mapping
+- `POST /v1/statement-formats/csv-wizard/preview` - Validate a confirmed CSV
+  mapping and return read-only parser preview rows
+- `POST /v1/statement-formats/csv-wizard/save` - Save a user-scoped CSV format
+  with one enabled parser revision
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
@@ -204,7 +210,14 @@ Get a real CSV export from the bank. Review:
 
 ### Step 2: Create Format via API
 
-Use the Statement Format API to create the new format:
+Use the CSV wizard endpoints for user-created formats when you have a sample
+file. The wizard infers likely columns, lets the client submit a confirmed
+mapping, validates that mapping against the sample, and saves a user-scoped
+format with an enabled `CSV_COLUMN_CONFIG` parser revision. The uploaded sample
+is not persisted.
+
+The legacy JSON create endpoint is still available for clients that already
+know exact column names:
 
 ```bash
 curl -X POST http://localhost:8082/v1/statement-formats \
@@ -233,6 +246,158 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 - Date format must match CSV date representation
 - Use same column for both credit/debit headers if bank uses single amount column
 - Omit `typeHeader` if using separate credit/debit columns
+
+### CSV Wizard Flow
+
+#### Analyze Sample
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/analyze \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv"
+```
+
+**Response:** `200 OK`
+```json
+{
+  "headers": ["Transaction Date", "Description", "Amount", "Type"],
+  "sampleRows": [
+    {
+      "Transaction Date": "04/12/24",
+      "Description": "Coffee Shop",
+      "Amount": "4.50",
+      "Type": "Debit"
+    }
+  ],
+  "inferredMapping": {
+    "dateColumn": "Transaction Date",
+    "dateFormat": "MM/dd/uu",
+    "descriptionColumn": "Description",
+    "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+    "amountColumn": "Amount",
+    "debitColumn": null,
+    "creditColumn": null,
+    "typeColumn": "Type",
+    "categoryColumn": null
+  },
+  "confidence": 0.95,
+  "columnConfidences": {
+    "dateColumn": 0.95,
+    "descriptionColumn": 0.95,
+    "amountColumn": 0.95,
+    "typeColumn": 0.95
+  },
+  "warnings": []
+}
+```
+
+#### Preview Confirmed Mapping
+
+This preview is a parser validation view only. It does not create a normal
+import preview token, `file_import`, statement format, or transaction rows. It
+also does not perform duplicate detection or expose batch import actions.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv" \
+  -F 'request={
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "accountId": "checking-001",
+    "mapping": {
+      "dateColumn": "Transaction Date",
+      "dateFormat": "MM/dd/uu",
+      "descriptionColumn": "Description",
+      "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+      "amountColumn": "Amount",
+      "typeColumn": "Type"
+    }
+  };type=application/json'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "transactions": [
+    {
+      "date": "2024-04-12",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Example Bank",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "warnings": []
+}
+```
+
+#### Save Confirmed Mapping
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/save \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv" \
+  -F 'request={
+    "displayName": "Example Bank CSV",
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "mapping": {
+      "dateColumn": "Transaction Date",
+      "dateFormat": "MM/dd/uu",
+      "descriptionColumn": "Description",
+      "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+      "amountColumn": "Amount",
+      "typeColumn": "Type"
+    }
+  };type=application/json'
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": 123,
+  "displayName": "Example Bank CSV",
+  "formatType": "CSV",
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "scope": "USER",
+  "ownerId": "usr_test123",
+  "enabled": true
+}
+```
+
+The saved `id` can immediately be used as `statementFormatId` in
+`POST /v1/transactions/preview`.
+
+**Validation behavior:** Wizard preview and save validate required columns,
+date format, amount mode, credit/debit direction, bank name, ISO currency, and
+that the mapping parses at least one valid transaction row. Mapping validation
+errors return `422 Unprocessable Entity` with `code:
+CSV_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`, for example:
+
+```json
+{
+  "type": "APPLICATION_ERROR",
+  "message": "CSV wizard mapping validation failed.",
+  "code": "CSV_WIZARD_VALIDATION_FAILED",
+  "fieldErrors": [
+    {
+      "field": "mapping.typeColumn",
+      "message": "Column is required.",
+      "rejectedValue": null
+    }
+  ]
+}
+```
 
 ### Step 3: Verify Format Created
 

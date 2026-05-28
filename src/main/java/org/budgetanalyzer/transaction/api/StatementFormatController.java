@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,8 +32,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
+import org.budgetanalyzer.transaction.api.request.CsvWizardMappingPreviewRequest;
+import org.budgetanalyzer.transaction.api.request.CsvWizardSaveRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
+import org.budgetanalyzer.transaction.api.response.CsvWizardAnalysisResponse;
+import org.budgetanalyzer.transaction.api.response.CsvWizardPreviewResponse;
 import org.budgetanalyzer.transaction.api.response.StatementFormatResponse;
+import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
@@ -49,9 +56,13 @@ public class StatementFormatController {
   private static final Logger log = LoggerFactory.getLogger(StatementFormatController.class);
 
   private final StatementFormatService statementFormatService;
+  private final CsvStatementFormatWizardService csvStatementFormatWizardService;
 
-  public StatementFormatController(StatementFormatService statementFormatService) {
+  public StatementFormatController(
+      StatementFormatService statementFormatService,
+      CsvStatementFormatWizardService csvStatementFormatWizardService) {
     this.statementFormatService = statementFormatService;
+    this.csvStatementFormatWizardService = csvStatementFormatWizardService;
   }
 
   @PreAuthorize("hasAnyAuthority('statementformats:read', 'statementformats:read:any')")
@@ -180,6 +191,128 @@ public class StatementFormatController {
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{id}")
+            .buildAndExpand(created.getId())
+            .toUri();
+
+    return ResponseEntity.created(location).body(StatementFormatResponse.from(created));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Analyze a CSV sample for statement format creation",
+      description =
+          "Parses a multipart CSV sample, returns headers and sample rows, and infers an initial "
+              + "CSV column mapping without persisting the uploaded file or creating import state.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = CsvWizardAnalysisResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "CSV parsing or analysis error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/csv-wizard/analyze",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public CsvWizardAnalysisResponse analyzeCsvSample(@RequestPart("file") MultipartFile file)
+      throws java.io.IOException {
+    log.info("Received CSV statement format wizard analysis request");
+
+    return CsvWizardAnalysisResponse.from(
+        csvStatementFormatWizardService.analyze(file.getBytes(), file.getOriginalFilename()));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Preview a CSV wizard mapping",
+      description =
+          "Parses read-only transaction preview rows from a multipart CSV sample and confirmed "
+              + "mapping. This does not create a statement format, preview token, file import, or "
+              + "transactions.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = CsvWizardPreviewResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "Mapping validation error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/csv-wizard/preview",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public CsvWizardPreviewResponse previewCsvMapping(
+      @RequestPart("file") MultipartFile file,
+      @Valid @RequestPart("request") CsvWizardMappingPreviewRequest request)
+      throws java.io.IOException {
+    log.info("Received CSV statement format wizard mapping preview request");
+
+    return CsvWizardPreviewResponse.from(
+        csvStatementFormatWizardService.preview(
+            file.getBytes(), file.getOriginalFilename(), request.toServiceDto()));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Save a CSV wizard statement format",
+      description =
+          "Validates the confirmed mapping against the sample CSV and creates a user-scoped CSV "
+              + "statement format with one enabled CSV_COLUMN_CONFIG parser revision.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "201",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = StatementFormatResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "Mapping validation error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/csv-wizard/save",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public ResponseEntity<StatementFormatResponse> saveCsvWizardFormat(
+      @RequestPart("file") MultipartFile file,
+      @Valid @RequestPart("request") CsvWizardSaveRequest request)
+      throws java.io.IOException {
+    log.info("Received CSV statement format wizard save request: {}", request.displayName());
+
+    var userId = getCurrentUserId();
+    var canWriteAny = SecurityContextUtil.hasAuthority("statementformats:write:any");
+    var created =
+        csvStatementFormatWizardService.save(
+            file.getBytes(),
+            file.getOriginalFilename(),
+            request.toServiceDto(),
+            userId,
+            canWriteAny);
+    var location =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/v1/statement-formats/{id}")
             .buildAndExpand(created.getId())
             .toUri();
 

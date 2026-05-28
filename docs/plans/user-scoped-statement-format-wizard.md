@@ -457,19 +457,116 @@ through `file_import`.
 
 ### Phase 3: CSV Wizard
 
-- Add a create-format wizard for CSV.
-- Infer columns from headers and sample values.
-- Show read-only parser preview.
-- Save user-scoped CSV statement format with a deterministic
-  `CSV_COLUMN_CONFIG` parser revision.
+Implement CSV before generic PDF because it can reuse the existing
+`CSV_COLUMN_CONFIG` parser revision model and proves the wizard API shape with a
+lower-risk file type.
+
+1. **Owner: transaction-service** - Confirm the phase 1 and 2 service contract is
+   complete for CSV wizard use: visible statement formats are listed by
+   `StatementFormat.id`, `POST /v1/statement-formats` creates user-scoped CSV
+   formats by default, and `/v1/transactions/preview` accepts
+   `statementFormatId`. Fill only blocking gaps before adding wizard endpoints.
+2. **Owner: transaction-service** - Add CSV wizard request and response DTOs for
+   analysis, mapping preview, and save. Keep API DTOs in `api/request` and
+   `api/response`; map to service-layer DTOs at the controller boundary.
+3. **Owner: transaction-service** - Add a CSV sample analysis endpoint that
+   accepts a multipart CSV upload, parses headers and a small sample row set,
+   infers likely date, description, amount, debit, credit, type, and category
+   columns, and returns confidence plus validation warnings. Do not persist the
+   uploaded file or raw statement content for phase 3.
+4. **Owner: transaction-service** - Add a CSV mapping preview endpoint that
+   accepts the uploaded sample file plus the user's selected mapping, builds an
+   in-memory `CSV_COLUMN_CONFIG`, runs the existing configurable CSV parser, and
+   returns read-only parsed preview rows. This endpoint must not create a
+   statement format, preview import token, `file_import`, or transactions.
+5. **Owner: transaction-service** - Harden parser configuration validation for
+   wizard-created CSV mappings: required columns, supported date formats,
+   single-amount-with-type versus debit/credit-column mode, amount parsing,
+   direction inference, minimum valid row count, bank name, and default
+   currency. Return field-addressable validation errors suitable for form UI.
+6. **Owner: transaction-service** - Add a save endpoint or extend the existing
+   create statement format flow so the confirmed CSV mapping creates a
+   user-scoped `StatementFormat` and exactly one enabled `ParserRevision` with
+   `parser_type = CSV_COLUMN_CONFIG`. The saved format must immediately work
+   with the normal transaction preview and batch import flow.
+7. **Owner: transaction-service** - Add controller, service, and parser tests
+   for CSV header inference, mapping validation, read-only parser preview, save,
+   permissions, and normal import with the saved `statementFormatId`.
+8. **Owner: transaction-service** - Update `docs/statement-import.md` and API
+   documentation examples with the CSV wizard endpoints, request shapes,
+   validation behavior, and the distinction between parser preview and import
+   preview.
+9. **Owner: budget-analyzer-web** - Add the import-screen entry point:
+   `Create new statement format` starts the CSV wizard while existing saved
+   formats still use the normal import preview flow.
+10. **Owner: budget-analyzer-web** - Build the CSV wizard flow against the new
+    service endpoints: upload sample, show inferred mapping, allow column
+    selection adjustments, show read-only parsed preview, collect display name,
+    bank name, and default currency, then save.
+11. **Owner: budget-analyzer-web** - After save, refresh the statement-format
+    list, select the new `statementFormatId`, and return the user to the normal
+    import preview flow. Keep duplicate handling, transaction edits, and batch
+    import actions out of the wizard preview.
+12. **Owner: budget-analyzer-web** - Add focused UI tests for successful CSV
+    creation, validation errors, cancellation, and using the saved format in a
+    normal import preview.
 
 ### Phase 4: Generic PDF Table Wizard
 
-- Add text-based PDF table extraction and scoring.
-- Infer likely date, description, amount, debit, credit, and type columns.
-- Show read-only parser preview.
-- Save user-scoped PDF statement format with a deterministic
-  `PDF_TEXT_TABLE_CONFIG` parser revision.
+Start phase 4 only after the CSV wizard API, validation error shape, and web
+flow are stable. The PDF wizard should reuse the same product flow and endpoint
+style, but its parser engine is new and should stay limited to text-based PDFs
+with transaction-like tables.
+
+1. **Owner: transaction-service** - Add the `PDF_TEXT_TABLE_CONFIG` parser type,
+   typed parser config record, config schema version, validation rules, and
+   parser revision factory support. Do not route generic PDF parsing through
+   static handler keys.
+2. **Owner: transaction-service** - Add a PDF text extraction component based on
+   PDFBox output that rejects scanned or OCR-dependent PDFs clearly. Normalize
+   extracted text into page, line, cell, and table-candidate structures without
+   persisting the source file.
+3. **Owner: transaction-service** - Add table candidate detection and scoring
+   for text PDFs: header detection, repeated headers, row continuity, minimum
+   row count, date-like columns, description-like columns, signed amount columns,
+   debit/credit column pairs, and optional type columns.
+4. **Owner: transaction-service** - Add PDF wizard analysis endpoint support
+   that accepts a sample PDF upload and returns ranked table candidates,
+   inferred field mappings, confidence, sample rows, and user-facing rejection
+   reasons for unsupported files.
+5. **Owner: transaction-service** - Add PDF mapping preview support that accepts
+   the sample PDF plus the confirmed table and column mapping, builds an
+   in-memory `PDF_TEXT_TABLE_CONFIG`, parses read-only preview rows, and returns
+   diagnostics without creating import state.
+6. **Owner: transaction-service** - Add the deterministic
+   `PDF_TEXT_TABLE_CONFIG` extractor to normal import revision selection so a
+   saved user PDF format works through `/v1/transactions/preview` and then
+   `/v1/transactions/batch` with the winning `parserRevisionId` recorded.
+7. **Owner: transaction-service** - Add save support for user-scoped PDF formats
+   with one enabled `PDF_TEXT_TABLE_CONFIG` parser revision. Validate bank name,
+   default currency, date parsing, amount parsing, direction inference,
+   minimum-row match, and ambiguity before persisting.
+8. **Owner: transaction-service** - Add fixture-based tests with text PDFs for
+   table detection, mapping preview, unsupported scanned PDFs, ambiguous amount
+   direction, saved-format normal preview, and coexistence with existing static
+   PDF handlers under revision selection.
+9. **Owner: transaction-service** - Update `docs/statement-import.md`, API docs,
+   and this plan's open questions if retention, diagnostics, or unsupported-PDF
+   behavior changes during implementation.
+10. **Owner: budget-analyzer-web** - Extend the existing create-format wizard to
+    branch by file type. Keep CSV behavior unchanged and add PDF upload,
+    candidate table review, simple column mapping, read-only parser preview,
+    and save.
+11. **Owner: budget-analyzer-web** - Render PDF-specific unsupported-file and
+    low-confidence states clearly, including scanned PDF rejection and
+    ambiguous debit/credit direction. Do not expose parser internals such as
+    anchors, regexes, page coordinates, or revision IDs.
+12. **Owner: budget-analyzer-web** - After a PDF format is saved, refresh the
+    statement-format list, select the new `statementFormatId`, and route the
+    user back to the normal import preview flow.
+13. **Owner: budget-analyzer-web** - Add focused UI tests for PDF happy path,
+    unsupported scanned PDF, mapping correction, save, and normal import preview
+    using the saved PDF format.
 
 ### Phase 5: System Promotion And Catalog Management
 
