@@ -69,27 +69,6 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
         csvColumnParserConfig.dateFormat(), buildDateFormatter(csvColumnParserConfig.dateFormat()));
   }
 
-  /**
-   * Constructs a CSV extractor from legacy transient StatementFormat parser fields.
-   *
-   * @param format the statement format with legacy parser fields
-   * @param csvParser the CSV parser to use
-   */
-  public ConfigurableCsvStatementExtractor(StatementFormat format, CsvParser csvParser) {
-    this(
-        format,
-        ParserRevision.createCsvColumnConfig(format, 1, "{}"),
-        new CsvColumnParserConfig(
-            format.getDateHeader(),
-            format.getDateFormat(),
-            format.getDescriptionHeader(),
-            format.getCreditHeader(),
-            format.getDebitHeader(),
-            format.getTypeHeader(),
-            format.getCategoryHeader()),
-        csvParser);
-  }
-
   private static Map<String, TransactionType> initializeTransactionTypeMap() {
     var rv = new HashMap<String, TransactionType>();
     addTransactionType(rv, TransactionType.CREDIT, "credit", "deposit");
@@ -117,7 +96,7 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
     try {
       var csvData =
           csvParser.parseCsvInputStream(
-              new ByteArrayInputStream(fileContent), "preview.csv", getFormatKey());
+              new ByteArrayInputStream(fileContent), "preview.csv", getHandlerKey());
 
       return csvData.rows().stream().map(row -> mapToPreview(row, accountId)).toList();
     } catch (BusinessException e) {
@@ -138,7 +117,7 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
           csvParser.parseCsvInputStream(
               new ByteArrayInputStream(fileContent),
               fileImport.getOriginalFilename(),
-              getFormatKey());
+              getHandlerKey());
 
       return csvData.rows().stream().map(row -> mapToEntity(row, accountId, fileImport)).toList();
     } catch (BusinessException e) {
@@ -152,10 +131,7 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
   }
 
   @Override
-  public String getFormatKey() {
-    if (format.getFormatKey() != null) {
-      return format.getFormatKey();
-    }
+  public String getHandlerKey() {
     return "statement-format-" + format.getId() + "-revision-" + parserRevision.getId();
   }
 
@@ -181,7 +157,7 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
         if (header != null && !containsHeader(headers, header)) {
           log.debug(
               "Format '{}' header validation failed: missing '{}' in headers: {}",
-              getFormatKey(),
+              getHandlerKey(),
               header,
               headers);
           return false;
@@ -190,7 +166,7 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
 
       return true;
     } catch (Exception e) {
-      log.debug("Header validation failed for format '{}': {}", getFormatKey(), e.getMessage());
+      log.debug("Header validation failed for format '{}': {}", getHandlerKey(), e.getMessage());
       return false;
     }
   }

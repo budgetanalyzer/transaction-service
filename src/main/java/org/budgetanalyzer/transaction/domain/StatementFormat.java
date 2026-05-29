@@ -8,7 +8,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 
 import org.budgetanalyzer.core.domain.AuditableEntity;
@@ -58,15 +57,6 @@ public class StatementFormat extends AuditableEntity {
   @Column(name = "owner_id", length = 50)
   private String ownerId;
 
-  @Transient private String legacyFormatKey;
-  @Transient private String legacyDateHeader;
-  @Transient private String legacyDateFormat;
-  @Transient private String legacyDescriptionHeader;
-  @Transient private String legacyCreditHeader;
-  @Transient private String legacyDebitHeader;
-  @Transient private String legacyTypeHeader;
-  @Transient private String legacyCategoryHeader;
-
   /** Whether this format is enabled for use. */
   @NotNull
   @Column(name = "enabled", nullable = false)
@@ -93,46 +83,6 @@ public class StatementFormat extends AuditableEntity {
         defaultCurrencyIsoCode,
         StatementFormatScope.USER,
         ownerId);
-  }
-
-  /**
-   * Creates a CSV statement format with legacy parser fields for compatibility tests.
-   *
-   * @param formatKey legacy format key
-   * @param displayName user-friendly display name
-   * @param bankName bank name for transactions
-   * @param defaultCurrencyIsoCode default currency ISO code
-   * @param dateHeader CSV date column header
-   * @param dateFormat CSV date format
-   * @param descriptionHeader CSV description column header
-   * @param creditHeader CSV credit column header
-   * @param debitHeader CSV debit column header
-   * @param typeHeader CSV type column header
-   * @param categoryHeader CSV category column header
-   * @return new StatementFormat configured for CSV
-   */
-  public static StatementFormat createCsvFormat(
-      String formatKey,
-      String displayName,
-      String bankName,
-      String defaultCurrencyIsoCode,
-      String dateHeader,
-      String dateFormat,
-      String descriptionHeader,
-      String creditHeader,
-      String debitHeader,
-      String typeHeader,
-      String categoryHeader) {
-    var format = createCsvFormat(displayName, bankName, defaultCurrencyIsoCode, "usr_legacy_test");
-    format.legacyFormatKey = formatKey;
-    format.legacyDateHeader = dateHeader;
-    format.legacyDateFormat = dateFormat;
-    format.legacyDescriptionHeader = descriptionHeader;
-    format.legacyCreditHeader = creditHeader;
-    format.legacyDebitHeader = debitHeader;
-    format.legacyTypeHeader = typeHeader;
-    format.legacyCategoryHeader = categoryHeader;
-    return format;
   }
 
   /**
@@ -172,23 +122,6 @@ public class StatementFormat extends AuditableEntity {
         defaultCurrencyIsoCode,
         StatementFormatScope.USER,
         ownerId);
-  }
-
-  /**
-   * Creates a PDF statement format with a legacy format key for compatibility tests.
-   *
-   * @param formatKey legacy format key
-   * @param displayName user-friendly display name
-   * @param bankName bank name for transactions
-   * @param defaultCurrencyIsoCode default currency ISO code
-   * @return new StatementFormat configured for PDF
-   */
-  public static StatementFormat createPdfFormat(
-      String formatKey, String displayName, String bankName, String defaultCurrencyIsoCode) {
-    var format =
-        createUserPdfFormat(displayName, bankName, defaultCurrencyIsoCode, "usr_legacy_test");
-    format.legacyFormatKey = formatKey;
-    return format;
   }
 
   /**
@@ -232,10 +165,6 @@ public class StatementFormat extends AuditableEntity {
     return id;
   }
 
-  public String getFormatKey() {
-    return legacyFormatKey;
-  }
-
   public FormatType getFormatType() {
     return formatType;
   }
@@ -266,34 +195,6 @@ public class StatementFormat extends AuditableEntity {
 
   public void setDisplayName(String displayName) {
     this.displayName = displayName;
-  }
-
-  public String getDateHeader() {
-    return legacyDateHeader;
-  }
-
-  public String getDateFormat() {
-    return legacyDateFormat;
-  }
-
-  public String getDescriptionHeader() {
-    return legacyDescriptionHeader;
-  }
-
-  public String getCreditHeader() {
-    return legacyCreditHeader;
-  }
-
-  public String getDebitHeader() {
-    return legacyDebitHeader;
-  }
-
-  public String getTypeHeader() {
-    return legacyTypeHeader;
-  }
-
-  public String getCategoryHeader() {
-    return legacyCategoryHeader;
   }
 
   public StatementFormatScope getScope() {

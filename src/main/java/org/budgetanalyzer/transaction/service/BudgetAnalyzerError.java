@@ -35,8 +35,6 @@ public enum BudgetAnalyzerError {
           "One or more transactions in the batch failed business validation. "
               + "Check the fieldErrors array for details on each failed transaction.")
   BATCH_VALIDATION_FAILED,
-  @Schema(description = "A statement format with the given legacy format key already exists")
-  FORMAT_KEY_ALREADY_EXISTS,
   @Schema(description = "The statement format was not found")
   FORMAT_NOT_FOUND,
   @Schema(description = "The preview import token is invalid or incomplete")

@@ -47,8 +47,6 @@ transactions.
 - `id` (`Long`) - Database-generated file import identifier.
 - `contentHash` (`String`) - SHA-256 hash of the uploaded file bytes.
 - `originalFilename` (`String`) - Filename supplied in the multipart upload.
-- `format` (`String`) - Legacy statement format key retained only for
-  historical imports.
 - `statementFormatId` (`Long`) - Statement format selected for the import.
 - `parserRevisionId` (`Long`) - Parser revision that parsed the import.
 - `accountId` (`String`) - Optional account ID applied during import.

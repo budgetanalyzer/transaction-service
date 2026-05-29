@@ -39,7 +39,7 @@ public class CapitalOneBankMonthlyStatementExtractor implements StatementExtract
   private static final Logger log =
       LoggerFactory.getLogger(CapitalOneBankMonthlyStatementExtractor.class);
 
-  private static final String FORMAT_KEY = "capital-one-bank-monthly-statement";
+  private static final String HANDLER_KEY = "capital-one-bank-monthly-statement";
   private static final String BANK_NAME = "Capital One";
   private static final String CURRENCY_CODE = "USD";
 
@@ -113,8 +113,8 @@ public class CapitalOneBankMonthlyStatementExtractor implements StatementExtract
   }
 
   @Override
-  public String getFormatKey() {
-    return FORMAT_KEY;
+  public String getHandlerKey() {
+    return HANDLER_KEY;
   }
 
   @Override

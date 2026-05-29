@@ -47,8 +47,8 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void getFormatKey_returnsCorrectKey() {
-    assertThat(extractor.getFormatKey()).isEqualTo("capital-one-bank-monthly-statement");
+  void getHandlerKey_returnsCorrectKey() {
+    assertThat(extractor.getHandlerKey()).isEqualTo("capital-one-bank-monthly-statement");
   }
 
   @Test

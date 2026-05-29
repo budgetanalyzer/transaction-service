@@ -56,8 +56,8 @@ public class Transaction extends SoftDeletableEntity {
   /**
    * The file import this transaction came from.
    *
-   * <p>Required for token-backed batch imports; nullable only for legacy or service-created
-   * transactions that do not come from an uploaded source file.
+   * <p>Required for token-backed batch imports; nullable only for service-created transactions that
+   * do not come from an uploaded source file.
    */
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "file_import_id")

@@ -23,8 +23,7 @@ normal imports must not depend on a nondeterministic AI call.
 - Try active parser revisions automatically; never ask users to choose a bank
   layout version.
 - Save custom formats at user scope by default.
-- Use one public identifier model. Do not retain `formatKey` as a second public
-  identity for only some use cases.
+- Use one public identifier model: `StatementFormat.id`.
 - Separate parser creation from transaction import.
 - Prefer inferred mappings and confirmation over exposing parser internals.
 - Persist deterministic parser configuration, not ad hoc parser behavior.
@@ -105,10 +104,9 @@ statement formats.
 
 ## Identity And Naming
 
-`formatKey` should not remain the public import identity. It is currently used
-as a database slug, API path variable, extractor routing key, preview parameter,
-preview token field, and `file_import` provenance field. That is too much once
-formats can be user-scoped and names can collide.
+`StatementFormat.id` is the public import identity. Parser routing and import
+provenance use internal IDs or handler keys, so user-scoped names can collide
+without affecting API identity.
 
 Use `StatementFormat.id` as the public/import identity:
 
@@ -256,8 +254,7 @@ Notes:
   for deserialization and validation.
 - `parser_type` selects the parser engine, such as `STATIC_HANDLER`,
   `CSV_COLUMN_CONFIG`, or `PDF_TEXT_TABLE_CONFIG`.
-- `handler_key` is internal routing for static Java handlers. It replaces the
-  current practice of static extractors claiming public `formatKey` values.
+- `handler_key` is internal routing for static Java handlers.
 - Fields that must be searched, sorted, filtered, or joined belong in columns,
   not inside `parser_config`.
 
@@ -421,15 +418,14 @@ still needs user confirmation, deterministic validation, and persisted
 - Combining statement format save and transaction import in one submit.
 - Exposing bank layout versions as separate dropdown entries.
 - Persisting every failed parser attempt during normal import.
-- Maintaining `formatKey` as a parallel public identity.
+- Maintaining a parallel public identity.
 
 ## Phased Implementation
 
 ### Phase 1: Model, Identity, And Visibility
 
-- Replace public `formatKey` usage with `StatementFormat.id` in statement-format
-  APIs, import preview requests, preview tokens, frontend selects, and
-  `file_import` provenance.
+- Use `StatementFormat.id` in statement-format APIs, import preview requests,
+  preview tokens, frontend selects, and `file_import` provenance.
 - Add `scope` and `ownerId` to statement formats.
 - Add hidden parser revisions.
 - Move existing CSV configuration into parser revisions.

@@ -50,33 +50,6 @@ class StatementFormatServiceTest {
   }
 
   @Nested
-  class GetAllFormats {
-
-    @Test
-    void returnsAllFormats() {
-      var format1 = createCsvFormat("format-1");
-      var format2 = createCsvFormat("format-2");
-      when(statementFormatRepository.findAll()).thenReturn(List.of(format1, format2));
-
-      var result = statementFormatService.getAllFormats();
-
-      assertThat(result).hasSize(2);
-      assertThat(result)
-          .extracting(StatementFormat::getFormatKey)
-          .containsExactly("format-1", "format-2");
-    }
-
-    @Test
-    void returnsEmptyListWhenNoFormats() {
-      when(statementFormatRepository.findAll()).thenReturn(List.of());
-
-      var result = statementFormatService.getAllFormats();
-
-      assertThat(result).isEmpty();
-    }
-  }
-
-  @Nested
   class Visibility {
 
     @Test
@@ -113,29 +86,15 @@ class StatementFormatServiceTest {
 
       assertThat(result).isSameAs(userFormat);
     }
-  }
-
-  @Nested
-  class GetByFormatKey {
 
     @Test
-    void returnsFormatWhenFound() {
-      var format = createCsvFormat("test-format");
-      when(statementFormatRepository.findByFormatKey("test-format"))
-          .thenReturn(Optional.of(format));
+    void getByIdThrowsWhenFormatIsNotVisible() {
+      when(statementFormatRepository.findVisibleToUserById(7L, "usr_owner"))
+          .thenReturn(Optional.empty());
 
-      var result = statementFormatService.getByFormatKey("test-format");
-
-      assertThat(result.getFormatKey()).isEqualTo("test-format");
-    }
-
-    @Test
-    void throwsResourceNotFoundExceptionWhenNotFound() {
-      when(statementFormatRepository.findByFormatKey("unknown")).thenReturn(Optional.empty());
-
-      assertThatThrownBy(() -> statementFormatService.getByFormatKey("unknown"))
+      assertThatThrownBy(() -> statementFormatService.getById(7L, "usr_owner", false))
           .isInstanceOf(ResourceNotFoundException.class)
-          .hasMessageContaining("Statement format not found with key: unknown");
+          .hasMessageContaining("Statement format not found with id: 7");
     }
   }
 
@@ -143,87 +102,62 @@ class StatementFormatServiceTest {
   class CreateFormat {
 
     @Test
-    void createsCsvFormatSuccessfully() {
-      var request = createCsvFormatCommand("new-format");
-      when(statementFormatRepository.existsByFormatKey("new-format")).thenReturn(false);
+    void createsCsvFormatWithParserRevision() {
+      var command =
+          new StatementFormatCommand(
+              "Test Bank - CSV",
+              FormatType.CSV,
+              "Test Bank",
+              "USD",
+              null,
+              "Date",
+              "MM/dd/uu",
+              "Description",
+              "Amount",
+              "Amount",
+              null,
+              null);
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
 
-      var result = statementFormatService.createFormat(request);
+      var result = statementFormatService.createFormat(command, "usr_owner", false);
 
-      assertThat(result.getFormatKey()).isEqualTo("new-format");
       assertThat(result.getFormatType()).isEqualTo(FormatType.CSV);
-      assertThat(result.getBankName()).isEqualTo("Test Bank");
+      assertThat(result.getScope()).isEqualTo(StatementFormatScope.USER);
+      assertThat(result.getOwnerId()).isEqualTo("usr_owner");
+      verify(parserRevisionRepository).save(any());
       verify(statementExtractorRegistry).refreshCsvExtractors();
     }
 
     @Test
-    void createsPdfFormatSuccessfully() {
-      var request = createPdfFormatCommand("new-pdf-format");
-      when(statementFormatRepository.existsByFormatKey("new-pdf-format")).thenReturn(false);
+    void createsSystemFormatWhenWriteAnyAllowed() {
+      var command =
+          new StatementFormatCommand(
+              "System Bank",
+              FormatType.PDF,
+              "System Bank",
+              "USD",
+              StatementFormatScope.SYSTEM,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null);
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
 
-      var result = statementFormatService.createFormat(request);
+      var result = statementFormatService.createFormat(command, "usr_admin", true);
 
-      assertThat(result.getFormatKey()).isEqualTo("new-pdf-format");
-      assertThat(result.getFormatType()).isEqualTo(FormatType.PDF);
+      assertThat(result.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
+      assertThat(result.getOwnerId()).isNull();
       verify(statementExtractorRegistry, never()).refreshCsvExtractors();
     }
 
     @Test
-    void createsUserScopedFormatByDefault() {
-      var request =
-          new StatementFormatCommand(
-              "User Bank",
-              FormatType.PDF,
-              "User Bank",
-              "USD",
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null);
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var result = statementFormatService.createFormat(request, "usr_owner", false);
-
-      assertThat(result.getScope()).isEqualTo(StatementFormatScope.USER);
-      assertThat(result.getOwnerId()).isEqualTo("usr_owner");
-    }
-
-    @Test
-    void createsSystemFormatWhenWriteAnyAllowed() {
-      var request =
-          new StatementFormatCommand(
-              "System Bank",
-              FormatType.PDF,
-              "System Bank",
-              "USD",
-              StatementFormatScope.SYSTEM,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null);
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var result = statementFormatService.createFormat(request, "usr_admin", true);
-
-      assertThat(result.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
-      assertThat(result.getOwnerId()).isNull();
-    }
-
-    @Test
     void rejectsSystemFormatWithoutWriteAny() {
-      var request =
+      var command =
           new StatementFormatCommand(
               "System Bank",
               FormatType.PDF,
@@ -238,52 +172,11 @@ class StatementFormatServiceTest {
               null,
               null);
 
-      assertThatThrownBy(() -> statementFormatService.createFormat(request, "usr_owner", false))
+      assertThatThrownBy(() -> statementFormatService.createFormat(command, "usr_owner", false))
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("statementformats:write:any");
-    }
-
-    @Test
-    void throwsBusinessExceptionWhenFormatKeyExists() {
-      var request = createCsvFormatCommand("existing-format");
-      when(statementFormatRepository.existsByFormatKey("existing-format")).thenReturn(true);
-
-      assertThatThrownBy(() -> statementFormatService.createFormat(request))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("Format key already exists: existing-format");
 
       verify(statementFormatRepository, never()).save(any());
-    }
-
-    @Test
-    void savesCsvFormatWithAllFields() {
-      var request =
-          new StatementFormatCommand(
-              "full-csv",
-              "Full Bank - Export",
-              FormatType.CSV,
-              "Full Bank",
-              "EUR",
-              "Date Col",
-              "dd/MM/yyyy",
-              "Desc Col",
-              "Credit Col",
-              "Debit Col",
-              "Type Col",
-              "Category Col");
-      when(statementFormatRepository.existsByFormatKey("full-csv")).thenReturn(false);
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var result = statementFormatService.createFormat(request);
-
-      assertThat(result.getDateHeader()).isEqualTo("Date Col");
-      assertThat(result.getDateFormat()).isEqualTo("dd/MM/yyyy");
-      assertThat(result.getDescriptionHeader()).isEqualTo("Desc Col");
-      assertThat(result.getCreditHeader()).isEqualTo("Credit Col");
-      assertThat(result.getDebitHeader()).isEqualTo("Debit Col");
-      assertThat(result.getTypeHeader()).isEqualTo("Type Col");
-      assertThat(result.getCategoryHeader()).isEqualTo("Category Col");
     }
   }
 
@@ -291,88 +184,33 @@ class StatementFormatServiceTest {
   class UpdateFormat {
 
     @Test
-    void updatesFormatSuccessfully() {
-      var existingFormat = createCsvFormat("existing");
-      when(statementFormatRepository.findByFormatKey("existing"))
+    void updatesWritableUserFormatById() {
+      var existingFormat =
+          StatementFormat.createCsvFormat("Existing CSV", "Original Bank", "USD", "usr_owner");
+      when(statementFormatRepository.findVisibleToUserById(9L, "usr_owner"))
           .thenReturn(Optional.of(existingFormat));
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
 
-      var request =
-          new StatementFormatPatch(
-              null, "Updated Bank", "EUR", null, null, null, null, null, null, null, null);
+      var patch = new StatementFormatPatch(null, "Updated Bank", "EUR", false);
 
-      var result = statementFormatService.updateFormat("existing", request);
+      var result = statementFormatService.updateFormat(9L, patch, "usr_owner", false);
 
       assertThat(result.getBankName()).isEqualTo("Updated Bank");
       assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("EUR");
-      verify(statementExtractorRegistry).refreshCsvExtractors();
-    }
-
-    @Test
-    void updatesOnlyProvidedFields() {
-      var existingFormat = createCsvFormat("existing");
-      existingFormat.setBankName("Original Bank");
-      existingFormat.setDefaultCurrencyIsoCode("USD");
-      when(statementFormatRepository.findByFormatKey("existing"))
-          .thenReturn(Optional.of(existingFormat));
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var request =
-          new StatementFormatPatch(
-              null, "New Bank", null, null, null, null, null, null, null, null, null);
-
-      var result = statementFormatService.updateFormat("existing", request);
-
-      assertThat(result.getBankName()).isEqualTo("New Bank");
-      assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("USD");
-    }
-
-    @Test
-    void updatesEnabledStatus() {
-      var existingFormat = createCsvFormat("existing");
-      when(statementFormatRepository.findByFormatKey("existing"))
-          .thenReturn(Optional.of(existingFormat));
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var request =
-          new StatementFormatPatch(
-              null, null, null, null, null, null, null, null, null, null, false);
-
-      var result = statementFormatService.updateFormat("existing", request);
-
-      assertThat(result.isEnabled()).isFalse();
-    }
-
-    @Test
-    void disablingCsvFormatViaUpdateRefreshesExtractors() {
-      var existingFormat = createCsvFormat("existing");
-      when(statementFormatRepository.findByFormatKey("existing"))
-          .thenReturn(Optional.of(existingFormat));
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
-
-      var request =
-          new StatementFormatPatch(
-              null, null, null, null, null, null, null, null, null, null, false);
-
-      var result = statementFormatService.updateFormat("existing", request);
-
       assertThat(result.isEnabled()).isFalse();
       verify(statementExtractorRegistry).refreshCsvExtractors();
     }
 
     @Test
-    void throwsResourceNotFoundWhenFormatDoesNotExist() {
-      when(statementFormatRepository.findByFormatKey("unknown")).thenReturn(Optional.empty());
+    void rejectsSystemFormatUpdateWithoutWriteAny() {
+      var systemFormat = StatementFormat.createSystemPdfFormat("System PDF", "System Bank", "USD");
+      when(statementFormatRepository.findVisibleToUserById(9L, "usr_owner"))
+          .thenReturn(Optional.of(systemFormat));
 
-      var request =
-          new StatementFormatPatch(
-              null, "Bank", null, null, null, null, null, null, null, null, null);
+      var patch = new StatementFormatPatch("Updated", null, null, null);
 
-      assertThatThrownBy(() -> statementFormatService.updateFormat("unknown", request))
+      assertThatThrownBy(() -> statementFormatService.updateFormat(9L, patch, "usr_owner", false))
           .isInstanceOf(ResourceNotFoundException.class);
 
       verify(statementFormatRepository, never()).save(any());
@@ -380,66 +218,17 @@ class StatementFormatServiceTest {
 
     @Test
     void doesNotRefreshExtractorsForPdfFormat() {
-      var pdfFormat = StatementFormat.createPdfFormat("pdf-format", "Bank - PDF", "Bank", "USD");
-      when(statementFormatRepository.findByFormatKey("pdf-format"))
+      var pdfFormat = StatementFormat.createUserPdfFormat("Bank PDF", "Bank", "USD", "usr_owner");
+      when(statementFormatRepository.findVisibleToUserById(9L, "usr_owner"))
           .thenReturn(Optional.of(pdfFormat));
       when(statementFormatRepository.save(any(StatementFormat.class)))
           .thenAnswer(invocation -> invocation.getArgument(0));
 
-      var request =
-          new StatementFormatPatch(
-              null, "Updated Bank", null, null, null, null, null, null, null, null, null);
+      var patch = new StatementFormatPatch(null, "Updated Bank", null, null);
 
-      statementFormatService.updateFormat("pdf-format", request);
+      statementFormatService.updateFormat(9L, patch, "usr_owner", false);
 
       verify(statementExtractorRegistry, never()).refreshCsvExtractors();
     }
-  }
-
-  private StatementFormat createCsvFormat(String formatKey) {
-    return StatementFormat.createCsvFormat(
-        formatKey,
-        "Test Bank - Export",
-        "Test Bank",
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
-  }
-
-  private StatementFormatCommand createCsvFormatCommand(String formatKey) {
-    return new StatementFormatCommand(
-        formatKey,
-        "Test Bank - Export",
-        FormatType.CSV,
-        "Test Bank",
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
-  }
-
-  private StatementFormatCommand createPdfFormatCommand(String formatKey) {
-    return new StatementFormatCommand(
-        formatKey,
-        "Test Bank - PDF",
-        FormatType.PDF,
-        "Test Bank",
-        "USD",
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
   }
 }

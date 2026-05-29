@@ -214,17 +214,7 @@ class StatementFormatControllerAuthorizationTest {
 
   private StatementFormat createStubFormat() {
     return StatementFormat.createCsvFormat(
-        "capital-one",
-        "Capital One - Export",
-        "Capital One",
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
+        "Capital One - Export", "Capital One", "USD", "usr_test123");
   }
 
   private String createValidFormatJson() {

@@ -1298,7 +1298,8 @@ class TransactionServiceTest {
         FileImport.create(
             fileImportSource.contentHash(),
             "previous.csv",
-            fileImportSource.detectedFormat(),
+            fileImportSource.statementFormatId(),
+            fileImportSource.parserRevisionId(),
             fileImportSource.accountId(),
             fileImportSource.fileSizeBytes(),
             3,

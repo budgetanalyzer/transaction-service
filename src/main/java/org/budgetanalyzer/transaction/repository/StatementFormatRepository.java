@@ -14,36 +14,6 @@ import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 /** Repository for StatementFormat entities. */
 public interface StatementFormatRepository extends JpaRepository<StatementFormat, Long> {
 
-  /**
-   * Legacy no-op lookup retained for old test fixtures while public identity migrates to ID.
-   *
-   * @param formatKey legacy format key
-   * @return empty result
-   */
-  default Optional<StatementFormat> findByFormatKey(String formatKey) {
-    return Optional.empty();
-  }
-
-  /**
-   * Legacy no-op enabled lookup retained for old test fixtures.
-   *
-   * @param formatKey legacy format key
-   * @return empty result
-   */
-  default Optional<StatementFormat> findByFormatKeyAndEnabledTrue(String formatKey) {
-    return Optional.empty();
-  }
-
-  /**
-   * Legacy no-op existence check retained for old test fixtures.
-   *
-   * @param formatKey legacy format key
-   * @return false
-   */
-  default boolean existsByFormatKey(String formatKey) {
-    return false;
-  }
-
   /** Finds all statement formats visible to a user. */
   @Query(
       """

@@ -23,7 +23,7 @@ Registered PDF formats:
 Statement formats are stored in the `statement_format` database table and
 managed via the Statement Format API. Hidden `parser_revision` rows store the
 deterministic parser configuration or static extractor handler selected during
-preview. The public import identity is `statement_format.id`, not a format key.
+preview. The public import identity is always `statement_format.id`.
 
 During import preview, the service loads the selected `statement_format.id` and
 tries every enabled parser revision for that format in priority and revision
@@ -216,8 +216,8 @@ mapping, validates that mapping against the sample, and saves a user-scoped
 format with an enabled `CSV_COLUMN_CONFIG` parser revision. The uploaded sample
 is not persisted.
 
-The legacy JSON create endpoint is still available for clients that already
-know exact column names:
+The JSON create endpoint is available for clients that already know exact
+column names:
 
 ```bash
 curl -X POST http://localhost:8082/v1/statement-formats \

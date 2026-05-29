@@ -94,27 +94,6 @@ public class PreviewImportTokenService {
   }
 
   /**
-   * Legacy token creation overload that ignores the removed detected format key.
-   *
-   * @param ownerId the authenticated owner ID
-   * @param contentHash the SHA-256 file content hash
-   * @param originalFilename the uploaded file's original filename
-   * @param detectedFormat legacy detected format key
-   * @param accountId optional account ID applied during preview
-   * @param fileSizeBytes uploaded file size in bytes
-   * @return opaque encrypted preview import token
-   */
-  public String createToken(
-      String ownerId,
-      String contentHash,
-      String originalFilename,
-      String detectedFormat,
-      String accountId,
-      Long fileSizeBytes) {
-    return createToken(ownerId, contentHash, originalFilename, 1L, 1L, accountId, fileSizeBytes);
-  }
-
-  /**
    * Verifies an encrypted preview import token for the authenticated owner.
    *
    * @param token the token to verify

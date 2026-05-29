@@ -62,8 +62,8 @@ class StatementFormatControllerTest {
 
     @Test
     void returnsAllFormats() throws Exception {
-      var format1 = createCsvFormat("format-1", "Bank 1");
-      var format2 = createCsvFormat("format-2", "Bank 2");
+      var format1 = createCsvFormat("Bank 1");
+      var format2 = createCsvFormat("Bank 2");
       when(statementFormatService.getVisibleFormats("usr_test123", false))
           .thenReturn(List.of(format1, format2));
 
@@ -100,7 +100,7 @@ class StatementFormatControllerTest {
 
     @Test
     void returnsFormatWhenFound() throws Exception {
-      var format = createCsvFormat("capital-one", "Capital One");
+      var format = createCsvFormat("Capital One");
       setAuditFields(
           format,
           Instant.parse("2026-04-08T10:30:00Z"),
@@ -149,7 +149,7 @@ class StatementFormatControllerTest {
 
     @Test
     void createsFormatSuccessfully() throws Exception {
-      var format = createCsvFormat("new-format", "New Bank");
+      var format = createCsvFormat("New Bank");
       when(statementFormatService.createFormat(
               any(StatementFormatCommand.class), eq("usr_test123"), eq(false)))
           .thenReturn(format);
@@ -184,13 +184,13 @@ class StatementFormatControllerTest {
     }
 
     @Test
-    void returns422WhenFormatKeyExists() throws Exception {
+    void returns422WhenServiceRejectsBusinessRule() throws Exception {
       when(statementFormatService.createFormat(
               any(StatementFormatCommand.class), eq("usr_test123"), eq(false)))
           .thenThrow(
               new BusinessException(
-                  "Format key already exists: existing",
-                  BudgetAnalyzerError.FORMAT_KEY_ALREADY_EXISTS.name()));
+                  "Creating system statement formats requires statementformats:write:any.",
+                  BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name()));
 
       mockMvc
           .perform(
@@ -214,7 +214,7 @@ class StatementFormatControllerTest {
                       """))
           .andExpect(status().isUnprocessableEntity())
           .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
-          .andExpect(jsonPath("$.code").value("FORMAT_KEY_ALREADY_EXISTS"));
+          .andExpect(jsonPath("$.code").value("FORMAT_NOT_SUPPORTED"));
     }
 
     @Test
@@ -229,7 +229,6 @@ class StatementFormatControllerTest {
                   .content(
                       """
                       {
-                        "formatKey": "",
                         "bankName": "Bank"
                       }
                       """))
@@ -263,7 +262,7 @@ class StatementFormatControllerTest {
 
     @Test
     void updatesFormatSuccessfully() throws Exception {
-      var updatedFormat = createCsvFormat("existing", "Updated Bank");
+      var updatedFormat = createCsvFormat("Updated Bank");
       when(statementFormatService.updateFormat(
               eq(1L), any(StatementFormatPatch.class), eq("usr_test123"), eq(false)))
           .thenReturn(updatedFormat);
@@ -423,19 +422,8 @@ class StatementFormatControllerTest {
     }
   }
 
-  private StatementFormat createCsvFormat(String formatKey, String bankName) {
-    return StatementFormat.createCsvFormat(
-        formatKey,
-        bankName + " - Export",
-        bankName,
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
+  private StatementFormat createCsvFormat(String bankName) {
+    return StatementFormat.createCsvFormat(bankName + " - Export", bankName, "USD", "usr_test123");
   }
 
   private CsvWizardColumnMapping singleMapping() {

@@ -35,16 +35,14 @@ public class FileImport {
   @Column(name = "original_filename", nullable = false)
   private String originalFilename;
 
-  /** Legacy format key retained only for historical imports created before parser revisions. */
-  @Column(name = "format", length = 50)
-  private String format;
-
   /** Statement format selected for this import. */
-  @Column(name = "statement_format_id")
+  @NotNull
+  @Column(name = "statement_format_id", nullable = false)
   private Long statementFormatId;
 
   /** Parser revision that parsed this import. */
-  @Column(name = "parser_revision_id")
+  @NotNull
+  @Column(name = "parser_revision_id", nullable = false)
   private Long parserRevisionId;
 
   /** Account ID specified during import (nullable). */
@@ -109,40 +107,6 @@ public class FileImport {
     return fileImport;
   }
 
-  /**
-   * Creates a legacy FileImport record from a format key.
-   *
-   * @param contentHash SHA-256 hash of the file content
-   * @param originalFilename original filename as uploaded
-   * @param format legacy format key
-   * @param accountId account ID (nullable)
-   * @param fileSizeBytes file size in bytes
-   * @param transactionCount number of transactions imported
-   * @param importedBy user ID who performed the import
-   * @return new FileImport instance
-   */
-  public static FileImport create(
-      String contentHash,
-      String originalFilename,
-      String format,
-      String accountId,
-      Long fileSizeBytes,
-      Integer transactionCount,
-      String importedBy) {
-    var fileImport =
-        create(
-            contentHash,
-            originalFilename,
-            1L,
-            1L,
-            accountId,
-            fileSizeBytes,
-            transactionCount,
-            importedBy);
-    fileImport.format = format;
-    return fileImport;
-  }
-
   public Long getId() {
     return id;
   }
@@ -153,10 +117,6 @@ public class FileImport {
 
   public String getOriginalFilename() {
     return originalFilename;
-  }
-
-  public String getFormat() {
-    return format;
   }
 
   public Long getStatementFormatId() {

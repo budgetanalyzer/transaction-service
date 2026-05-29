@@ -56,22 +56,6 @@ public class StatementFormatService {
   }
 
   /**
-   * Constructs a legacy test-only StatementFormatService.
-   *
-   * @param statementFormatRepository repository for format persistence
-   * @param statementExtractorRegistry registry to notify of format changes
-   */
-  public StatementFormatService(
-      StatementFormatRepository statementFormatRepository,
-      StatementExtractorRegistry statementExtractorRegistry) {
-    this(
-        statementFormatRepository,
-        null,
-        statementExtractorRegistry,
-        new ObjectMapper().findAndRegisterModules());
-  }
-
-  /**
    * Returns statement formats visible to the current user.
    *
    * @param userId current user ID
@@ -84,16 +68,6 @@ public class StatementFormatService {
       return statementFormatRepository.findAll();
     }
     return statementFormatRepository.findVisibleToUser(userId);
-  }
-
-  /**
-   * Legacy test-only list method retained during statement format ID migration.
-   *
-   * @return list of all formats
-   */
-  @Transactional(readOnly = true)
-  public List<StatementFormat> getAllFormats() {
-    return statementFormatRepository.findAll();
   }
 
   /**
@@ -114,21 +88,6 @@ public class StatementFormatService {
     return statementFormatRepository
         .findVisibleToUserById(id, userId)
         .orElseThrow(() -> statementFormatNotFound(id));
-  }
-
-  /**
-   * Legacy test-only lookup by format key retained during statement format ID migration.
-   *
-   * @param formatKey legacy format key
-   * @return the format
-   */
-  @Transactional(readOnly = true)
-  public StatementFormat getByFormatKey(String formatKey) {
-    return statementFormatRepository
-        .findByFormatKey(formatKey)
-        .orElseThrow(
-            () ->
-                new ResourceNotFoundException("Statement format not found with key: " + formatKey));
   }
 
   /**
@@ -157,13 +116,6 @@ public class StatementFormatService {
   @Transactional
   public StatementFormat createFormat(
       StatementFormatCommand command, String userId, boolean canWriteAny) {
-    if (command.legacyFormatKey() != null
-        && statementFormatRepository.existsByFormatKey(command.legacyFormatKey())) {
-      throw new BusinessException(
-          "Format key already exists: " + command.legacyFormatKey(),
-          BudgetAnalyzerError.FORMAT_KEY_ALREADY_EXISTS.name());
-    }
-
     var requestedScope = command.scope() == null ? StatementFormatScope.USER : command.scope();
     if (requestedScope == StatementFormatScope.SYSTEM && !canWriteAny) {
       throw new BusinessException(
@@ -182,17 +134,6 @@ public class StatementFormatService {
     }
 
     return saved;
-  }
-
-  /**
-   * Legacy test-only create method retained during statement format ID migration.
-   *
-   * @param command the creation command
-   * @return the created format
-   */
-  @Transactional
-  public StatementFormat createFormat(StatementFormatCommand command) {
-    return createFormat(command, "usr_legacy_test", false);
   }
 
   /**
@@ -222,49 +163,9 @@ public class StatementFormatService {
     return saved;
   }
 
-  /**
-   * Legacy test-only update method retained during statement format ID migration.
-   *
-   * @param formatKey legacy format key
-   * @param patch the update patch
-   * @return the updated format
-   */
-  @Transactional
-  public StatementFormat updateFormat(String formatKey, StatementFormatPatch patch) {
-    var format = getByFormatKey(formatKey);
-
-    applyUpdates(format, patch);
-    var saved = statementFormatRepository.save(format);
-    if (saved.getFormatType() == FormatType.CSV) {
-      statementExtractorRegistry.refreshCsvExtractors();
-    }
-    return saved;
-  }
-
   private StatementFormat mapToEntity(
       StatementFormatCommand command, StatementFormatScope scope, String userId) {
     var ownerId = scope == StatementFormatScope.USER ? userId : null;
-    if (command.legacyFormatKey() != null && command.formatType() == FormatType.CSV) {
-      return StatementFormat.createCsvFormat(
-          command.legacyFormatKey(),
-          command.displayName(),
-          command.bankName(),
-          command.defaultCurrencyIsoCode(),
-          command.dateHeader(),
-          command.dateFormat(),
-          command.descriptionHeader(),
-          command.creditHeader(),
-          command.debitHeader(),
-          command.typeHeader(),
-          command.categoryHeader());
-    }
-    if (command.legacyFormatKey() != null && command.formatType() == FormatType.PDF) {
-      return StatementFormat.createPdfFormat(
-          command.legacyFormatKey(),
-          command.displayName(),
-          command.bankName(),
-          command.defaultCurrencyIsoCode());
-    }
     if (command.formatType() == FormatType.CSV) {
       if (scope == StatementFormatScope.SYSTEM) {
         return StatementFormat.createSystemCsvFormat(

@@ -147,38 +147,6 @@ public class FileImportTrackingService {
     return fileImportRepository.save(fileImport);
   }
 
-  /**
-   * Records a successful legacy file import by format key.
-   *
-   * @param contentHash the SHA-256 hash of the file content
-   * @param originalFilename the original filename
-   * @param format legacy format key
-   * @param accountId the account ID (nullable)
-   * @param fileSizeBytes the file size in bytes
-   * @param transactionCount the number of transactions imported
-   * @param importedBy the user ID who performed the import
-   * @return the created file import record
-   */
-  public FileImport recordImport(
-      String contentHash,
-      String originalFilename,
-      String format,
-      String accountId,
-      Long fileSizeBytes,
-      Integer transactionCount,
-      String importedBy) {
-    var fileImport =
-        FileImport.create(
-            contentHash,
-            originalFilename,
-            format,
-            accountId,
-            fileSizeBytes,
-            transactionCount,
-            importedBy);
-    return fileImportRepository.save(fileImport);
-  }
-
   /** Result of checking a file for duplicate import. */
   public record FileCheckResult(String hash, Optional<FileImport> existingImport) {}
 }

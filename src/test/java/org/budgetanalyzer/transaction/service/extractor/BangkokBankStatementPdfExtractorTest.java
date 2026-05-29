@@ -102,8 +102,8 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void getFormatKey_returnsCorrectKey() {
-    assertThat(extractor.getFormatKey()).isEqualTo("bkk-bank-statement-pdf");
+  void getHandlerKey_returnsCorrectKey() {
+    assertThat(extractor.getHandlerKey()).isEqualTo("bkk-bank-statement-pdf");
   }
 
   @Test
@@ -307,13 +307,7 @@ class BangkokBankStatementPdfExtractorTest {
             List.of(List.of(deposit("02/01/26", "SALARY TRANSFER", "5,000.25"))));
     var fileImport =
         FileImport.create(
-            "abc123",
-            "bkk-bank-statement.pdf",
-            "bkk-bank-statement-pdf",
-            "checking-001",
-            100L,
-            1,
-            "user-001");
+            "abc123", "bkk-bank-statement.pdf", 1L, 1L, "checking-001", 100L, 1, "user-001");
 
     var transactions = extractor.extractEntities(pdfContent, "checking-001", fileImport);
 

@@ -43,9 +43,9 @@ public interface StatementExtractor {
   List<Transaction> extractEntities(byte[] fileContent, String accountId, FileImport fileImport);
 
   /**
-   * Returns the internal extractor identifier.
+   * Returns the internal parser handler identifier.
    *
    * @return internal handler key or generated parser revision key
    */
-  String getFormatKey();
+  String getHandlerKey();
 }

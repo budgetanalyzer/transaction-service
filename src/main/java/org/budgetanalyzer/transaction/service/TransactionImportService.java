@@ -119,49 +119,6 @@ public class TransactionImportService {
         transactions);
   }
 
-  /**
-   * Legacy preview entry point that resolves an extractor by format key for old tests.
-   *
-   * @param format legacy format key
-   * @param accountId optional account identifier to pre-fill for all transactions
-   * @param file the file to preview
-   * @param userId the ID of the user whose active transactions should be checked for duplicates
-   * @return PreviewResult containing extracted transactions
-   */
-  public PreviewResult previewFile(
-      String format, String accountId, MultipartFile file, String userId) {
-    var extractor =
-        extractorRegistry
-            .findByFormat(format)
-            .orElseThrow(
-                () ->
-                    new BusinessException(
-                        "Format not supported: " + format,
-                        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name()));
-
-    var originalFilename = requireOriginalFilename(file);
-    if (file.isEmpty()) {
-      throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
-    }
-
-    log.info(
-        "Previewing file with legacy extractor '{}': {}",
-        extractor.getFormatKey(),
-        originalFilename);
-
-    var fileContent = readFileContent(file);
-    var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
-    var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
-    var previewImportToken =
-        previewImportTokenService.createToken(
-            userId, fileCheckResult.hash(), originalFilename, format, accountId, file.getSize());
-    var extractedTransactions = extractor.extract(fileContent, accountId);
-    var transactions = markDuplicates(extractedTransactions, userId);
-
-    return new PreviewResult(
-        originalFilename, format, previewImportToken, fileImportStatus, transactions);
-  }
-
   private byte[] readFileContent(MultipartFile file) {
     try {
       return file.getBytes();

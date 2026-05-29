@@ -22,7 +22,6 @@ import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
-import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
@@ -40,12 +39,10 @@ public class StatementExtractorRegistry {
 
   private final List<StatementExtractor> staticExtractors;
   private final ParserRevisionRepository parserRevisionRepository;
-  private final StatementFormatRepository legacyStatementFormatRepository;
   private final CsvParser csvParser;
   private final ObjectMapper objectMapper;
 
   private final Map<Long, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
-  private final Map<String, StatementExtractor> legacyCsvExtractorCache = new ConcurrentHashMap<>();
   private final Map<String, StatementExtractor> staticExtractorsByHandlerKey =
       new ConcurrentHashMap<>();
 
@@ -65,27 +62,8 @@ public class StatementExtractorRegistry {
       ObjectMapper objectMapper) {
     this.staticExtractors = staticExtractors;
     this.parserRevisionRepository = parserRevisionRepository;
-    this.legacyStatementFormatRepository = null;
     this.csvParser = csvParser;
     this.objectMapper = objectMapper;
-  }
-
-  /**
-   * Constructs a legacy test registry that can still resolve by format key.
-   *
-   * @param staticExtractors list of static extractors
-   * @param statementFormatRepository legacy statement format repository
-   * @param csvParser the CSV parser to use for dynamic extractors
-   */
-  public StatementExtractorRegistry(
-      List<StatementExtractor> staticExtractors,
-      StatementFormatRepository statementFormatRepository,
-      CsvParser csvParser) {
-    this.staticExtractors = staticExtractors;
-    this.parserRevisionRepository = null;
-    this.legacyStatementFormatRepository = statementFormatRepository;
-    this.csvParser = csvParser;
-    this.objectMapper = new ObjectMapper().findAndRegisterModules();
   }
 
   @PostConstruct
@@ -96,9 +74,9 @@ public class StatementExtractorRegistry {
     for (var statementExtractor : staticExtractors) {
       log.info(
           "  - {} ({})",
-          statementExtractor.getFormatKey(),
+          statementExtractor.getHandlerKey(),
           statementExtractor.getClass().getSimpleName());
-      staticExtractorsByHandlerKey.put(statementExtractor.getFormatKey(), statementExtractor);
+      staticExtractorsByHandlerKey.put(statementExtractor.getHandlerKey(), statementExtractor);
     }
     refreshCsvExtractors();
   }
@@ -168,39 +146,7 @@ public class StatementExtractorRegistry {
   public List<StatementExtractor> getAllExtractors() {
     var allStatementExtractors = new ArrayList<>(staticExtractors);
     allStatementExtractors.addAll(csvExtractorCache.values());
-    allStatementExtractors.addAll(legacyCsvExtractorCache.values());
     return allStatementExtractors;
-  }
-
-  /**
-   * Legacy lookup by format key retained for old tests during the ID migration.
-   *
-   * @param formatKey legacy format key or internal handler key
-   * @return matching extractor if available
-   */
-  public Optional<StatementExtractor> findByFormat(String formatKey) {
-    var staticExtractor = staticExtractorsByHandlerKey.get(formatKey);
-    if (staticExtractor != null) {
-      return Optional.of(staticExtractor);
-    }
-    var csvExtractor = legacyCsvExtractorCache.get(formatKey);
-    if (csvExtractor != null) {
-      return Optional.of(csvExtractor);
-    }
-    if (legacyStatementFormatRepository == null) {
-      return Optional.empty();
-    }
-
-    return legacyStatementFormatRepository
-        .findByFormatKeyAndEnabledTrue(formatKey)
-        .filter(statementFormat -> statementFormat.getFormatType() == FormatType.CSV)
-        .map(
-            statementFormat -> {
-              var statementExtractor =
-                  new ConfigurableCsvStatementExtractor(statementFormat, csvParser);
-              legacyCsvExtractorCache.put(formatKey, statementExtractor);
-              return statementExtractor;
-            });
   }
 
   /**
@@ -210,17 +156,6 @@ public class StatementExtractorRegistry {
    */
   public void refreshCsvExtractors() {
     csvExtractorCache.clear();
-    legacyCsvExtractorCache.clear();
-    if (parserRevisionRepository == null) {
-      var csvFormats =
-          legacyStatementFormatRepository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
-      for (var statementFormat : csvFormats) {
-        legacyCsvExtractorCache.put(
-            statementFormat.getFormatKey(),
-            new ConfigurableCsvStatementExtractor(statementFormat, csvParser));
-      }
-      return;
-    }
 
     var csvParserRevisions =
         parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG);

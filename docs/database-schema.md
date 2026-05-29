@@ -90,7 +90,7 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 - `description` - Bank-provided transaction description
 - `owner_id` - User that owns the transaction
 - `file_import_id` - File import source for token-backed batch imports; nullable
-  only for legacy or service-created transactions without an uploaded source
+  only for service-created transactions without an uploaded source
 - `deleted` - Soft-delete marker
 
 **Indexes:**
@@ -115,9 +115,8 @@ CREATE TABLE file_import (
     id BIGSERIAL PRIMARY KEY,
     content_hash VARCHAR(64) NOT NULL,
     original_filename VARCHAR(255) NOT NULL,
-    format VARCHAR(50),
-    statement_format_id BIGINT REFERENCES statement_format(id),
-    parser_revision_id BIGINT REFERENCES parser_revision(id),
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    parser_revision_id BIGINT NOT NULL REFERENCES parser_revision(id),
     account_id VARCHAR(255),
     file_size_bytes BIGINT NOT NULL,
     transaction_count INTEGER NOT NULL,
@@ -135,8 +134,6 @@ CREATE INDEX idx_file_import_parser_revision ON file_import(parser_revision_id);
 **Key Columns:**
 - `content_hash` - SHA-256 hash of the uploaded file bytes
 - `original_filename` - Filename supplied with the import
-- `format` - Legacy statement format key retained for historical imports;
-  nullable for new imports
 - `statement_format_id` - Statement format selected for the import
 - `parser_revision_id` - Parser revision that parsed the import
 - `account_id` - Optional account identifier supplied during import
@@ -152,7 +149,7 @@ and exact-file reupload contract.
 
 Newly created token-backed batch transactions are linked through
 `transaction.file_import_id` to either the new `file_import` row or the existing
-matching row. `transaction.file_import_id` remains nullable only for legacy or
+matching row. `transaction.file_import_id` remains nullable only for
 service-created transactions that did not originate from an uploaded source file.
 
 ### statement_format
@@ -190,10 +187,9 @@ CREATE INDEX idx_statement_format_scope_owner ON statement_format(scope, owner_i
 - `owner_id` - Owner of user-scoped formats; null for system formats
 - `enabled` - Whether the format can be selected for preview
 
-Migration `V18__user_scoped_statement_formats_and_parser_revisions.sql` removes
-the old public `format_key` column and moves parser-specific configuration out
-of this table. System formats are visible to every user. User-scoped formats
-are visible only to their owner unless the caller has `statementformats:*:any`.
+Parser-specific configuration lives outside this table in `parser_revision`.
+System formats are visible to every user. User-scoped formats are visible only
+to their owner unless the caller has `statementformats:*:any`.
 
 ### parser_revision
 

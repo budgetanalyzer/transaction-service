@@ -19,16 +19,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import org.budgetanalyzer.core.csv.CsvData;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.core.csv.CsvRow;
 import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 
 @ExtendWith(MockitoExtension.class)
 class ConfigurableCsvStatementExtractorTest {
+
+  private static final String HANDLER_KEY = "statement-format-7-revision-11";
+  private static final String HANDLER_KEY_4_DIGIT = "statement-format-8-revision-12";
+  private static final String IMPLICIT_HANDLER_KEY = "statement-format-9-revision-13";
 
   @Mock private CsvParser csvParser;
 
@@ -36,23 +43,21 @@ class ConfigurableCsvStatementExtractorTest {
 
   @BeforeEach
   void setUp() {
-    var format = createTestFormat();
-    extractor = new ConfigurableCsvStatementExtractor(format, csvParser);
-  }
-
-  private StatementFormat createTestFormat() {
-    return StatementFormat.createCsvFormat(
-        "test-bank",
-        "Test Bank - Export",
-        "Test Bank",
-        "USD",
-        "Transaction Date",
-        "MM/dd/uu",
-        "Transaction Description",
-        "Transaction Amount",
-        "Transaction Amount",
-        "Transaction Type",
-        null);
+    extractor =
+        createExtractor(
+            7L,
+            11L,
+            "Test Bank - Export",
+            "Test Bank",
+            "USD",
+            new CsvColumnParserConfig(
+                "Transaction Date",
+                "MM/dd/uu",
+                "Transaction Description",
+                "Transaction Amount",
+                "Transaction Amount",
+                "Transaction Type",
+                null));
   }
 
   @Nested
@@ -125,7 +130,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Grocery Store",
                           "Transaction Amount", "52.34",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = extractor.extract("dummy".getBytes(), "account-123");
@@ -153,7 +158,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Payroll Deposit",
                           "Transaction Amount", "2500.00",
                           "Transaction Type", "Credit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = extractor.extract("dummy".getBytes(), null);
@@ -176,7 +181,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Test",
                           "Transaction Amount", "$1,234.56",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = extractor.extract("dummy".getBytes(), null);
@@ -196,7 +201,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Test",
                           "Transaction Amount", "10.00",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
@@ -207,25 +212,26 @@ class ConfigurableCsvStatementExtractorTest {
     @Test
     void throwsExceptionForDateBefore2000() throws Exception {
       // Use a 4-digit year format to test the year 2000 validation
-      var format4Digit =
-          StatementFormat.createCsvFormat(
-              "test-bank-4digit",
+      var extractor4Digit =
+          createExtractor(
+              8L,
+              12L,
               "Test Bank - Export",
               "Test Bank",
               "USD",
-              "Transaction Date",
-              "MM/dd/yyyy",
-              "Transaction Description",
-              "Transaction Amount",
-              "Transaction Amount",
-              "Transaction Type",
-              null);
-      var extractor4Digit = new ConfigurableCsvStatementExtractor(format4Digit, csvParser);
+              new CsvColumnParserConfig(
+                  "Transaction Date",
+                  "MM/dd/yyyy",
+                  "Transaction Description",
+                  "Transaction Amount",
+                  "Transaction Amount",
+                  "Transaction Type",
+                  null));
 
       var csvData =
           new CsvData(
               "test.csv",
-              "test-bank-4digit",
+              HANDLER_KEY_4_DIGIT,
               List.of(
                   "Transaction Date",
                   "Transaction Description",
@@ -239,7 +245,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Test",
                           "Transaction Amount", "10.00",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank-4digit")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY_4_DIGIT)))
           .thenReturn(csvData);
 
       assertThatThrownBy(() -> extractor4Digit.extract("dummy".getBytes(), null))
@@ -258,7 +264,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Date", "01/15/25",
                           "Transaction Amount", "10.00",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
@@ -278,7 +284,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Test",
                           "Transaction Amount", "10.00",
                           "Transaction Type", "InvalidType"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
@@ -298,7 +304,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Transaction Description", "Test",
                           "Transaction Amount", "",
                           "Transaction Type", "Debit"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("test-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
       assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
@@ -314,20 +320,15 @@ class ConfigurableCsvStatementExtractorTest {
 
     @BeforeEach
     void setUp() {
-      var format =
-          StatementFormat.createCsvFormat(
-              "implicit-type-bank",
+      implicitTypeExtractor =
+          createExtractor(
+              9L,
+              13L,
               "Implicit Type Bank - Export",
               "Implicit Type Bank",
               "USD",
-              "Date",
-              "MM/dd/uu",
-              "Description",
-              "Credit",
-              "Debit",
-              null,
-              null);
-      implicitTypeExtractor = new ConfigurableCsvStatementExtractor(format, csvParser);
+              new CsvColumnParserConfig(
+                  "Date", "MM/dd/uu", "Description", "Credit", "Debit", null, null));
     }
 
     @Test
@@ -335,7 +336,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           new CsvData(
               "test.csv",
-              "implicit-type-bank",
+              IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
                   new CsvRow(
@@ -345,7 +346,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Description", "Deposit",
                           "Credit", "100.00",
                           "Debit", ""))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
@@ -358,7 +359,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           new CsvData(
               "test.csv",
-              "implicit-type-bank",
+              IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
                   new CsvRow(
@@ -368,7 +369,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Description", "Purchase",
                           "Credit", "",
                           "Debit", "50.00"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
@@ -381,7 +382,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           new CsvData(
               "test.csv",
-              "implicit-type-bank",
+              IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
                   new CsvRow(
@@ -391,7 +392,7 @@ class ConfigurableCsvStatementExtractorTest {
                           "Description", "Unknown",
                           "Credit", "",
                           "Debit", "25.00"))));
-      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq("implicit-type-bank")))
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
       var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
@@ -401,23 +402,40 @@ class ConfigurableCsvStatementExtractorTest {
   }
 
   @Nested
-  class GetFormatKey {
+  class GetHandlerKey {
 
     @Test
-    void returnsConfiguredFormatKey() {
-      assertThat(extractor.getFormatKey()).isEqualTo("test-bank");
+    void returnsGeneratedHandlerKey() {
+      assertThat(extractor.getHandlerKey()).isEqualTo(HANDLER_KEY);
     }
   }
 
   private CsvData createCsvData(List<CsvRow> rows) {
     return new CsvData(
         "test.csv",
-        "test-bank",
+        HANDLER_KEY,
         List.of(
             "Transaction Date",
             "Transaction Description",
             "Transaction Amount",
             "Transaction Type"),
         rows);
+  }
+
+  private ConfigurableCsvStatementExtractor createExtractor(
+      Long statementFormatId,
+      Long parserRevisionId,
+      String displayName,
+      String bankName,
+      String defaultCurrencyIsoCode,
+      CsvColumnParserConfig csvColumnParserConfig) {
+    var statementFormat =
+        StatementFormat.createCsvFormat(
+            displayName, bankName, defaultCurrencyIsoCode, "usr_test123");
+    ReflectionTestUtils.setField(statementFormat, "id", statementFormatId);
+    var parserRevision = ParserRevision.createCsvColumnConfig(statementFormat, 1, "{}");
+    ReflectionTestUtils.setField(parserRevision, "id", parserRevisionId);
+    return new ConfigurableCsvStatementExtractor(
+        statementFormat, parserRevision, csvColumnParserConfig, csvParser);
   }
 }
