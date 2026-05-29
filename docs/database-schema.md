@@ -70,7 +70,6 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
     ON transaction (
         owner_id,
         deleted,
-        account_id,
         bank_name,
         date,
         amount,
@@ -98,9 +97,10 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 - Single-column indexes for account, bank, date, currency, type, deleted, owner,
   and file import lookups
 - `idx_transaction_owner_deleted_duplicate_candidates` supports owner-scoped
-  duplicate candidate lookup across `account_id`, `bank_name`, `date`,
-  `amount`, `type`, and `currency_iso_code`. It replaced the exact-description
-  duplicate index in migration `V17__replace_duplicate_candidate_index.sql`.
+  duplicate candidate lookup across `bank_name`, `date`, `amount`, `type`, and
+  `currency_iso_code`. Duplicate matching intentionally ignores `account_id`.
+  The current index shape is maintained by migration
+  `V20__remove_account_id_from_duplicate_candidate_index.sql`.
 
 The database returns only structured duplicate candidates. Description matching
 and batch skip/import semantics are service-layer behavior documented in

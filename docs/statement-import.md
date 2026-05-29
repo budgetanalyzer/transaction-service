@@ -509,7 +509,8 @@ Verify:
   non-blank multipart filename
 - `statementFormatId` (number, required) - Statement format ID selected from
   `GET /v1/statement-formats`
-- `accountId` (string, optional) - Account to associate with previewed transactions
+- `accountId` (string, optional) - Account to associate with previewed
+  transactions; not used for duplicate detection
 
 The service accepts statement preview uploads up to `25MB` by default. Override
 `TRANSACTION_IMPORT_MAX_FILE_SIZE` and `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` for

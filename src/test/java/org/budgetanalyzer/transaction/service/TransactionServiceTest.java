@@ -1411,7 +1411,6 @@ class TransactionServiceTest {
   private static TransactionDuplicateCandidateCriteria candidateCriteria(
       TransactionDuplicateCandidateKey candidateKey) {
     return new TransactionDuplicateCandidateCriteria(
-        candidateKey.accountId(),
         candidateKey.bankName(),
         candidateKey.date(),
         candidateKey.amount(),

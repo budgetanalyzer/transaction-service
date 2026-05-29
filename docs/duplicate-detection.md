@@ -22,7 +22,6 @@ users can import the same transaction independently.
 
 The service first matches strict financial identity fields:
 
-- `accountId`
 - `bankName`
 - `date`
 - `amount`
@@ -31,7 +30,9 @@ The service first matches strict financial identity fields:
 
 Field rules:
 
-- `accountId` treats `null` and empty string as equivalent.
+- `accountId` is not part of duplicate matching. A transaction can be marked as
+  a duplicate even when the preview row has a different account ID or one side
+  has no account ID.
 - `amount` is canonicalized to scale 2.
 - Only active persisted transactions are candidates. Soft-deleted rows are
   ignored.

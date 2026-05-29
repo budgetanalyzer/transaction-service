@@ -413,6 +413,8 @@ omitted when `duplicate=false`. `fileImport` is file-level metadata, separate
 from per-row transaction duplicate detection, and `previewImportToken` is the
 opaque source-file token required by `/batch`. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for details.
+Preview and batch rows still carry `accountId`, but duplicate detection does
+not require account IDs to match.
 
 ### BatchImportRequest
 
@@ -618,7 +620,7 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 - `type` - Required, DEBIT or CREDIT
 - `bankName` - Required, non-blank
 - `currencyIsoCode` - Required, non-blank
-- `accountId` - Optional
+- `accountId` - Optional, not used for duplicate detection
 - `category` - Optional
 - `allowDuplicate` - Optional, defaults to false. When true, imports the row
   even if duplicate detection matches it.

@@ -10,7 +10,6 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 /**
  * Structured repository input for owner-scoped duplicate candidate lookup.
  *
- * @param accountId the account ID, with null and empty string treated equivalently
  * @param bankName the bank name
  * @param date the transaction date
  * @param amount the transaction amount, canonicalized to scale 2
@@ -18,7 +17,6 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
  * @param currencyIsoCode the ISO currency code
  */
 public record TransactionDuplicateCandidateCriteria(
-    String accountId,
     String bankName,
     LocalDate date,
     BigDecimal amount,
@@ -29,19 +27,11 @@ public record TransactionDuplicateCandidateCriteria(
 
   /** Creates normalized duplicate candidate criteria. */
   public TransactionDuplicateCandidateCriteria {
-    accountId = normalizeAccountId(accountId);
     bankName = Objects.requireNonNull(bankName, "bankName");
     date = Objects.requireNonNull(date, "date");
     amount = canonicalizeAmount(amount);
     type = Objects.requireNonNull(type, "type");
     currencyIsoCode = Objects.requireNonNull(currencyIsoCode, "currencyIsoCode");
-  }
-
-  private static String normalizeAccountId(String accountId) {
-    if (accountId == null || accountId.isEmpty()) {
-      return null;
-    }
-    return accountId;
   }
 
   private static BigDecimal canonicalizeAmount(BigDecimal amount) {

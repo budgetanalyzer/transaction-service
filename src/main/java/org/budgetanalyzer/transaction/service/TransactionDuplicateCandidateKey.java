@@ -15,7 +15,6 @@ import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
  * <p>This key represents the strict financial identity fields used to find candidate duplicates
  * before description matching is applied.
  *
- * @param accountId the account ID, with null and empty string treated equivalently
  * @param bankName the bank name
  * @param date the transaction date
  * @param amount the transaction amount, canonicalized to scale 2
@@ -23,7 +22,6 @@ import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
  * @param currencyIsoCode the ISO currency code
  */
 public record TransactionDuplicateCandidateKey(
-    String accountId,
     String bankName,
     LocalDate date,
     BigDecimal amount,
@@ -34,7 +32,6 @@ public record TransactionDuplicateCandidateKey(
 
   /** Creates a normalized duplicate candidate key. */
   public TransactionDuplicateCandidateKey {
-    accountId = normalizeAccountId(accountId);
     bankName = Objects.requireNonNull(bankName, "bankName");
     date = Objects.requireNonNull(date, "date");
     amount = canonicalizeAmount(amount);
@@ -51,7 +48,6 @@ public record TransactionDuplicateCandidateKey(
   public static TransactionDuplicateCandidateKey from(PreviewTransaction previewTransaction) {
     Objects.requireNonNull(previewTransaction, "previewTransaction");
     return new TransactionDuplicateCandidateKey(
-        previewTransaction.accountId(),
         previewTransaction.bankName(),
         previewTransaction.date(),
         previewTransaction.amount(),
@@ -68,19 +64,11 @@ public record TransactionDuplicateCandidateKey(
   public static TransactionDuplicateCandidateKey from(Transaction transaction) {
     Objects.requireNonNull(transaction, "transaction");
     return new TransactionDuplicateCandidateKey(
-        transaction.getAccountId(),
         transaction.getBankName(),
         transaction.getDate(),
         transaction.getAmount(),
         transaction.getType(),
         transaction.getCurrencyIsoCode());
-  }
-
-  private static String normalizeAccountId(String accountId) {
-    if (accountId == null || accountId.isEmpty()) {
-      return null;
-    }
-    return accountId;
   }
 
   private static BigDecimal canonicalizeAmount(BigDecimal amount) {

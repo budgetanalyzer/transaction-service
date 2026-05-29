@@ -117,7 +117,6 @@ final class TransactionDuplicateMatcher {
   private static TransactionDuplicateCandidateKey candidateKey(
       TransactionDuplicateCandidateCriteria transactionDuplicateCandidateCriteria) {
     return new TransactionDuplicateCandidateKey(
-        transactionDuplicateCandidateCriteria.accountId(),
         transactionDuplicateCandidateCriteria.bankName(),
         transactionDuplicateCandidateCriteria.date(),
         transactionDuplicateCandidateCriteria.amount(),
@@ -128,7 +127,6 @@ final class TransactionDuplicateMatcher {
   private static TransactionDuplicateCandidateCriteria toCandidateCriteria(
       TransactionDuplicateCandidateKey transactionDuplicateCandidateKey) {
     return new TransactionDuplicateCandidateCriteria(
-        transactionDuplicateCandidateKey.accountId(),
         transactionDuplicateCandidateKey.bankName(),
         transactionDuplicateCandidateKey.date(),
         transactionDuplicateCandidateKey.amount(),
