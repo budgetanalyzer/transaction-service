@@ -195,8 +195,13 @@ Uses Java `DateTimeFormatter` patterns:
 | `dd/MM/uuuu` | Day/Month/4-digit year | 15/11/2024 |
 | `M/d/uu` | Month/Day/2-digit year (no leading zeros) | 1/5/24 |
 | `uuuu-MM-dd` | ISO 8601 format | 2024-11-15 |
+| `d MMM uuuu` | Day short-month 4-digit year | 5 Dec 2025 |
+| `d MMM uuuu HH:mm` | Day short-month 4-digit year with 24-hour time | 31 Dec 2025 10:37 |
 
 See [DateTimeFormatter documentation](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/time/format/DateTimeFormatter.html) for all patterns.
+When a CSV format is configured with a supported date-time pattern such as
+`d MMM uuuu HH:mm`, rows from the same bank export may omit the time; the parser
+falls back to the matching date-only pattern for those rows.
 
 ## Adding a New Bank Format
 

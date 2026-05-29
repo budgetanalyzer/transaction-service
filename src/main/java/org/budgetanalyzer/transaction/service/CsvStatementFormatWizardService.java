@@ -54,7 +54,9 @@ public class CsvStatementFormatWizardService {
           "d/M/uuuu",
           "uuuu-MM-dd",
           "d MMM uuuu",
-          "dd MMM uuuu");
+          "dd MMM uuuu",
+          "d MMM uuuu HH:mm",
+          "dd MMM uuuu HH:mm");
 
   private final CsvParser csvParser;
   private final StatementFormatService statementFormatService;
@@ -310,6 +312,19 @@ public class CsvStatementFormatWizardService {
   private boolean canParseDate(String value, String dateFormat) {
     try {
       LocalDate.from(buildDateFormatter(dateFormat).parse(value));
+      return true;
+    } catch (DateTimeParseException dateTimeParseException) {
+      return canParseDateWithSimplifiedFormat(value, dateFormat);
+    }
+  }
+
+  private boolean canParseDateWithSimplifiedFormat(String value, String dateFormat) {
+    var simplifiedPattern = dateFormat.replaceAll("\\s*HH(:mm(:ss)?)?", "").trim();
+    if (simplifiedPattern.equals(dateFormat)) {
+      return false;
+    }
+    try {
+      LocalDate.from(buildDateFormatter(simplifiedPattern).parse(value));
       return true;
     } catch (DateTimeParseException dateTimeParseException) {
       return false;

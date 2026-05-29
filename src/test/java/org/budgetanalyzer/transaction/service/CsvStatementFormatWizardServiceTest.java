@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,6 +92,25 @@ class CsvStatementFormatWizardServiceTest {
   }
 
   @Test
+  void analyzeInfersDateTimeMappingWhenRowsMixDateTimeAndDateOnly() {
+    var result =
+        csvStatementFormatWizardService.analyze(
+            csv(
+                """
+                ,Date,Description,Debit,Credit,Balance,Channel,
+                " ","31 Dec 2025 10:37","Payment for Goods /Services","379.00","","37,607.41","MOB",
+                " ","25 Dec 2025","Interest Credit","","22.91","52,379.85","AUTO",
+                """),
+            "bkk-bank-dec-17-31.csv");
+
+    assertThat(result.inferredMapping().dateColumn()).isEqualTo("Date");
+    assertThat(result.inferredMapping().dateFormat()).isEqualTo("d MMM uuuu HH:mm");
+    assertThat(result.inferredMapping().amountMode())
+        .isEqualTo(CsvWizardAmountMode.DEBIT_CREDIT_COLUMNS);
+    assertThat(result.warnings()).extracting("field").doesNotContain("dateFormat");
+  }
+
+  @Test
   void analyzeReturnsWarningsWhenSampleHasNoUsableColumns() {
     var result =
         csvStatementFormatWizardService.analyze(
@@ -159,6 +179,40 @@ class CsvStatementFormatWizardServiceTest {
     assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.DEBIT);
     assertThat(result.transactions().get(1).type()).isEqualTo(TransactionType.CREDIT);
     assertThat(result.transactions().get(1).currencyIsoCode()).isEqualTo("THB");
+  }
+
+  @Test
+  void previewSupportsBangkokBankDateTimeRowsWithDateOnlyFallback() {
+    var mapping =
+        new CsvWizardColumnMapping(
+            "Date",
+            "d MMM uuuu HH:mm",
+            "Description",
+            CsvWizardAmountMode.DEBIT_CREDIT_COLUMNS,
+            null,
+            "Debit",
+            "Credit",
+            null,
+            null);
+    var command =
+        new CsvWizardMappingPreviewCommand("Bangkok Bank", "THB", "checking-001", mapping);
+
+    var result =
+        csvStatementFormatWizardService.preview(
+            csv(
+                """
+                ,Date,Description,Debit,Credit,Balance,Channel,
+                " ","31 Dec 2025 10:37","Payment for Goods /Services","379.00","","37,607.41","MOB",
+                " ","25 Dec 2025","Interest Credit","","22.91","52,379.85","AUTO",
+                """),
+            "bkk-bank-dec-17-31.csv",
+            command);
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().get(0).date()).isEqualTo(LocalDate.of(2025, 12, 31));
+    assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(result.transactions().get(1).date()).isEqualTo(LocalDate.of(2025, 12, 25));
+    assertThat(result.transactions().get(1).type()).isEqualTo(TransactionType.CREDIT);
   }
 
   @Test

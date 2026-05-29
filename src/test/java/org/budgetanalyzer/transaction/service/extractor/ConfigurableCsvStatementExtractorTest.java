@@ -190,6 +190,48 @@ class ConfigurableCsvStatementExtractorTest {
     }
 
     @Test
+    void parsesDateTimeFormatWithDateOnlyFallback() throws Exception {
+      var dateTimeExtractor =
+          createExtractor(
+              8L,
+              12L,
+              "Bangkok Bank - Export",
+              "Bangkok Bank",
+              "THB",
+              new CsvColumnParserConfig(
+                  "Date", "d MMM uuuu HH:mm", "Description", "Credit", "Debit", null, null));
+      var csvData =
+          new CsvData(
+              "test.csv",
+              HANDLER_KEY_4_DIGIT,
+              List.of("Date", "Description", "Credit", "Debit"),
+              List.of(
+                  new CsvRow(
+                      2,
+                      Map.of(
+                          "Date", "31 Dec 2025 10:37",
+                          "Description", "Payment for Goods /Services",
+                          "Credit", "",
+                          "Debit", "379.00")),
+                  new CsvRow(
+                      3,
+                      Map.of(
+                          "Date", "25 Dec 2025",
+                          "Description", "Interest Credit",
+                          "Credit", "22.91",
+                          "Debit", ""))));
+      when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY_4_DIGIT)))
+          .thenReturn(csvData);
+
+      var transactions = dateTimeExtractor.extract("dummy".getBytes(), null);
+
+      assertThat(transactions).hasSize(2);
+      assertThat(transactions.get(0).date()).isEqualTo(LocalDate.of(2025, 12, 31));
+      assertThat(transactions.get(1).date()).isEqualTo(LocalDate.of(2025, 12, 25));
+      assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
+    }
+
+    @Test
     void throwsExceptionForInvalidDate() throws Exception {
       var csvData =
           createCsvData(

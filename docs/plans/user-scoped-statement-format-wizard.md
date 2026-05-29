@@ -572,6 +572,24 @@ with transaction-like tables.
 - Add tooling for parser revision diagnostics and fixture-based regression
   tests.
 
+Permissions for phase 5 should mirror the transaction `:any` model:
+
+- `statementformats:read` and `statementformats:write` are the user-scope
+  permissions for visible formats and the caller's own custom formats.
+- `statementformats:read:any` and `statementformats:write:any` are admin/support
+  permissions for cross-user catalog management, system-format creation and
+  updates, and promotion of user formats into system formats.
+- ADMIN should use `statementformats:write:any` for statement-format writes
+  instead of also carrying the unscoped user-format write grant.
+- Promotion and system catalog changes must require `statementformats:write:any`;
+  cross-user diagnostics and catalog review should require
+  `statementformats:read:any`.
+- Do not add `statementformats:delete` or `statementformats:delete:any` until a
+  real delete/archive endpoint exists. Hiding, disabling, and promotion remain
+  write operations.
+- When the promotion/catalog UI is implemented, route guards and affordances
+  should check the literal statement-format permissions rather than role names.
+
 ## Open Questions
 
 - Should a user custom format be shareable with another user, or only promotable
