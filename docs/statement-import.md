@@ -251,6 +251,8 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 - Date format must match CSV date representation
 - Use same column for both credit/debit headers if bank uses single amount column
 - Omit `typeHeader` if using separate credit/debit columns
+- The JSON create endpoint only creates CSV formats. Built-in PDF formats need
+  parser revisions with internal handler keys and are seeded by migrations.
 
 ### CSV Wizard Flow
 

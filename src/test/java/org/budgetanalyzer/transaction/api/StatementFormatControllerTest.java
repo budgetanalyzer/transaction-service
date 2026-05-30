@@ -171,7 +171,8 @@ class StatementFormatControllerTest {
                         "dateHeader": "Date",
                         "dateFormat": "MM/dd/uu",
                         "descriptionHeader": "Description",
-                        "creditHeader": "Amount"
+                        "creditHeader": "Amount",
+                        "debitHeader": "Amount"
                       }
                       """))
           .andExpect(status().isCreated())
@@ -209,7 +210,8 @@ class StatementFormatControllerTest {
                         "dateHeader": "Date",
                         "dateFormat": "MM/dd/uu",
                         "descriptionHeader": "Description",
-                        "creditHeader": "Amount"
+                        "creditHeader": "Amount",
+                        "debitHeader": "Amount"
                       }
                       """))
           .andExpect(status().isUnprocessableEntity())

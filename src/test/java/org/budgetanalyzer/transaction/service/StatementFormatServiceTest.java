@@ -130,7 +130,35 @@ class StatementFormatServiceTest {
     }
 
     @Test
-    void createsSystemFormatWhenWriteAnyAllowed() {
+    void createsSystemCsvFormatWhenWriteAnyAllowed() {
+      var command =
+          new StatementFormatCommand(
+              "System Bank",
+              FormatType.CSV,
+              "System Bank",
+              "usd",
+              StatementFormatScope.SYSTEM,
+              "Date",
+              "MM/dd/uu",
+              "Description",
+              "Amount",
+              "Amount",
+              null,
+              null);
+      when(statementFormatRepository.save(any(StatementFormat.class)))
+          .thenAnswer(invocation -> invocation.getArgument(0));
+
+      var result = statementFormatService.createFormat(command, "usr_admin", true);
+
+      assertThat(result.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
+      assertThat(result.getOwnerId()).isNull();
+      assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("USD");
+      verify(parserRevisionRepository).save(any());
+      verify(statementExtractorRegistry).refreshCsvExtractors();
+    }
+
+    @Test
+    void rejectsNonCsvFormatsBecauseTheyCannotCreateParserRevisions() {
       var command =
           new StatementFormatCommand(
               "System Bank",
@@ -145,14 +173,44 @@ class StatementFormatServiceTest {
               null,
               null,
               null);
-      when(statementFormatRepository.save(any(StatementFormat.class)))
-          .thenAnswer(invocation -> invocation.getArgument(0));
 
-      var result = statementFormatService.createFormat(command, "usr_admin", true);
+      assertThatThrownBy(() -> statementFormatService.createFormat(command, "usr_admin", true))
+          .isInstanceOf(BusinessException.class)
+          .satisfies(
+              exception ->
+                  assertThat(((BusinessException) exception).getFieldErrors())
+                      .extracting("field")
+                      .contains("formatType"));
 
-      assertThat(result.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
-      assertThat(result.getOwnerId()).isNull();
-      verify(statementExtractorRegistry, never()).refreshCsvExtractors();
+      verify(statementFormatRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsCsvFormatsMissingRequiredParserColumns() {
+      var command =
+          new StatementFormatCommand(
+              "Test Bank - CSV",
+              FormatType.CSV,
+              "Test Bank",
+              "USD",
+              null,
+              "Date",
+              "MM/dd/uu",
+              "Description",
+              "Amount",
+              null,
+              null,
+              null);
+
+      assertThatThrownBy(() -> statementFormatService.createFormat(command, "usr_owner", false))
+          .isInstanceOf(BusinessException.class)
+          .satisfies(
+              exception ->
+                  assertThat(((BusinessException) exception).getFieldErrors())
+                      .extracting("field")
+                      .contains("debitHeader"));
+
+      verify(statementFormatRepository, never()).save(any());
     }
 
     @Test
@@ -160,15 +218,15 @@ class StatementFormatServiceTest {
       var command =
           new StatementFormatCommand(
               "System Bank",
-              FormatType.PDF,
+              FormatType.CSV,
               "System Bank",
               "USD",
               StatementFormatScope.SYSTEM,
-              null,
-              null,
-              null,
-              null,
-              null,
+              "Date",
+              "MM/dd/uu",
+              "Description",
+              "Amount",
+              "Amount",
               null,
               null);
 
@@ -229,6 +287,26 @@ class StatementFormatServiceTest {
       statementFormatService.updateFormat(9L, patch, "usr_owner", false);
 
       verify(statementExtractorRegistry, never()).refreshCsvExtractors();
+    }
+
+    @Test
+    void rejectsBlankMetadataPatch() {
+      var existingFormat =
+          StatementFormat.createCsvFormat("Existing CSV", "Original Bank", "USD", "usr_owner");
+      when(statementFormatRepository.findVisibleToUserById(9L, "usr_owner"))
+          .thenReturn(Optional.of(existingFormat));
+
+      var patch = new StatementFormatPatch(" ", null, null, null);
+
+      assertThatThrownBy(() -> statementFormatService.updateFormat(9L, patch, "usr_owner", false))
+          .isInstanceOf(BusinessException.class)
+          .satisfies(
+              exception ->
+                  assertThat(((BusinessException) exception).getFieldErrors())
+                      .extracting("field")
+                      .contains("displayName"));
+
+      verify(statementFormatRepository, never()).save(any());
     }
   }
 }

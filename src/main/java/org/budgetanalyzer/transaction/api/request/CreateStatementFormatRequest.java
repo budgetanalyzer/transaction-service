@@ -19,7 +19,7 @@ import org.budgetanalyzer.transaction.domain.StatementFormatScope;
  * @param dateFormat date format pattern (e.g., "MM/dd/uu", "d MMM uuuu")
  * @param descriptionHeader CSV column header for description field (required for CSV)
  * @param creditHeader CSV column header for credit amount (required for CSV)
- * @param debitHeader CSV column header for debit amount (optional for CSV)
+ * @param debitHeader CSV column header for debit amount (required for CSV)
  * @param typeHeader CSV column header for explicit transaction type (optional)
  * @param categoryHeader CSV column header for category (optional)
  */

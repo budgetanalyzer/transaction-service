@@ -287,6 +287,8 @@ Body: CreateStatementFormatRequest
 Response: StatementFormatResponse (201 Created)
 Permission: statementformats:write or statementformats:write:any
 ```
+Creates CSV formats only. Built-in PDF formats are seeded by migrations because
+they require internal parser handler keys.
 
 **Update Statement Format**
 ```

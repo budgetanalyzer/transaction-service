@@ -227,7 +227,8 @@ class StatementFormatControllerAuthorizationTest {
           "dateHeader": "Date",
           "dateFormat": "MM/dd/uu",
           "descriptionHeader": "Description",
-          "creditHeader": "Amount"
+          "creditHeader": "Amount",
+          "debitHeader": "Amount"
         }
         """;
   }

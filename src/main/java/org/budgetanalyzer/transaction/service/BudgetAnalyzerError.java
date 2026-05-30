@@ -11,6 +11,8 @@ public enum BudgetAnalyzerError {
   CSV_PARSING_ERROR,
   @Schema(description = "CSV statement format wizard mapping validation failed")
   CSV_WIZARD_VALIDATION_FAILED,
+  @Schema(description = "Statement format metadata or parser configuration is invalid")
+  STATEMENT_FORMAT_VALIDATION_FAILED,
   @Schema(description = "The uploaded statement file is missing its original filename")
   MISSING_ORIGINAL_FILENAME,
   @Schema(

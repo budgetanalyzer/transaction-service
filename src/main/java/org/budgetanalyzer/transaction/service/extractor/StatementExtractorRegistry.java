@@ -10,7 +10,6 @@ import jakarta.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,7 +53,6 @@ public class StatementExtractorRegistry {
    * @param csvParser the CSV parser to use for dynamic extractors
    * @param objectMapper JSON mapper for parser configuration
    */
-  @Autowired
   public StatementExtractorRegistry(
       List<StatementExtractor> staticExtractors,
       ParserRevisionRepository parserRevisionRepository,
@@ -93,10 +91,6 @@ public class StatementExtractorRegistry {
    */
   public List<ParserAttempt> attemptParse(
       StatementFormat statementFormat, byte[] fileContent, String filename, String accountId) {
-    if (parserRevisionRepository == null) {
-      return List.of();
-    }
-
     var parserRevisions =
         parserRevisionRepository
             .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(

@@ -1,16 +1,19 @@
 package org.budgetanalyzer.transaction.service;
 
+import java.util.ArrayList;
+import java.util.Currency;
 import java.util.List;
+import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FormatType;
@@ -43,7 +46,6 @@ public class StatementFormatService {
    * @param statementExtractorRegistry registry to notify of format changes
    * @param objectMapper JSON mapper for parser configuration
    */
-  @Autowired
   public StatementFormatService(
       StatementFormatRepository statementFormatRepository,
       ParserRevisionRepository parserRevisionRepository,
@@ -122,6 +124,7 @@ public class StatementFormatService {
           "Creating system statement formats requires statementformats:write:any.",
           BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
     }
+    validateCreateCommand(command);
 
     var format = mapToEntity(command, requestedScope, userId);
     var saved = statementFormatRepository.save(format);
@@ -151,6 +154,7 @@ public class StatementFormatService {
       Long id, StatementFormatPatch patch, String userId, boolean canWriteAny) {
     var format = findWritableFormat(id, userId, canWriteAny);
 
+    validatePatch(patch);
     applyUpdates(format, patch);
     var saved = statementFormatRepository.save(format);
 
@@ -169,17 +173,19 @@ public class StatementFormatService {
     if (command.formatType() == FormatType.CSV) {
       if (scope == StatementFormatScope.SYSTEM) {
         return StatementFormat.createSystemCsvFormat(
-            command.displayName(), command.bankName(), command.defaultCurrencyIsoCode());
+            command.displayName(),
+            command.bankName(),
+            normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()));
       }
       return StatementFormat.createCsvFormat(
-          command.displayName(), command.bankName(), command.defaultCurrencyIsoCode(), ownerId);
+          command.displayName(),
+          command.bankName(),
+          normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()),
+          ownerId);
     }
-    if (scope == StatementFormatScope.SYSTEM) {
-      return StatementFormat.createSystemPdfFormat(
-          command.displayName(), command.bankName(), command.defaultCurrencyIsoCode());
-    }
-    return StatementFormat.createUserPdfFormat(
-        command.displayName(), command.bankName(), command.defaultCurrencyIsoCode(), ownerId);
+    throw new BusinessException(
+        "Only CSV statement formats can be created through this endpoint.",
+        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
   }
 
   private void createInitialParserRevision(
@@ -190,9 +196,7 @@ public class StatementFormatService {
 
     var parserConfig = serializeCsvConfig(command);
     var parserRevision = ParserRevision.createCsvColumnConfig(statementFormat, 1, parserConfig);
-    if (parserRevisionRepository != null) {
-      parserRevisionRepository.save(parserRevision);
-    }
+    parserRevisionRepository.save(parserRevision);
   }
 
   private void applyUpdates(StatementFormat format, StatementFormatPatch patch) {
@@ -203,7 +207,7 @@ public class StatementFormatService {
       format.setBankName(patch.bankName());
     }
     if (patch.defaultCurrencyIsoCode() != null) {
-      format.setDefaultCurrencyIsoCode(patch.defaultCurrencyIsoCode());
+      format.setDefaultCurrencyIsoCode(normalizeCurrencyIsoCode(patch.defaultCurrencyIsoCode()));
     }
     if (patch.enabled() != null) {
       format.setEnabled(patch.enabled());
@@ -246,5 +250,92 @@ public class StatementFormatService {
 
   private ResourceNotFoundException statementFormatNotFound(Long id) {
     return new ResourceNotFoundException("Statement format not found with id: " + id);
+  }
+
+  private void validateCreateCommand(StatementFormatCommand command) {
+    var fieldErrors = new ArrayList<FieldError>();
+    validateRequired("displayName", command.displayName(), fieldErrors);
+    validateRequired("bankName", command.bankName(), fieldErrors);
+    validateRequired("defaultCurrencyIsoCode", command.defaultCurrencyIsoCode(), fieldErrors);
+    if (command.formatType() == null) {
+      fieldErrors.add(FieldError.of("formatType", "Format type is required.", null));
+    } else if (command.formatType() != FormatType.CSV) {
+      fieldErrors.add(
+          FieldError.of(
+              "formatType",
+              "Only CSV statement formats can be created through this endpoint.",
+              command.formatType().name()));
+    }
+    if (!isBlank(command.defaultCurrencyIsoCode())) {
+      validateCurrencyIsoCode(command.defaultCurrencyIsoCode(), fieldErrors);
+    }
+    if (command.formatType() == FormatType.CSV) {
+      validateRequired("dateHeader", command.dateHeader(), fieldErrors);
+      validateRequired("dateFormat", command.dateFormat(), fieldErrors);
+      validateRequired("descriptionHeader", command.descriptionHeader(), fieldErrors);
+      validateRequired("creditHeader", command.creditHeader(), fieldErrors);
+      validateRequired("debitHeader", command.debitHeader(), fieldErrors);
+    }
+    if (!fieldErrors.isEmpty()) {
+      throw new BusinessException(
+          "Statement format validation failed.",
+          BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name(),
+          fieldErrors);
+    }
+  }
+
+  private void validatePatch(StatementFormatPatch patch) {
+    var fieldErrors = new ArrayList<FieldError>();
+    if (patch.displayName() != null && patch.displayName().isBlank()) {
+      fieldErrors.add(
+          FieldError.of("displayName", "Field must not be blank.", patch.displayName()));
+    }
+    if (patch.bankName() != null && patch.bankName().isBlank()) {
+      fieldErrors.add(FieldError.of("bankName", "Field must not be blank.", patch.bankName()));
+    }
+    if (patch.defaultCurrencyIsoCode() != null) {
+      if (patch.defaultCurrencyIsoCode().isBlank()) {
+        fieldErrors.add(
+            FieldError.of(
+                "defaultCurrencyIsoCode",
+                "Field must not be blank.",
+                patch.defaultCurrencyIsoCode()));
+      } else {
+        validateCurrencyIsoCode(patch.defaultCurrencyIsoCode(), fieldErrors);
+      }
+    }
+    if (!fieldErrors.isEmpty()) {
+      throw new BusinessException(
+          "Statement format validation failed.",
+          BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name(),
+          fieldErrors);
+    }
+  }
+
+  private void validateRequired(String field, String value, List<FieldError> fieldErrors) {
+    if (isBlank(value)) {
+      fieldErrors.add(FieldError.of(field, "Field is required.", value));
+    }
+  }
+
+  private void validateCurrencyIsoCode(
+      String defaultCurrencyIsoCode, List<FieldError> fieldErrors) {
+    try {
+      Currency.getInstance(normalizeCurrencyIsoCode(defaultCurrencyIsoCode));
+    } catch (IllegalArgumentException illegalArgumentException) {
+      fieldErrors.add(
+          FieldError.of(
+              "defaultCurrencyIsoCode",
+              "Default currency ISO code must be a valid ISO 4217 code.",
+              defaultCurrencyIsoCode));
+    }
+  }
+
+  private String normalizeCurrencyIsoCode(String defaultCurrencyIsoCode) {
+    return defaultCurrencyIsoCode.toUpperCase(Locale.ROOT);
+  }
+
+  private boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 }
