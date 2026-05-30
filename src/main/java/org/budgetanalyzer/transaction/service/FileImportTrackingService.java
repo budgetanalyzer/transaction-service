@@ -107,7 +107,8 @@ public class FileImportTrackingService {
    *
    * @param contentHash the SHA-256 hash of the file content
    * @param originalFilename the original filename
-   * @param format the CSV format used
+   * @param statementFormatId the selected statement format ID
+   * @param parserRevisionId the selected parser revision ID
    * @param accountId the account ID (nullable)
    * @param fileSizeBytes the file size in bytes
    * @param transactionCount the number of transactions imported
@@ -117,7 +118,8 @@ public class FileImportTrackingService {
   public FileImport recordImport(
       String contentHash,
       String originalFilename,
-      String format,
+      Long statementFormatId,
+      Long parserRevisionId,
       String accountId,
       Long fileSizeBytes,
       Integer transactionCount,
@@ -126,17 +128,20 @@ public class FileImportTrackingService {
         FileImport.create(
             contentHash,
             originalFilename,
-            format,
+            statementFormatId,
+            parserRevisionId,
             accountId,
             fileSizeBytes,
             transactionCount,
             importedBy);
 
     log.info(
-        "Recording file import: filename='{}' hash='{}' format='{}' transactions={}",
+        "Recording file import: filename='{}' hash='{}' statementFormatId={} "
+            + "parserRevisionId={} transactions={}",
         originalFilename,
         contentHash.substring(0, 8) + "...",
-        format,
+        statementFormatId,
+        parserRevisionId,
         transactionCount);
 
     return fileImportRepository.save(fileImport);

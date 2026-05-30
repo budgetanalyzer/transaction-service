@@ -70,7 +70,6 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
     ON transaction (
         owner_id,
         deleted,
-        account_id,
         bank_name,
         date,
         amount,
@@ -90,7 +89,7 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 - `description` - Bank-provided transaction description
 - `owner_id` - User that owns the transaction
 - `file_import_id` - File import source for token-backed batch imports; nullable
-  only for legacy or service-created transactions without an uploaded source
+  only for service-created transactions without an uploaded source
 - `deleted` - Soft-delete marker
 
 **Indexes:**
@@ -98,9 +97,10 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 - Single-column indexes for account, bank, date, currency, type, deleted, owner,
   and file import lookups
 - `idx_transaction_owner_deleted_duplicate_candidates` supports owner-scoped
-  duplicate candidate lookup across `account_id`, `bank_name`, `date`,
-  `amount`, `type`, and `currency_iso_code`. It replaced the exact-description
-  duplicate index in migration `V17__replace_duplicate_candidate_index.sql`.
+  duplicate candidate lookup across `bank_name`, `date`, `amount`, `type`, and
+  `currency_iso_code`. Duplicate matching intentionally ignores `account_id`.
+  The current index shape is maintained by migration
+  `V20__remove_account_id_from_duplicate_candidate_index.sql`.
 
 The database returns only structured duplicate candidates. Description matching
 and batch skip/import semantics are service-layer behavior documented in
@@ -115,7 +115,8 @@ CREATE TABLE file_import (
     id BIGSERIAL PRIMARY KEY,
     content_hash VARCHAR(64) NOT NULL,
     original_filename VARCHAR(255) NOT NULL,
-    format VARCHAR(50) NOT NULL,
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    parser_revision_id BIGINT NOT NULL REFERENCES parser_revision(id),
     account_id VARCHAR(255),
     file_size_bytes BIGINT NOT NULL,
     transaction_count INTEGER NOT NULL,
@@ -126,12 +127,15 @@ CREATE TABLE file_import (
 CREATE UNIQUE INDEX idx_file_import_hash_user
     ON file_import(content_hash, imported_by);
 CREATE INDEX idx_file_import_imported_at ON file_import(imported_at);
+CREATE INDEX idx_file_import_statement_format ON file_import(statement_format_id);
+CREATE INDEX idx_file_import_parser_revision ON file_import(parser_revision_id);
 ```
 
 **Key Columns:**
 - `content_hash` - SHA-256 hash of the uploaded file bytes
 - `original_filename` - Filename supplied with the import
-- `format` - Statement format key used for parsing
+- `statement_format_id` - Statement format selected for the import
+- `parser_revision_id` - Parser revision that parsed the import
 - `account_id` - Optional account identifier supplied during import
 - `transaction_count` - Number of transactions recorded for the import
 - `imported_by` - User that imported the file
@@ -145,8 +149,89 @@ and exact-file reupload contract.
 
 Newly created token-backed batch transactions are linked through
 `transaction.file_import_id` to either the new `file_import` row or the existing
-matching row. `transaction.file_import_id` remains nullable only for legacy or
+matching row. `transaction.file_import_id` remains nullable only for
 service-created transactions that did not originate from an uploaded source file.
+
+### statement_format
+
+**Purpose:** Stores user-facing import format metadata and visibility.
+
+```sql
+CREATE TABLE statement_format (
+    id BIGSERIAL PRIMARY KEY,
+    format_type VARCHAR(10) NOT NULL,
+    bank_name VARCHAR(100) NOT NULL,
+    default_currency_iso_code VARCHAR(3) NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    scope VARCHAR(10) NOT NULL,
+    owner_id VARCHAR(50),
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE,
+    created_by VARCHAR(50),
+    updated_by VARCHAR(50),
+    CONSTRAINT chk_statement_format_scope CHECK (scope IN ('SYSTEM', 'USER'))
+);
+
+CREATE INDEX idx_statement_format_scope_owner ON statement_format(scope, owner_id);
+```
+
+**Key Columns:**
+- `id` - Public statement format identifier used by get, update, and preview
+  requests
+- `format_type` - `CSV`, `PDF`, or `XLSX`
+- `display_name` - UI label for the saved format
+- `bank_name` - Bank name applied to imported transactions
+- `default_currency_iso_code` - Default ISO 4217 currency code
+- `scope` - `SYSTEM` for built-in formats or `USER` for user-created formats
+- `owner_id` - Owner of user-scoped formats; null for system formats
+- `enabled` - Whether the format can be selected for preview
+
+Parser-specific configuration lives outside this table in `parser_revision`.
+System formats are visible to every user. User-scoped formats are visible only
+to their owner unless the caller has `statementformats:*:any`.
+
+### parser_revision
+
+**Purpose:** Stores hidden deterministic parser configuration for a statement
+format.
+
+```sql
+CREATE TABLE parser_revision (
+    id BIGSERIAL PRIMARY KEY,
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    revision_number INTEGER NOT NULL,
+    parser_type VARCHAR(30) NOT NULL,
+    handler_key VARCHAR(100),
+    config_schema_version INTEGER NOT NULL,
+    parser_config TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    promoted_from_parser_revision_id BIGINT REFERENCES parser_revision(id),
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    CONSTRAINT chk_parser_revision_type CHECK (
+        parser_type IN ('STATIC_HANDLER', 'CSV_COLUMN_CONFIG', 'PDF_TEXT_TABLE_CONFIG')
+    ),
+    CONSTRAINT uq_parser_revision_number UNIQUE (statement_format_id, revision_number)
+);
+
+CREATE INDEX idx_parser_revision_format_enabled
+    ON parser_revision(statement_format_id, enabled, priority DESC, revision_number DESC);
+CREATE INDEX idx_parser_revision_type_enabled ON parser_revision(parser_type, enabled);
+```
+
+**Key Columns:**
+- `statement_format_id` - Parent format selected by users and preview requests
+- `revision_number` - Version number under the parent format
+- `parser_type` - Parser implementation family
+- `handler_key` - Internal static extractor key for built-in PDF handlers
+- `parser_config` - JSON configuration, such as CSV column mappings
+- `priority` and `enabled` - Selection controls for the active parser revision
+
+Preview tokens and `file_import` rows record both the selected
+`statement_format_id` and the winning `parser_revision_id` for import
+provenance.
 
 ### saved_view
 

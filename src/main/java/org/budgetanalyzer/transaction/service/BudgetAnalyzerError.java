@@ -5,12 +5,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /** Error codes for Budget Analyzer API business exceptions. */
 @Schema(description = "Error codes for API responses")
 public enum BudgetAnalyzerError {
-  @Schema(
-      description =
-          "The 'format' parameter does not match any registered PDF extractor or CSV configuration")
+  @Schema(description = "The selected statement format does not have a supported parser revision")
   FORMAT_NOT_SUPPORTED,
   @Schema(description = "Error encountered parsing csv file")
   CSV_PARSING_ERROR,
+  @Schema(description = "CSV statement format wizard mapping validation failed")
+  CSV_WIZARD_VALIDATION_FAILED,
+  @Schema(description = "Statement format metadata or parser configuration is invalid")
+  STATEMENT_FORMAT_VALIDATION_FAILED,
   @Schema(description = "The uploaded statement file is missing its original filename")
   MISSING_ORIGINAL_FILENAME,
   @Schema(
@@ -35,8 +37,6 @@ public enum BudgetAnalyzerError {
           "One or more transactions in the batch failed business validation. "
               + "Check the fieldErrors array for details on each failed transaction.")
   BATCH_VALIDATION_FAILED,
-  @Schema(description = "A statement format with the given format key already exists")
-  FORMAT_KEY_ALREADY_EXISTS,
   @Schema(description = "The statement format was not found")
   FORMAT_NOT_FOUND,
   @Schema(description = "The preview import token is invalid or incomplete")

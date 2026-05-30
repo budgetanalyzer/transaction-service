@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -1247,7 +1248,8 @@ class TransactionServiceTest {
         FileImport.create(
             fileImportSource.contentHash(),
             fileImportSource.originalFilename(),
-            fileImportSource.detectedFormat(),
+            fileImportSource.statementFormatId(),
+            fileImportSource.parserRevisionId(),
             fileImportSource.accountId(),
             fileImportSource.fileSizeBytes(),
             1,
@@ -1261,7 +1263,8 @@ class TransactionServiceTest {
     when(fileImportTrackingService.recordImport(
             fileImportSource.contentHash(),
             fileImportSource.originalFilename(),
-            fileImportSource.detectedFormat(),
+            fileImportSource.statementFormatId(),
+            fileImportSource.parserRevisionId(),
             fileImportSource.accountId(),
             fileImportSource.fileSizeBytes(),
             1,
@@ -1295,7 +1298,8 @@ class TransactionServiceTest {
         FileImport.create(
             fileImportSource.contentHash(),
             "previous.csv",
-            fileImportSource.detectedFormat(),
+            fileImportSource.statementFormatId(),
+            fileImportSource.parserRevisionId(),
             fileImportSource.accountId(),
             fileImportSource.fileSizeBytes(),
             3,
@@ -1313,7 +1317,8 @@ class TransactionServiceTest {
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().get(0).getFileImport()).isSameAs(existingFileImport);
     verify(fileImportTrackingService, never())
-        .recordImport(anyString(), anyString(), anyString(), any(), any(), any(), anyString());
+        .recordImport(
+            anyString(), anyString(), anyLong(), anyLong(), any(), any(), any(), anyString());
   }
 
   @Test
@@ -1344,7 +1349,8 @@ class TransactionServiceTest {
     verify(transactionRepository, never()).saveAll(any());
     verify(fileImportTrackingService, never()).checkHash(anyString(), anyString());
     verify(fileImportTrackingService, never())
-        .recordImport(anyString(), anyString(), anyString(), any(), any(), any(), anyString());
+        .recordImport(
+            anyString(), anyString(), anyLong(), anyLong(), any(), any(), any(), anyString());
   }
 
   // ==================== Helper Methods ====================
@@ -1373,7 +1379,8 @@ class TransactionServiceTest {
         FileImport.create(
             fileImportSource.contentHash(),
             fileImportSource.originalFilename(),
-            fileImportSource.detectedFormat(),
+            fileImportSource.statementFormatId(),
+            fileImportSource.parserRevisionId(),
             fileImportSource.accountId(),
             fileImportSource.fileSizeBytes(),
             1,
@@ -1389,7 +1396,8 @@ class TransactionServiceTest {
     return new BatchFileImportSource(
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "statement.csv",
-        "capital-one",
+        1L,
+        1L,
         "account-123",
         1024L);
   }
@@ -1403,7 +1411,6 @@ class TransactionServiceTest {
   private static TransactionDuplicateCandidateCriteria candidateCriteria(
       TransactionDuplicateCandidateKey candidateKey) {
     return new TransactionDuplicateCandidateCriteria(
-        candidateKey.accountId(),
         candidateKey.bankName(),
         candidateKey.date(),
         candidateKey.amount(),

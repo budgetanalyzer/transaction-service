@@ -346,7 +346,8 @@ public class TransactionService {
     return fileImportTrackingService.recordImport(
         fileImportSource.contentHash(),
         fileImportSource.originalFilename(),
-        fileImportSource.detectedFormat(),
+        fileImportSource.statementFormatId(),
+        fileImportSource.parserRevisionId(),
         fileImportSource.accountId(),
         fileImportSource.fileSizeBytes(),
         createdTransactionCount,

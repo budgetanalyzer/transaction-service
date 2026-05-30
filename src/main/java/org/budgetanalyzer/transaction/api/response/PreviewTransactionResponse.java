@@ -64,8 +64,8 @@ public record PreviewTransactionResponse(
         String currencyIsoCode,
     @Schema(
             description =
-                "Account identifier. Null and empty values are equivalent for duplicate "
-                    + "detection.",
+                "Account identifier. This value is included in the preview row but is not used "
+                    + "for duplicate detection.",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             example = "checking-12345")
         String accountId,

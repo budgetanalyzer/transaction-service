@@ -82,7 +82,7 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 
 **The most sophisticated feature of this service** - Configuration-driven file parsing for multiple banks.
 
-**Pattern**: Database-driven format configuration via `statement_format` table. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors.
+**Pattern**: Database-driven format metadata via `statement_format` plus hidden parser configuration in `parser_revision`. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors behind internal parser revision handler keys. Public import identity is `StatementFormat.id`.
 
 **When to consult documentation:**
 - **Adding new bank formats** → Read [Statement Import Guide](docs/statement-import.md) for configuration examples and step-by-step instructions
@@ -91,9 +91,9 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 
 **Quick reference:**
 - Currently supported: Capital One (PDF), Bangkok Bank (CSV and statement PDF)
-- Configuration: `statement_format` table (see `StatementFormatService`)
-- API: `GET /v1/statement-formats` to list formats, `POST` to create new formats
-- Endpoints: `POST /v1/transactions/preview`, then `POST /v1/transactions/batch`
+- Configuration: `statement_format` and `parser_revision` tables (see `StatementFormatService`)
+- API: `GET /v1/statement-formats` to list visible formats, `POST` to create new user-scoped formats, `GET/PUT /v1/statement-formats/{id}` for item access
+- Endpoints: `POST /v1/transactions/preview` with `statementFormatId`, then `POST /v1/transactions/batch`
 - Single-file preview plus transactional batch import
 - No code changes needed for new CSV banks
 
@@ -283,6 +283,7 @@ grep -r "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" src/main/java/*
 
 # View statement format migration (seed data)
 cat src/main/resources/db/migration/V7__add_statement_format.sql
+cat src/main/resources/db/migration/V18__user_scoped_statement_formats_and_parser_revisions.sql
 
 # Check service dependencies
 ./gradlew dependencies | grep "org.budgetanalyzer"

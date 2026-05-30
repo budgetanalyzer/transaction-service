@@ -92,8 +92,9 @@ public class TransactionController {
       summary = "Preview transactions from a file before import",
       description =
           "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
-              + "before batch import. No data is persisted. The format parameter is required and "
-              + "determines which parser to use. The response includes advisory duplicate "
+              + "before batch import. No data is persisted. The statementFormatId parameter is "
+              + "required and determines which parser to use. The response includes advisory "
+              + "duplicate "
               + "metadata using strict owner-scoped financial identity fields plus normalized "
               + "exact or conservative fuzzy description matching against existing transactions "
               + "or earlier rows in the same preview payload, plus file-level import history "
@@ -115,12 +116,12 @@ public class TransactionController {
                     examples = {
                       @ExampleObject(
                           name = "Format Not Supported",
-                          summary = "Invalid format parameter",
+                          summary = "Invalid statement format selection",
                           value =
                               """
                       {
                         "type": "APPLICATION_ERROR",
-                        "message": "Format not supported: fake-bank",
+                        "message": "Statement format has no supported parser revision: 999",
                         "code": "FORMAT_NOT_SUPPORTED"
                       }
                       """),
@@ -152,13 +153,13 @@ public class TransactionController {
   public PreviewResponse previewTransactions(
       @Parameter(
               description =
-                  "Format key (e.g., 'capital-one-yearly' for PDF, 'capital-one' for CSV). "
+                  "Statement format ID selected from GET /v1/statement-formats. "
                       + "Use GET /v1/statement-formats to list available formats.",
               required = true,
-              example = "capital-one-yearly")
+              example = "123")
           @NotNull
-          @RequestParam(name = "format")
-          String format,
+          @RequestParam(name = "statementFormatId")
+          Long statementFormatId,
       @Parameter(
               description = "Account ID to pre-fill for all transactions",
               example = "checking-12345")
@@ -170,13 +171,14 @@ public class TransactionController {
           MultipartFile file) {
     log.info(
         "Received preview request format: {} accountId: {} fileName: {}",
-        format,
+        statementFormatId,
         accountId.orElse(null),
         file.getOriginalFilename());
 
     var userId = getCurrentUserId();
     return PreviewResponse.from(
-        transactionImportService.previewFile(format, accountId.orElse(null), file, userId));
+        transactionImportService.previewFile(
+            statementFormatId, accountId.orElse(null), file, userId));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")

@@ -40,7 +40,7 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
 
   private static final Logger log = LoggerFactory.getLogger(BangkokBankStatementPdfExtractor.class);
 
-  private static final String FORMAT_KEY = "bkk-bank-statement-pdf";
+  private static final String HANDLER_KEY = "bkk-bank-statement-pdf";
   private static final String BANK_NAME = "Bangkok Bank";
   private static final String CURRENCY_CODE = "THB";
   private static final float LINE_Y_TOLERANCE = 1.5f;
@@ -114,8 +114,8 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
   }
 
   @Override
-  public String getFormatKey() {
-    return FORMAT_KEY;
+  public String getHandlerKey() {
+    return HANDLER_KEY;
   }
 
   private String extractTextFromPdf(byte[] fileContent, int startPage, int endPage)

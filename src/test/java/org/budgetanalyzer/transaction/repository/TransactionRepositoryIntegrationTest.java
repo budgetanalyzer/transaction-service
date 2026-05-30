@@ -233,13 +233,6 @@ class TransactionRepositoryIntegrationTest {
     var candidateKeys =
         Set.of(
             candidateKey(
-                "account-2",
-                transaction.getBankName(),
-                transaction.getDate(),
-                transaction.getAmount(),
-                transaction.getType(),
-                transaction.getCurrencyIsoCode()),
-            candidateKey(
                 transaction.getAccountId(),
                 "Other Bank",
                 transaction.getDate(),
@@ -282,17 +275,17 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_treatsEmptyAccountIdAsNull() {
-    // Given: a transaction exists with an empty account ID
+  void findDuplicateCandidates_ignoresAccountId() {
+    // Given: a transaction exists with one account ID
     var transaction =
         createTransactionWithDetails(
-            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "");
+            LocalDate.of(2024, 1, 15), BigDecimal.valueOf(100.00), "Coffee Shop", "account-1");
     transactionRepository.save(transaction);
 
-    // When: checking for the same transaction details with a null account ID
+    // When: checking for the same transaction details with a different account ID
     var candidateKey =
         candidateKey(
-            null,
+            "account-2",
             transaction.getBankName(),
             transaction.getDate(),
             transaction.getAmount(),
@@ -411,7 +404,6 @@ class TransactionRepositoryIntegrationTest {
       BigDecimal amount,
       TransactionType type,
       String currencyIsoCode) {
-    return new TransactionDuplicateCandidateCriteria(
-        accountId, bankName, date, amount, type, currencyIsoCode);
+    return new TransactionDuplicateCandidateCriteria(bankName, date, amount, type, currencyIsoCode);
   }
 }

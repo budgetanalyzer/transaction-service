@@ -22,7 +22,6 @@ users can import the same transaction independently.
 
 The service first matches strict financial identity fields:
 
-- `accountId`
 - `bankName`
 - `date`
 - `amount`
@@ -31,7 +30,9 @@ The service first matches strict financial identity fields:
 
 Field rules:
 
-- `accountId` treats `null` and empty string as equivalent.
+- `accountId` is not part of duplicate matching. A transaction can be marked as
+  a duplicate even when the preview row has a different account ID or one side
+  has no account ID.
 - `amount` is canonicalized to scale 2.
 - Only active persisted transactions are candidates. Soft-deleted rows are
   ignored.
@@ -117,8 +118,8 @@ Token behavior:
 
 - The token is encrypted and time-limited.
 - The token carries source-file identity verified during preview: owner,
-  content hash, original filename, detected format, account ID, file size, and
-  expiration timestamps.
+  content hash, original filename, statement format ID, parser revision ID,
+  account ID, file size, and expiration timestamps.
 - Clients must treat the token as opaque and must not decode it or derive source
   metadata from it.
 - Missing, invalid, expired, incomplete, or wrong-owner tokens fail before

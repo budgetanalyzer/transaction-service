@@ -1,9 +1,12 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,7 +27,9 @@ import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
+import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
@@ -34,15 +40,23 @@ class StatementFormatControllerAuthorizationTest {
   @Autowired private MockMvc mockMvc;
 
   @MockitoBean private StatementFormatService statementFormatService;
+  @MockitoBean private CsvStatementFormatWizardService csvStatementFormatWizardService;
 
   @BeforeEach
   void setupServiceMocks() {
-    when(statementFormatService.getAllFormats()).thenReturn(List.of());
-    when(statementFormatService.getByFormatKey(anyString())).thenReturn(createStubFormat());
-    when(statementFormatService.createFormat(any(StatementFormatCommand.class)))
+    when(statementFormatService.getVisibleFormats(anyString(), anyBoolean())).thenReturn(List.of());
+    when(statementFormatService.getById(anyLong(), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
-    when(statementFormatService.updateFormat(anyString(), any(StatementFormatPatch.class)))
+    when(statementFormatService.createFormat(
+            any(StatementFormatCommand.class), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
+    when(statementFormatService.updateFormat(
+            anyLong(), any(StatementFormatPatch.class), anyString(), anyBoolean()))
+        .thenReturn(createStubFormat());
+    when(csvStatementFormatWizardService.analyze(any(byte[].class), anyString()))
+        .thenReturn(
+            new CsvWizardAnalysisResult(
+                List.of(), List.of(), null, 0.0, java.util.Map.of(), List.of()));
   }
 
   // ==================== No authentication ====================
@@ -80,7 +94,7 @@ class StatementFormatControllerAuthorizationTest {
   void getEndpoint_withReadPermission_returns200() throws Exception {
     mockMvc
         .perform(
-            get("/v1/statement-formats/capital-one")
+            get("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:read")))
@@ -91,7 +105,7 @@ class StatementFormatControllerAuthorizationTest {
   void getEndpoint_withoutReadPermission_returns403() throws Exception {
     mockMvc
         .perform(
-            get("/v1/statement-formats/capital-one")
+            get("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("transactions:read")))
@@ -130,7 +144,7 @@ class StatementFormatControllerAuthorizationTest {
   void updateEndpoint_withWritePermission_returns200() throws Exception {
     mockMvc
         .perform(
-            put("/v1/statement-formats/capital-one")
+            put("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:write"))
@@ -143,12 +157,36 @@ class StatementFormatControllerAuthorizationTest {
   void updateEndpoint_withoutWritePermission_returns403() throws Exception {
     mockMvc
         .perform(
-            put("/v1/statement-formats/capital-one")
+            put("/v1/statement-formats/1")
                 .with(
                     ClaimsHeaderTestBuilder.user("usr_test123")
                         .withPermissions("statementformats:read"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"bankName\": \"Updated Bank\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void csvWizardAnalyze_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/csv-wizard/analyze")
+                .file(csvFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void csvWizardAnalyze_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/csv-wizard/analyze")
+                .file(csvFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
         .andExpect(status().isForbidden());
   }
 
@@ -176,23 +214,12 @@ class StatementFormatControllerAuthorizationTest {
 
   private StatementFormat createStubFormat() {
     return StatementFormat.createCsvFormat(
-        "capital-one",
-        "Capital One - Export",
-        "Capital One",
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
+        "Capital One - Export", "Capital One", "USD", "usr_test123");
   }
 
   private String createValidFormatJson() {
     return """
         {
-          "formatKey": "new-format",
           "displayName": "New Bank - Export",
           "formatType": "CSV",
           "bankName": "New Bank",
@@ -200,8 +227,14 @@ class StatementFormatControllerAuthorizationTest {
           "dateHeader": "Date",
           "dateFormat": "MM/dd/uu",
           "descriptionHeader": "Description",
-          "creditHeader": "Amount"
+          "creditHeader": "Amount",
+          "debitHeader": "Amount"
         }
         """;
+  }
+
+  private MockMultipartFile csvFile() {
+    return new MockMultipartFile(
+        "file", "sample.csv", "text/csv", "Date,Description\n04/12/24,Coffee".getBytes());
   }
 }

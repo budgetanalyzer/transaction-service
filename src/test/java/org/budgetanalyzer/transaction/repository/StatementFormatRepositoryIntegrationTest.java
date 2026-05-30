@@ -2,7 +2,6 @@ package org.budgetanalyzer.transaction.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +14,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.transaction.domain.FormatType;
+import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 
 @DataJpaTest
 @Testcontainers
@@ -29,7 +30,8 @@ class StatementFormatRepositoryIntegrationTest {
           .withUsername("test")
           .withPassword("test");
 
-  @Autowired private StatementFormatRepository repository;
+  @Autowired private StatementFormatRepository statementFormatRepository;
+  @Autowired private ParserRevisionRepository parserRevisionRepository;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
@@ -39,242 +41,71 @@ class StatementFormatRepositoryIntegrationTest {
     registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
   }
 
-  /** Helper to clean up test-created formats without affecting seeded data. */
-  private void deleteTestFormat(String formatKey) {
-    repository.findByFormatKey(formatKey).ifPresent(repository::delete);
-  }
-
   @Nested
   class Save {
 
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("test-csv");
-      deleteTestFormat("test-pdf");
-    }
-
     @Test
-    void savesCsvFormat() {
-      var format = createCsvFormat("test-csv", "Test Bank");
+    void savesUserScopedCsvFormat() {
+      var statementFormat =
+          StatementFormat.createCsvFormat("Test Bank - Export", "Test Bank", "USD", "usr_123");
 
-      var saved = repository.save(format);
+      var saved = statementFormatRepository.save(statementFormat);
 
       assertThat(saved.getId()).isNotNull();
-      assertThat(saved.getFormatKey()).isEqualTo("test-csv");
+      assertThat(saved.getDisplayName()).isEqualTo("Test Bank - Export");
       assertThat(saved.getFormatType()).isEqualTo(FormatType.CSV);
       assertThat(saved.getBankName()).isEqualTo("Test Bank");
       assertThat(saved.getDefaultCurrencyIsoCode()).isEqualTo("USD");
-      assertThat(saved.getDateHeader()).isEqualTo("Date");
-      assertThat(saved.getDateFormat()).isEqualTo("MM/dd/uu");
-      assertThat(saved.getDescriptionHeader()).isEqualTo("Description");
-      assertThat(saved.getCreditHeader()).isEqualTo("Amount");
+      assertThat(saved.getScope()).isEqualTo(StatementFormatScope.USER);
+      assertThat(saved.getOwnerId()).isEqualTo("usr_123");
       assertThat(saved.isEnabled()).isTrue();
     }
 
     @Test
-    void savesPdfFormat() {
-      var format =
-          StatementFormat.createPdfFormat("test-pdf", "Test Bank - PDF", "Test Bank", "USD");
+    void savesSystemPdfFormat() {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("Test Bank - PDF", "Test Bank", "USD");
 
-      var saved = repository.save(format);
+      var saved = statementFormatRepository.save(statementFormat);
 
       assertThat(saved.getId()).isNotNull();
-      assertThat(saved.getFormatKey()).isEqualTo("test-pdf");
       assertThat(saved.getFormatType()).isEqualTo(FormatType.PDF);
-      assertThat(saved.getBankName()).isEqualTo("Test Bank");
-      assertThat(saved.getDateHeader()).isNull();
+      assertThat(saved.getScope()).isEqualTo(StatementFormatScope.SYSTEM);
+      assertThat(saved.getOwnerId()).isNull();
     }
   }
 
   @Nested
-  class FindByFormatKey {
+  class Visibility {
 
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("existing-format");
+    @Test
+    void visibleFormatsIncludeSystemAndOwnedUserFormats() {
+      var ownedFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Owned Format", "Owned Bank", "USD", "usr_owner"));
+      var otherFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Other Format", "Other Bank", "USD", "usr_other"));
+
+      var result = statementFormatRepository.findVisibleToUser("usr_owner");
+
+      assertThat(result).contains(ownedFormat);
+      assertThat(result).doesNotContain(otherFormat);
+      assertThat(result)
+          .extracting(StatementFormat::getScope)
+          .contains(StatementFormatScope.SYSTEM);
     }
 
     @Test
-    void findsExistingFormat() {
-      repository.save(createCsvFormat("existing-format", "Bank"));
+    void enabledVisibleLookupExcludesDisabledFormats() {
+      var disabledFormat =
+          StatementFormat.createCsvFormat("Disabled Format", "Bank", "USD", "usr_owner");
+      disabledFormat.setEnabled(false);
+      var saved = statementFormatRepository.save(disabledFormat);
 
-      var result = repository.findByFormatKey("existing-format");
-
-      assertThat(result).isPresent();
-      assertThat(result.get().getFormatKey()).isEqualTo("existing-format");
-    }
-
-    @Test
-    void returnsEmptyForNonExistentFormat() {
-      var result = repository.findByFormatKey("non-existent");
+      var result = statementFormatRepository.findEnabledVisibleToUser(saved.getId(), "usr_owner");
 
       assertThat(result).isEmpty();
-    }
-  }
-
-  @Nested
-  class FindByFormatKeyAndEnabledTrue {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("enabled-format");
-      deleteTestFormat("disabled-format");
-    }
-
-    @Test
-    void findsEnabledFormat() {
-      repository.save(createCsvFormat("enabled-format", "Bank"));
-
-      var result = repository.findByFormatKeyAndEnabledTrue("enabled-format");
-
-      assertThat(result).isPresent();
-    }
-
-    @Test
-    void excludesDisabledFormat() {
-      var format = createCsvFormat("disabled-format", "Bank");
-      format.setEnabled(false);
-      repository.save(format);
-
-      var result = repository.findByFormatKeyAndEnabledTrue("disabled-format");
-
-      assertThat(result).isEmpty();
-    }
-  }
-
-  @Nested
-  class FindByFormatTypeAndEnabledTrue {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("csv-1");
-      deleteTestFormat("csv-2");
-      deleteTestFormat("pdf-1");
-      deleteTestFormat("enabled");
-      deleteTestFormat("disabled");
-    }
-
-    @Test
-    void findsCsvFormats() {
-      repository.save(createCsvFormat("csv-1", "Bank 1"));
-      repository.save(createCsvFormat("csv-2", "Bank 2"));
-      repository.save(StatementFormat.createPdfFormat("pdf-1", "Bank 3 - PDF", "Bank 3", "USD"));
-
-      var result = repository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
-
-      // Include seeded formats plus our test formats
-      assertThat(result).extracting(StatementFormat::getFormatKey).contains("csv-1", "csv-2");
-    }
-
-    @Test
-    void excludesDisabledFormats() {
-      var enabled = createCsvFormat("enabled", "Bank 1");
-      var disabled = createCsvFormat("disabled", "Bank 2");
-      disabled.setEnabled(false);
-
-      repository.save(enabled);
-      repository.save(disabled);
-
-      var result = repository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
-
-      assertThat(result).extracting(StatementFormat::getFormatKey).contains("enabled");
-      assertThat(result).extracting(StatementFormat::getFormatKey).doesNotContain("disabled");
-    }
-  }
-
-  @Nested
-  class FindByEnabledTrue {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("find-enabled-csv-1");
-      deleteTestFormat("find-enabled-pdf-1");
-      deleteTestFormat("find-enabled-disabled");
-    }
-
-    @Test
-    void findsAllEnabledFormats() {
-      repository.save(createCsvFormat("find-enabled-csv-1", "Bank 1"));
-      repository.save(
-          StatementFormat.createPdfFormat("find-enabled-pdf-1", "Bank 2 - PDF", "Bank 2", "USD"));
-      var disabled = createCsvFormat("find-enabled-disabled", "Bank 3");
-      disabled.setEnabled(false);
-      repository.save(disabled);
-
-      var result = repository.findByEnabledTrue();
-
-      assertThat(result)
-          .extracting(StatementFormat::getFormatKey)
-          .contains("find-enabled-csv-1", "find-enabled-pdf-1");
-      assertThat(result)
-          .extracting(StatementFormat::getFormatKey)
-          .doesNotContain("find-enabled-disabled");
-    }
-  }
-
-  @Nested
-  class ExistsByFormatKey {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("existing");
-    }
-
-    @Test
-    void returnsTrueForExistingFormat() {
-      repository.save(createCsvFormat("existing", "Bank"));
-
-      var result = repository.existsByFormatKey("existing");
-
-      assertThat(result).isTrue();
-    }
-
-    @Test
-    void returnsFalseForNonExistentFormat() {
-      var result = repository.existsByFormatKey("non-existent");
-
-      assertThat(result).isFalse();
-    }
-  }
-
-  @Nested
-  class Update {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("update-test");
-    }
-
-    @Test
-    void updatesFormatFields() {
-      var format = repository.save(createCsvFormat("update-test", "Old Bank"));
-
-      format.setBankName("New Bank");
-      format.setDefaultCurrencyIsoCode("EUR");
-      repository.save(format);
-
-      var updated = repository.findByFormatKey("update-test").orElseThrow();
-      assertThat(updated.getBankName()).isEqualTo("New Bank");
-      assertThat(updated.getDefaultCurrencyIsoCode()).isEqualTo("EUR");
-    }
-  }
-
-  @Nested
-  class AuditFields {
-
-    @BeforeEach
-    void setUp() {
-      deleteTestFormat("audit-fields");
-    }
-
-    @Test
-    void savesAuditFieldsForNewFormat() {
-      var saved = repository.save(createCsvFormat("audit-fields", "Audit Bank"));
-
-      assertThat(saved.getCreatedAt()).isNotNull();
-      assertThat(saved.getUpdatedAt()).isNotNull();
-      assertThat(saved.getCreatedBy()).isNull();
-      assertThat(saved.getUpdatedBy()).isNull();
     }
   }
 
@@ -282,92 +113,53 @@ class StatementFormatRepositoryIntegrationTest {
   class MigrationSeededFormats {
 
     @Test
-    void seededFormatsMatchExpectedConfiguration() {
-      var formats = repository.findByEnabledTrue();
+    void seededFormatsAreSystemScopedAndVisible() {
+      var formats = statementFormatRepository.findByEnabledTrue();
 
-      // After V9 migration: export CSV formats removed, keeping statement CSV and PDF formats
       assertThat(formats)
-          .extracting(StatementFormat::getFormatKey)
+          .extracting(StatementFormat::getDisplayName)
           .containsExactlyInAnyOrder(
-              "bkk-bank-statement-csv",
-              "bkk-bank-statement-pdf",
-              "capital-one-credit-monthly-statement",
-              "capital-one-credit-yearly-statement",
-              "capital-one-bank-monthly-statement");
+              "Bangkok Bank - Statement",
+              "Bangkok Bank - Statement PDF",
+              "Capital One Credit - Monthly Statement",
+              "Capital One Credit - Yearly Statement",
+              "Capital One Bank - Monthly Statement");
+      assertThat(formats)
+          .extracting(StatementFormat::getScope)
+          .containsOnly(StatementFormatScope.SYSTEM);
+      assertThat(formats).extracting(StatementFormat::getOwnerId).containsOnlyNulls();
     }
 
     @Test
-    void seededFormatsHaveSystemAuditValues() {
-      var formats = repository.findByEnabledTrue();
+    void seededCsvFormatHasParserRevisionConfiguration() {
+      var csvFormats = statementFormatRepository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
 
-      assertThat(formats).isNotEmpty();
-      assertThat(formats).allSatisfy(format -> assertThat(format.getCreatedAt()).isNotNull());
-      assertThat(formats).extracting(StatementFormat::getCreatedBy).containsOnly("SYSTEM");
-      assertThat(formats).extracting(StatementFormat::getUpdatedBy).containsOnly("SYSTEM");
+      assertThat(csvFormats)
+          .extracting(StatementFormat::getDisplayName)
+          .contains("Bangkok Bank - Statement");
+      var parserRevisions =
+          parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG);
+
+      assertThat(parserRevisions).hasSize(1);
+      assertThat(parserRevisions.getFirst().getParserConfig()).contains("\"dateHeader\":\"Date\"");
+      assertThat(parserRevisions.getFirst().getStatementFormat().getDisplayName())
+          .isEqualTo("Bangkok Bank - Statement");
     }
 
     @Test
-    void creditMonthlyStatementPdfFormatHasCorrectConfiguration() {
-      var format = repository.findByFormatKey("capital-one-credit-monthly-statement");
+    void seededPdfFormatsHaveStaticHandlerParserRevisions() {
+      var parserRevisions =
+          parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.STATIC_HANDLER);
 
-      assertThat(format).isPresent();
-      assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
-      assertThat(format.get().getBankName()).isEqualTo("Capital One");
-      assertThat(format.get().getDisplayName()).isEqualTo("Capital One Credit - Monthly Statement");
-      assertThat(format.get().getDateHeader()).isNull();
-      assertThat(format.get().getDescriptionHeader()).isNull();
+      assertThat(parserRevisions).hasSize(4);
+      assertThat(parserRevisions)
+          .extracting(parserRevision -> parserRevision.getStatementFormat().getDisplayName())
+          .containsExactlyInAnyOrder(
+              "Bangkok Bank - Statement PDF",
+              "Capital One Credit - Monthly Statement",
+              "Capital One Credit - Yearly Statement",
+              "Capital One Bank - Monthly Statement");
+      assertThat(parserRevisions).extracting("handlerKey").doesNotContainNull();
     }
-
-    @Test
-    void creditYearlyStatementPdfFormatHasCorrectConfiguration() {
-      var format = repository.findByFormatKey("capital-one-credit-yearly-statement");
-
-      assertThat(format).isPresent();
-      assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
-      assertThat(format.get().getBankName()).isEqualTo("Capital One");
-      assertThat(format.get().getDisplayName()).isEqualTo("Capital One Credit - Yearly Statement");
-      assertThat(format.get().getDateHeader()).isNull();
-      assertThat(format.get().getDescriptionHeader()).isNull();
-    }
-
-    @Test
-    void bankMonthlyStatementPdfFormatHasCorrectConfiguration() {
-      var format = repository.findByFormatKey("capital-one-bank-monthly-statement");
-
-      assertThat(format).isPresent();
-      assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
-      assertThat(format.get().getBankName()).isEqualTo("Capital One");
-      assertThat(format.get().getDisplayName()).isEqualTo("Capital One Bank - Monthly Statement");
-      assertThat(format.get().getDateHeader()).isNull();
-      assertThat(format.get().getDescriptionHeader()).isNull();
-    }
-
-    @Test
-    void bangkokBankStatementPdfFormatHasCorrectConfiguration() {
-      var format = repository.findByFormatKey("bkk-bank-statement-pdf");
-
-      assertThat(format).isPresent();
-      assertThat(format.get().getFormatType()).isEqualTo(FormatType.PDF);
-      assertThat(format.get().getBankName()).isEqualTo("Bangkok Bank");
-      assertThat(format.get().getDefaultCurrencyIsoCode()).isEqualTo("THB");
-      assertThat(format.get().getDisplayName()).isEqualTo("Bangkok Bank - Statement PDF");
-      assertThat(format.get().getDateHeader()).isNull();
-      assertThat(format.get().getDescriptionHeader()).isNull();
-    }
-  }
-
-  private StatementFormat createCsvFormat(String formatKey, String bankName) {
-    return StatementFormat.createCsvFormat(
-        formatKey,
-        bankName + " - Export",
-        bankName,
-        "USD",
-        "Date",
-        "MM/dd/uu",
-        "Description",
-        "Amount",
-        "Amount",
-        null,
-        null);
   }
 }

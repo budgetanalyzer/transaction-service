@@ -35,10 +35,15 @@ public class FileImport {
   @Column(name = "original_filename", nullable = false)
   private String originalFilename;
 
-  /** Format key (e.g., "capital-one-bank-csv", "bkk-bank-csv"). */
+  /** Statement format selected for this import. */
   @NotNull
-  @Column(name = "format", length = 50, nullable = false)
-  private String format;
+  @Column(name = "statement_format_id", nullable = false)
+  private Long statementFormatId;
+
+  /** Parser revision that parsed this import. */
+  @NotNull
+  @Column(name = "parser_revision_id", nullable = false)
+  private Long parserRevisionId;
 
   /** Account ID specified during import (nullable). */
   @Column(name = "account_id")
@@ -72,7 +77,8 @@ public class FileImport {
    *
    * @param contentHash SHA-256 hash of the file content
    * @param originalFilename original filename as uploaded
-   * @param format CSV format key
+   * @param statementFormatId selected statement format ID
+   * @param parserRevisionId selected parser revision ID
    * @param accountId account ID (nullable)
    * @param fileSizeBytes file size in bytes
    * @param transactionCount number of transactions imported
@@ -82,7 +88,8 @@ public class FileImport {
   public static FileImport create(
       String contentHash,
       String originalFilename,
-      String format,
+      Long statementFormatId,
+      Long parserRevisionId,
       String accountId,
       Long fileSizeBytes,
       Integer transactionCount,
@@ -90,7 +97,8 @@ public class FileImport {
     var fileImport = new FileImport();
     fileImport.contentHash = contentHash;
     fileImport.originalFilename = originalFilename;
-    fileImport.format = format;
+    fileImport.statementFormatId = statementFormatId;
+    fileImport.parserRevisionId = parserRevisionId;
     fileImport.accountId = accountId;
     fileImport.fileSizeBytes = fileSizeBytes;
     fileImport.transactionCount = transactionCount;
@@ -111,8 +119,12 @@ public class FileImport {
     return originalFilename;
   }
 
-  public String getFormat() {
-    return format;
+  public Long getStatementFormatId() {
+    return statementFormatId;
+  }
+
+  public Long getParserRevisionId() {
+    return parserRevisionId;
   }
 
   public String getAccountId() {

@@ -4,7 +4,8 @@ package org.budgetanalyzer.transaction.service.dto;
 public record BatchFileImportSource(
     String contentHash,
     String originalFilename,
-    String detectedFormat,
+    Long statementFormatId,
+    Long parserRevisionId,
     String accountId,
     Long fileSizeBytes) {
 
@@ -18,7 +19,8 @@ public record BatchFileImportSource(
     return new BatchFileImportSource(
         previewImportToken.contentHash(),
         previewImportToken.originalFilename(),
-        previewImportToken.detectedFormat(),
+        previewImportToken.statementFormatId(),
+        previewImportToken.parserRevisionId(),
         previewImportToken.accountId(),
         previewImportToken.fileSizeBytes());
   }

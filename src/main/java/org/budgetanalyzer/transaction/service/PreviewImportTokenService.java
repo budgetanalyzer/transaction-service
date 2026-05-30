@@ -62,7 +62,8 @@ public class PreviewImportTokenService {
    * @param ownerId the authenticated owner ID
    * @param contentHash the SHA-256 file content hash
    * @param originalFilename the uploaded file's original filename
-   * @param detectedFormat the format key used to parse the file
+   * @param statementFormatId the selected statement format ID
+   * @param parserRevisionId the selected parser revision ID
    * @param accountId optional account ID applied during preview
    * @param fileSizeBytes uploaded file size in bytes
    * @return opaque encrypted preview import token
@@ -71,7 +72,8 @@ public class PreviewImportTokenService {
       String ownerId,
       String contentHash,
       String originalFilename,
-      String detectedFormat,
+      Long statementFormatId,
+      Long parserRevisionId,
       String accountId,
       Long fileSizeBytes) {
     var issuedAt = clock.instant();
@@ -81,7 +83,8 @@ public class PreviewImportTokenService {
             ownerId,
             contentHash,
             originalFilename,
-            detectedFormat,
+            statementFormatId,
+            parserRevisionId,
             accountId,
             fileSizeBytes,
             issuedAt,
@@ -204,7 +207,8 @@ public class PreviewImportTokenService {
     if (isBlank(previewImportToken.ownerId())
         || isBlank(previewImportToken.contentHash())
         || isBlank(previewImportToken.originalFilename())
-        || isBlank(previewImportToken.detectedFormat())
+        || previewImportToken.statementFormatId() == null
+        || previewImportToken.parserRevisionId() == null
         || previewImportToken.fileSizeBytes() == null
         || previewImportToken.fileSizeBytes() < 0
         || previewImportToken.issuedAt() == null

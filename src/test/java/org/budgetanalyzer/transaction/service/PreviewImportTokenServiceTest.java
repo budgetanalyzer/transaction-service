@@ -42,14 +42,15 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", "checking-12345", 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
 
     var result = previewImportTokenService.verifyToken(token, "usr_test123");
 
     assertThat(result.ownerId()).isEqualTo("usr_test123");
     assertThat(result.contentHash()).isEqualTo("hash-123");
     assertThat(result.originalFilename()).isEqualTo("statement.csv");
-    assertThat(result.detectedFormat()).isEqualTo("capital-one");
+    assertThat(result.statementFormatId()).isEqualTo(42L);
+    assertThat(result.parserRevisionId()).isEqualTo(101L);
     assertThat(result.accountId()).isEqualTo("checking-12345");
     assertThat(result.fileSizeBytes()).isEqualTo(128L);
     assertThat(result.issuedAt()).isEqualTo(NOW);
@@ -62,7 +63,7 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", "checking-12345", 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
     var tokenSegments = token.split("\\.");
 
     assertThat(tokenSegments).hasSize(3);
@@ -77,7 +78,7 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", null, 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
     var replacement = token.endsWith("x") ? "y" : "x";
     var tamperedToken = token.substring(0, token.length() - 1) + replacement;
 
@@ -89,7 +90,7 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", null, 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
     var tokenSegments = token.split("\\.");
     var replacement = tokenSegments[1].endsWith("x") ? "y" : "x";
     tokenSegments[1] = tokenSegments[1].substring(0, tokenSegments[1].length() - 1) + replacement;
@@ -103,7 +104,7 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", null, 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
     var expiredService = service(NOW.plus(Duration.ofMinutes(31)), Duration.ofMinutes(30));
 
     assertThatThrownBy(() -> expiredService.verifyToken(token, "usr_test123"))
@@ -124,8 +125,6 @@ class PreviewImportTokenServiceTest {
                 "usr_test123",
                 "contentHash",
                 "hash-123",
-                "detectedFormat",
-                "capital-one",
                 "fileSizeBytes",
                 128,
                 "issuedAt",
@@ -149,7 +148,7 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", null, 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
     var tokenSegments = token.split("\\.");
     tokenSegments[0] = "v1";
     var wrongVersionToken = String.join(".", tokenSegments);
@@ -180,7 +179,7 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", "capital-one", null, 128L);
+            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
 
     assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_other789"))
         .isInstanceOfSatisfying(
@@ -232,7 +231,8 @@ class PreviewImportTokenServiceTest {
             "contentHash",
             "ownerId",
             "originalFilename",
-            "detectedFormat",
+            "statementFormatId",
+            "parserRevisionId",
             "accountId");
   }
 

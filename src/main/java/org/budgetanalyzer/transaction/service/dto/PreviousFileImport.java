@@ -8,7 +8,7 @@ import org.budgetanalyzer.transaction.domain.FileImport;
 public record PreviousFileImport(
     String originalFilename,
     Instant importedAt,
-    String format,
+    Long statementFormatId,
     String accountId,
     Integer transactionCount) {
 
@@ -17,7 +17,7 @@ public record PreviousFileImport(
     return new PreviousFileImport(
         fileImport.getOriginalFilename(),
         fileImport.getImportedAt(),
-        fileImport.getFormat(),
+        fileImport.getStatementFormatId(),
         fileImport.getAccountId(),
         fileImport.getTransactionCount());
   }

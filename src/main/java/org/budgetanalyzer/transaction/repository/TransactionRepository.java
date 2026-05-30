@@ -43,14 +43,6 @@ public interface TransactionRepository
 
   /** SQL projection returned by structured repository candidate lookup. */
   interface StructuredTransactionDuplicateCandidate {
-
-    /**
-     * Returns the normalized account ID.
-     *
-     * @return the normalized account ID
-     */
-    String getAccountId();
-
     /**
      * Returns the bank name.
      *
@@ -120,9 +112,6 @@ public interface TransactionRepository
     var candidateCriteriaList = List.copyOf(candidateCriteria);
     return findDuplicateCandidatesByStructuredCriteria(
             candidateCriteriaList.stream()
-                .map(TransactionDuplicateCandidateCriteria::accountId)
-                .toArray(String[]::new),
-            candidateCriteriaList.stream()
                 .map(TransactionDuplicateCandidateCriteria::bankName)
                 .toArray(String[]::new),
             candidateCriteriaList.stream()
@@ -148,21 +137,18 @@ public interface TransactionRepository
           """
       WITH candidate_criteria AS (
         SELECT
-            NULLIF(account_id, '') AS account_id,
             bank_name,
             transaction_date,
             amount,
             transaction_type,
             currency_iso_code
         FROM UNNEST(
-            CAST(:accountIds AS text[]),
             CAST(:bankNames AS text[]),
             CAST(:dates AS date[]),
             CAST(:amounts AS numeric[]),
             CAST(:types AS text[]),
             CAST(:currencyIsoCodes AS text[])
         ) AS candidate_criteria(
-            account_id,
             bank_name,
             transaction_date,
             amount,
@@ -171,7 +157,6 @@ public interface TransactionRepository
         )
       )
       SELECT
-          candidate_criteria.account_id AS "accountId",
           candidate_criteria.bank_name AS "bankName",
           candidate_criteria.transaction_date AS "date",
           candidate_criteria.amount AS "amount",
@@ -183,13 +168,6 @@ public interface TransactionRepository
       JOIN transaction
         ON transaction.owner_id = :ownerId
        AND transaction.deleted = false
-       AND (
-            transaction.account_id = candidate_criteria.account_id
-            OR (
-                candidate_criteria.account_id IS NULL
-                AND NULLIF(transaction.account_id, '') IS NULL
-            )
-       )
        AND transaction.bank_name = candidate_criteria.bank_name
        AND transaction.date = candidate_criteria.transaction_date
        AND transaction.amount = candidate_criteria.amount
@@ -198,7 +176,6 @@ public interface TransactionRepository
       """,
       nativeQuery = true)
   List<StructuredTransactionDuplicateCandidate> findDuplicateCandidatesByStructuredCriteria(
-      @Param("accountIds") String[] accountIds,
       @Param("bankNames") String[] bankNames,
       @Param("dates") LocalDate[] dates,
       @Param("amounts") BigDecimal[] amounts,
@@ -210,7 +187,6 @@ public interface TransactionRepository
       StructuredTransactionDuplicateCandidate structuredCandidate) {
     return new TransactionDuplicateCandidateResult(
         new TransactionDuplicateCandidateCriteria(
-            structuredCandidate.getAccountId(),
             structuredCandidate.getBankName(),
             structuredCandidate.getDate(),
             structuredCandidate.getAmount(),

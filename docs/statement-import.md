@@ -20,41 +20,67 @@ Registered PDF formats:
 
 ## Configuration Structure
 
-Statement formats are stored in the `statement_format` database table and managed via the Statement Format API.
+Statement formats are stored in the `statement_format` database table and
+managed via the Statement Format API. Hidden `parser_revision` rows store the
+deterministic parser configuration or static extractor handler selected during
+preview. The public import identity is always `statement_format.id`.
+
+During import preview, the service loads the selected `statement_format.id` and
+tries every enabled parser revision for that format in priority and revision
+order. Each revision produces an in-memory parser attempt: not applicable,
+matched, or failed. The first matched attempt in deterministic order supplies
+the preview rows, and the preview token records both the selected
+`statementFormatId` and the winning `parserRevisionId`. Batch import then
+persists the same provenance on `file_import`.
 
 ### Database Schema
 
 ```sql
 CREATE TABLE statement_format (
     id BIGSERIAL PRIMARY KEY,
-    format_key VARCHAR(50) NOT NULL UNIQUE,  -- e.g., "bkk-bank-statement-csv"
     format_type VARCHAR(10) NOT NULL,        -- CSV, PDF, XLSX
     bank_name VARCHAR(100) NOT NULL,
     default_currency_iso_code VARCHAR(3) NOT NULL,
-    -- CSV-specific fields (null for PDF/XLSX)
-    date_header VARCHAR(50),
-    date_format VARCHAR(50),
-    description_header VARCHAR(50),
-    credit_header VARCHAR(50),
-    debit_header VARCHAR(50),
-    type_header VARCHAR(50),
-    category_header VARCHAR(50),
+    display_name VARCHAR(100) NOT NULL,
+    scope VARCHAR(10) NOT NULL,              -- SYSTEM or USER
+    owner_id VARCHAR(50),                    -- null for SYSTEM formats
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP(6) WITH TIME ZONE,
     created_by VARCHAR(50),
     updated_by VARCHAR(50)
 );
+
+CREATE TABLE parser_revision (
+    id BIGSERIAL PRIMARY KEY,
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    revision_number INTEGER NOT NULL,
+    parser_type VARCHAR(30) NOT NULL,        -- STATIC_HANDLER, CSV_COLUMN_CONFIG
+    handler_key VARCHAR(100),                -- internal static extractor key
+    config_schema_version INTEGER NOT NULL,
+    parser_config TEXT,                      -- CSV column mapping JSON
+    priority INTEGER NOT NULL DEFAULT 0,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL
+);
 ```
 
 ### Statement Format API
 
-- `GET /v1/statement-formats` - List all formats
-- `GET /v1/statement-formats/{formatKey}` - Get specific format
+- `GET /v1/statement-formats` - List formats visible to the caller
+- `GET /v1/statement-formats/{id}` - Get a specific format by ID
 - `POST /v1/statement-formats` - Create new format
-- `PUT /v1/statement-formats/{formatKey}` - Update format
+- `PUT /v1/statement-formats/{id}` - Update format metadata or enablement
+- `POST /v1/statement-formats/csv-wizard/analyze` - Analyze a CSV sample and
+  infer a column mapping
+- `POST /v1/statement-formats/csv-wizard/preview` - Validate a confirmed CSV
+  mapping and return read-only parser preview rows
+- `POST /v1/statement-formats/csv-wizard/save` - Save a user-scoped CSV format
+  with one enabled parser revision
 
-Disable a format through `PUT /v1/statement-formats/{formatKey}` with `{"enabled": false}`.
+Disable a format through `PUT /v1/statement-formats/{id}` with
+`{"enabled": false}`.
 
 ### Amount Column Patterns
 
@@ -98,9 +124,11 @@ Used by: Bangkok Bank
 
 ## Complete Configuration Examples
 
-See `V7__add_statement_format.sql` for all seeded formats. Here are sample CSVs:
+See `V7__add_statement_format.sql` and
+`V18__user_scoped_statement_formats_and_parser_revisions.sql` for seeded
+formats and parser revisions. Here are sample imports:
 
-### Bangkok Bank CSV (`bkk-bank-statement-csv`)
+### Bangkok Bank CSV
 
 **Sample CSV:**
 ```csv
@@ -128,7 +156,7 @@ shape are ignored; ambiguous rows with both amount columns populated or no
 populated amount column fail with `PDF_PARSING_ERROR`. CSV-specific
 configuration columns remain null for this format.
 
-### Capital One Credit Monthly PDF (`capital-one-credit-monthly-statement`)
+### Capital One Credit Monthly PDF
 
 The seeded PDF format uses display name `Capital One Credit - Monthly
 Statement`, bank name `Capital One`, and default currency `USD`. The dedicated
@@ -147,7 +175,9 @@ CREDIT-CASH BACK REWARD
 - $450.68
 ```
 
-Both shapes use the same `capital-one-credit-monthly-statement` format key.
+Both shapes use the same Capital One monthly credit statement format ID. Static
+PDF extractor routing uses an internal `parser_revision.handler_key`; clients
+select the top-level statement format by ID.
 Payments, credits, and negative amounts import as `CREDIT`; purchase rows import
 as `DEBIT`. Foreign-currency detail lines, exchange-rate detail lines, airline
 ticket detail lines, page continuations, and summary totals are ignored. If the
@@ -165,8 +195,13 @@ Uses Java `DateTimeFormatter` patterns:
 | `dd/MM/uuuu` | Day/Month/4-digit year | 15/11/2024 |
 | `M/d/uu` | Month/Day/2-digit year (no leading zeros) | 1/5/24 |
 | `uuuu-MM-dd` | ISO 8601 format | 2024-11-15 |
+| `d MMM uuuu` | Day short-month 4-digit year | 5 Dec 2025 |
+| `d MMM uuuu HH:mm` | Day short-month 4-digit year with 24-hour time | 31 Dec 2025 10:37 |
 
 See [DateTimeFormatter documentation](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/time/format/DateTimeFormatter.html) for all patterns.
+When a CSV format is configured with a supported date-time pattern such as
+`d MMM uuuu HH:mm`, rows from the same bank export may omit the time; the parser
+falls back to the matching date-only pattern for those rows.
 
 ## Adding a New Bank Format
 
@@ -180,13 +215,22 @@ Get a real CSV export from the bank. Review:
 
 ### Step 2: Create Format via API
 
-Use the Statement Format API to create the new format:
+Use the CSV wizard endpoints for user-created formats when you have a sample
+file. The wizard infers likely columns, lets the client submit a confirmed
+mapping, validates that mapping against the sample, and saves a user-scoped
+format with an enabled `CSV_COLUMN_CONFIG` parser revision. The uploaded sample
+is not persisted.
+
+The JSON create endpoint is available for clients that already know exact
+column names:
 
 ```bash
 curl -X POST http://localhost:8082/v1/statement-formats \
   -H "Content-Type: application/json" \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
   -d '{
-    "formatKey": "new-bank-format",
+    "displayName": "New Bank CSV",
     "formatType": "CSV",
     "bankName": "New Bank Name",
     "defaultCurrencyIsoCode": "USD",
@@ -200,34 +244,193 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 ```
 
 **Important:**
-- `formatKey` must be unique and URL-safe
+- New formats are user-scoped by default. Creating `scope: "SYSTEM"` requires
+  `statementformats:write:any`.
+- The response `id` is the value to use for preview and update requests.
 - All headers must match CSV exactly (case-sensitive)
 - Date format must match CSV date representation
 - Use same column for both credit/debit headers if bank uses single amount column
 - Omit `typeHeader` if using separate credit/debit columns
+- The JSON create endpoint only creates CSV formats. Built-in PDF formats need
+  parser revisions with internal handler keys and are seeded by migrations.
+
+### CSV Wizard Flow
+
+#### Analyze Sample
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/analyze \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv"
+```
+
+**Response:** `200 OK`
+```json
+{
+  "headers": ["Transaction Date", "Description", "Amount", "Type"],
+  "sampleRows": [
+    {
+      "Transaction Date": "04/12/24",
+      "Description": "Coffee Shop",
+      "Amount": "4.50",
+      "Type": "Debit"
+    }
+  ],
+  "inferredMapping": {
+    "dateColumn": "Transaction Date",
+    "dateFormat": "MM/dd/uu",
+    "descriptionColumn": "Description",
+    "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+    "amountColumn": "Amount",
+    "debitColumn": null,
+    "creditColumn": null,
+    "typeColumn": "Type",
+    "categoryColumn": null
+  },
+  "confidence": 0.95,
+  "columnConfidences": {
+    "dateColumn": 0.95,
+    "descriptionColumn": 0.95,
+    "amountColumn": 0.95,
+    "typeColumn": 0.95
+  },
+  "warnings": []
+}
+```
+
+#### Preview Confirmed Mapping
+
+This preview is a parser validation view only. It does not create a normal
+import preview token, `file_import`, statement format, or transaction rows. It
+also does not perform duplicate detection or expose batch import actions.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv" \
+  -F 'request={
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "accountId": "checking-001",
+    "mapping": {
+      "dateColumn": "Transaction Date",
+      "dateFormat": "MM/dd/uu",
+      "descriptionColumn": "Description",
+      "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+      "amountColumn": "Amount",
+      "typeColumn": "Type"
+    }
+  };type=application/json'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "transactions": [
+    {
+      "date": "2024-04-12",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Example Bank",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "warnings": []
+}
+```
+
+#### Save Confirmed Mapping
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/save \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.csv" \
+  -F 'request={
+    "displayName": "Example Bank CSV",
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "mapping": {
+      "dateColumn": "Transaction Date",
+      "dateFormat": "MM/dd/uu",
+      "descriptionColumn": "Description",
+      "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
+      "amountColumn": "Amount",
+      "typeColumn": "Type"
+    }
+  };type=application/json'
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": 123,
+  "displayName": "Example Bank CSV",
+  "formatType": "CSV",
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "scope": "USER",
+  "ownerId": "usr_test123",
+  "enabled": true
+}
+```
+
+The saved `id` can immediately be used as `statementFormatId` in
+`POST /v1/transactions/preview`.
+
+**Validation behavior:** Wizard preview and save validate required columns,
+date format, amount mode, credit/debit direction, bank name, ISO currency, and
+that the mapping parses at least one valid transaction row. Mapping validation
+errors return `422 Unprocessable Entity` with `code:
+CSV_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`, for example:
+
+```json
+{
+  "type": "APPLICATION_ERROR",
+  "message": "CSV wizard mapping validation failed.",
+  "code": "CSV_WIZARD_VALIDATION_FAILED",
+  "fieldErrors": [
+    {
+      "field": "mapping.typeColumn",
+      "message": "Column is required.",
+      "rejectedValue": null
+    }
+  ]
+}
+```
 
 ### Step 3: Verify Format Created
 
 ```bash
-curl http://localhost:8082/v1/statement-formats/new-bank-format
+curl -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:read" \
+  http://localhost:8082/v1/statement-formats/123
 ```
 
 No restart required - formats are loaded from database.
 
 ### Step 4: Preview Import
 
-Use the preview endpoint with your format key. Preview parses the file, returns
-editable transactions, includes advisory duplicate indicators, and reports
-whether the exact file bytes match a previous import record for the current user
-without persisting anything. It also returns an encrypted, time-limited
-`previewImportToken` for token-backed batch import recording:
+Use the preview endpoint with the statement format ID returned by the create or
+list API. Preview parses the file, returns editable transactions, includes
+advisory duplicate indicators, and reports whether the exact file bytes match a
+previous import record for the current user without persisting anything. It also
+returns an encrypted, time-limited `previewImportToken` for token-backed batch
+import recording:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
   -F "file=@sample.csv" \
-  -F "format=new-bank-format" \
+  -F "statementFormatId=123" \
   -F "accountId=test-account"
 ```
 
@@ -253,8 +456,9 @@ file or returning `previewImportToken`.
 Submit the reviewed transactions to the batch endpoint. Omit `allowDuplicate`
 or set it to `false` for normal imports. Set it to `true` only for duplicate
 rows that should be intentionally imported. Include the `previewImportToken`
-from the preview response so the service can record `file_import` metadata and
-link newly created transactions to that import:
+from the preview response so the service can record `file_import` metadata,
+including `statement_format_id` and `parser_revision_id`, and link newly
+created transactions to that import:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/batch \
@@ -305,8 +509,10 @@ Verify:
 **Parameters:**
 - `file` (multipart file, required) - CSV or PDF file to parse; must include a
   non-blank multipart filename
-- `format` (string, required) - Format key from configuration
-- `accountId` (string, optional) - Account to associate with previewed transactions
+- `statementFormatId` (number, required) - Statement format ID selected from
+  `GET /v1/statement-formats`
+- `accountId` (string, optional) - Account to associate with previewed
+  transactions; not used for duplicate detection
 
 The service accepts statement preview uploads up to `25MB` by default. Override
 `TRANSACTION_IMPORT_MAX_FILE_SIZE` and `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` for
@@ -320,7 +526,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
   -F "file=@statement.csv" \
-  -F "format=bkk-bank-statement-csv" \
+  -F "statementFormatId=123" \
   -F "accountId=checking-001"
 ```
 
@@ -328,7 +534,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 ```json
 {
   "sourceFile": "statement.csv",
-  "detectedFormat": "bkk-bank-statement-csv",
+  "statementFormatId": 123,
   "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
   "fileImport": {
     "alreadyImported": false
@@ -419,7 +625,8 @@ authoritative matching rules, `duplicateReason` values, file reupload tracking,
 ### Parser Flow
 
 1. **File Validation** - Check file format, size limits
-2. **Configuration Lookup** - Retrieve CSV format config by key
+2. **Configuration Lookup** - Retrieve the visible statement format by ID and
+   choose its enabled parser revision
 3. **Header Parsing** - Read and validate CSV headers match config
 4. **Row Parsing** - For each row:
    - Parse date using configured format
@@ -444,9 +651,11 @@ Error messages include:
 ### Key Classes
 
 - `StatementFormat` - Entity representing a statement format configuration
+- `ParserRevision` - Hidden parser configuration or static extractor routing
 - `StatementFormatService` - CRUD operations for statement formats
-- `StatementExtractorRegistry` - Registry of extractors by format key
-- `CsvStatementExtractor` - Extracts transactions from CSV files
+- `StatementExtractorRegistry` - Registry of extractors by statement format ID
+  and parser revision
+- `ConfigurableCsvStatementExtractor` - Extracts transactions from CSV files
 - `TransactionController.previewTransactions()` - Preview API endpoint
 - `TransactionController.batchImportTransactions()` - Batch import API endpoint
 - `TransactionImportService` - Business logic for imports
@@ -462,6 +671,7 @@ cat src/main/java/org/budgetanalyzer/transaction/service/StatementFormatService.
 
 # View seeded formats
 cat src/main/resources/db/migration/V7__add_statement_format.sql
+cat src/main/resources/db/migration/V18__user_scoped_statement_formats_and_parser_revisions.sql
 
 # Find import endpoints
 grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
@@ -469,11 +679,13 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 ## Troubleshooting
 
-### "Unknown CSV format: xyz"
+### "Statement format has no supported parser revision"
 
-**Cause:** Format key not found in database.
+**Cause:** The selected statement format ID is not visible, disabled, or has no
+enabled parser revision compatible with its file type.
 
-**Solution:** List formats via `GET /v1/statement-formats` and verify the format key exists.
+**Solution:** List formats via `GET /v1/statement-formats` and verify the
+selected format is enabled and has a parser revision.
 
 ### "Invalid date format at line X"
 
@@ -481,7 +693,8 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 **Solution:**
 1. Check actual date format in CSV
-2. Update format via `PUT /v1/statement-formats/{formatKey}`
+2. Create a corrected format or parser revision. Metadata updates use
+   `PUT /v1/statement-formats/{id}`.
 
 ### "Missing required header: Amount"
 
@@ -489,7 +702,8 @@ grep -r "import\|preview" src/main/java/*/api/ | grep "@PostMapping"
 
 **Solution:**
 1. Check exact header names in CSV (case-sensitive)
-2. Update format via `PUT /v1/statement-formats/{formatKey}`
+2. Create a corrected format or parser revision. Metadata updates use
+   `PUT /v1/statement-formats/{id}`.
 
 ### "Duplicate transactions detected"
 
