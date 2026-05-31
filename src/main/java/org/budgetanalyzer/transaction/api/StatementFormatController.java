@@ -34,10 +34,12 @@ import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.request.CsvWizardMappingPreviewRequest;
 import org.budgetanalyzer.transaction.api.request.CsvWizardSaveRequest;
+import org.budgetanalyzer.transaction.api.request.PdfWizardMappingPreviewRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.response.CsvWizardAnalysisResponse;
 import org.budgetanalyzer.transaction.api.response.CsvWizardPreviewResponse;
 import org.budgetanalyzer.transaction.api.response.PdfWizardAnalysisResponse;
+import org.budgetanalyzer.transaction.api.response.PdfWizardPreviewResponse;
 import org.budgetanalyzer.transaction.api.response.StatementFormatResponse;
 import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.PdfStatementFormatWizardService;
@@ -358,6 +360,44 @@ public class StatementFormatController {
 
     return PdfWizardAnalysisResponse.from(
         pdfStatementFormatWizardService.analyze(file.getBytes(), file.getOriginalFilename()));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Preview a PDF wizard mapping",
+      description =
+          "Parses read-only transaction preview rows from a multipart text-PDF sample and "
+              + "confirmed table mapping. This does not create a statement format, preview token, "
+              + "file import, or transactions.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = PdfWizardPreviewResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "Mapping validation error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/pdf-wizard/preview",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public PdfWizardPreviewResponse previewPdfMapping(
+      @RequestPart("file") MultipartFile file,
+      @Valid @RequestPart("request") PdfWizardMappingPreviewRequest request)
+      throws java.io.IOException {
+    log.info("Received PDF statement format wizard mapping preview request");
+
+    return PdfWizardPreviewResponse.from(
+        pdfStatementFormatWizardService.preview(
+            file.getBytes(), file.getOriginalFilename(), request.toServiceDto()));
   }
 
   @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")

@@ -32,6 +32,7 @@ import org.budgetanalyzer.transaction.service.PdfStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
@@ -62,6 +63,8 @@ class StatementFormatControllerAuthorizationTest {
                 List.of(), List.of(), null, 0.0, java.util.Map.of(), List.of()));
     when(pdfStatementFormatWizardService.analyze(any(byte[].class), anyString()))
         .thenReturn(new PdfWizardAnalysisResult(List.of(), 0.0, List.of()));
+    when(pdfStatementFormatWizardService.preview(any(byte[].class), anyString(), any()))
+        .thenReturn(new PdfWizardPreviewResult(List.of(), List.of()));
   }
 
   // ==================== No authentication ====================
@@ -219,6 +222,32 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
+  @Test
+  void pdfWizardPreview_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/preview")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfPreviewRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void pdfWizardPreview_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/preview")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfPreviewRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
   // ==================== Admin with full permissions ====================
 
   @Test
@@ -270,5 +299,29 @@ class StatementFormatControllerAuthorizationTest {
   private MockMultipartFile pdfFile() {
     return new MockMultipartFile(
         "file", "sample.pdf", "application/pdf", "%PDF-1.4 sample".getBytes());
+  }
+
+  private MockMultipartFile jsonPart(String name, String content) {
+    return new MockMultipartFile(name, "", MediaType.APPLICATION_JSON_VALUE, content.getBytes());
+  }
+
+  private String pdfPreviewRequestJson() {
+    return """
+        {
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
+          }
+        }
+        """;
   }
 }

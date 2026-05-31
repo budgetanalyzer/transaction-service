@@ -7,8 +7,9 @@ dedicated PDF extractors for multiple bank statement formats, and internal
 configuration primitives for text-based PDF table parsing. Banks have different
 export formats with varying column headers, date formats, amount
 representations, and PDF layouts. CSV formats can usually be added without code
-changes. User-created generic PDF formats are still behind the PDF wizard plan;
-normal imports currently use the seeded static PDF handlers.
+changes. User-created generic PDF formats can be validated with the PDF wizard
+preview endpoint and routed through normal import when saved with a
+`PDF_TEXT_TABLE_CONFIG` parser revision.
 
 ## Supported Banks
 
@@ -82,6 +83,8 @@ CREATE TABLE parser_revision (
   with one enabled parser revision
 - `POST /v1/statement-formats/pdf-wizard/analyze` - Analyze a text-PDF sample
   and return ranked transaction-table candidates
+- `POST /v1/statement-formats/pdf-wizard/preview` - Validate a confirmed
+  text-PDF table mapping and return read-only parser preview rows
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
@@ -271,10 +274,12 @@ scores text table candidates by header detection, repeated headers, row
 continuity, row count, date-like columns, description-like columns, signed
 amount columns, debit/credit column pairs, and optional type columns.
 
-This foundation does not yet support PDF wizard mapping preview, saving generic
-PDF formats, or routing saved generic PDF formats through normal transaction
-import. Static PDF handlers continue to use `parser_type = STATIC_HANDLER` and
-internal `handler_key` values.
+The same deterministic extractor is used by the PDF wizard preview endpoint
+and by normal import revision selection for saved `PDF_TEXT_TABLE_CONFIG`
+parser revisions. A matched normal import records the winning parser revision
+ID in the preview token and later on `file_import`. Static PDF handlers
+continue to use `parser_type = STATIC_HANDLER` and internal `handler_key`
+values.
 
 ### PDF Wizard Analysis
 
@@ -335,6 +340,66 @@ candidates plus user-facing `rejectionReasons`, for example scanned-PDF
 rejection when the file has too little extractable text. The client should show
 these reasons in the wizard instead of treating the response as an import
 preview.
+
+### PDF Wizard Preview
+
+This preview is a parser validation view only. It does not create a normal
+import preview token, `file_import`, statement format, or transaction rows. It
+also does not perform duplicate detection or expose batch import actions.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf" \
+  -F 'request={
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "accountId": "checking-001",
+    "headerMustContain": ["Date", "Description", "Amount"],
+    "minimumRows": 1,
+    "yearSource": "EXPLICIT_DATE",
+    "mapping": {
+      "dateHeader": "Date",
+      "dateFormat": "MM/dd/uuuu",
+      "descriptionHeader": "Description",
+      "amountMode": "SIGNED_AMOUNT",
+      "amountHeader": "Amount",
+      "negativeMeans": "CREDIT"
+    }
+  };type=application/json'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "transactions": [
+    {
+      "date": "2025-01-02",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Example Bank",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "diagnostics": [
+    "Matched a text-PDF table using 3 configured header token(s)."
+  ]
+}
+```
+
+For signed amount columns, `negativeMeans` defines the transaction direction
+for negative values; positive values are imported as the opposite direction.
+For separate debit and credit columns, exactly one of those columns must be
+populated per row. Yearless date formats require `yearSource:
+STATEMENT_PERIOD` and a four-digit year elsewhere in the extracted PDF text.
+Mapping validation errors return `422 Unprocessable Entity` with `code:
+PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
 
 ### CSV Wizard Flow
 

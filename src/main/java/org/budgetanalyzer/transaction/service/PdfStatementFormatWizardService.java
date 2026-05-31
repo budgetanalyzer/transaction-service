@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Currency;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -11,12 +12,21 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
+import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
+import org.budgetanalyzer.transaction.service.extractor.ConfigurablePdfTextTableStatementExtractor;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextTableCandidate;
 
@@ -38,6 +48,8 @@ public class PdfStatementFormatWizardService {
       Pattern.compile("\\(?-?\\$?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?\\)?");
 
   private final PdfTextExtractionService pdfTextExtractionService;
+  private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
+      new PdfTextTableParserConfigValidator();
 
   /**
    * Constructs a PDF statement format wizard service.
@@ -72,6 +84,154 @@ public class PdfStatementFormatWizardService {
       }
       throw businessException;
     }
+  }
+
+  /**
+   * Parses read-only wizard preview rows with an in-memory PDF text-table mapping.
+   *
+   * @param fileContent uploaded PDF bytes
+   * @param filename uploaded filename
+   * @param command preview command
+   * @return parsed preview rows and diagnostics
+   */
+  public PdfWizardPreviewResult preview(
+      byte[] fileContent, String filename, PdfWizardMappingPreviewCommand command) {
+    validateBankAndCurrency(command.bankName(), command.defaultCurrencyIsoCode());
+    var pdfTextTableParserConfig = buildParserConfig(command);
+    var fieldErrors = pdfTextTableParserConfigValidator.validate(pdfTextTableParserConfig);
+    if (!fieldErrors.isEmpty()) {
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          fieldErrors);
+    }
+    var statementFormat =
+        StatementFormat.createUserPdfFormat(
+            "PDF Wizard Preview",
+            command.bankName(),
+            command.defaultCurrencyIsoCode().toUpperCase(Locale.ROOT),
+            null);
+    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
+    var statementExtractor =
+        new ConfigurablePdfTextTableStatementExtractor(
+            statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
+    try {
+      var transactions = statementExtractor.extract(fileContent, command.accountId());
+      return new PdfWizardPreviewResult(
+          transactions,
+          List.of(
+              "Matched a text-PDF table using "
+                  + pdfTextTableParserConfig.headerMustContain().size()
+                  + " configured header token(s)."));
+    } catch (BusinessException businessException) {
+      if (businessException.hasFieldErrors()) {
+        throw businessException;
+      }
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          List.of(
+              FieldError.of(
+                  resolveParserErrorField(businessException),
+                  businessException.getMessage(),
+                  null)));
+    }
+  }
+
+  private PdfTextTableParserConfig buildParserConfig(PdfWizardMappingPreviewCommand command) {
+    if (command.mapping() == null) {
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          List.of(FieldError.of("mapping", "PDF column mapping is required.", null)));
+    }
+    var mapping = command.mapping();
+    var headerMustContain = configuredHeaderTokens(command.headerMustContain(), mapping);
+    return new PdfTextTableParserConfig(
+        PdfTextTableFileType.TEXT_PDF,
+        headerMustContain,
+        command.minimumRows() == null ? MIN_TRANSACTION_ROWS : command.minimumRows(),
+        mapping.dateHeader(),
+        mapping.dateFormat(),
+        mapping.descriptionHeader(),
+        mapping.amountMode() == PdfWizardAmountMode.SIGNED_AMOUNT ? mapping.amountHeader() : null,
+        mapping.amountMode() == PdfWizardAmountMode.DEBIT_CREDIT_COLUMNS
+            ? mapping.debitHeader()
+            : null,
+        mapping.amountMode() == PdfWizardAmountMode.DEBIT_CREDIT_COLUMNS
+            ? mapping.creditHeader()
+            : null,
+        mapping.typeHeader(),
+        mapping.negativeMeans(),
+        command.yearSource() == null ? PdfTextTableYearSource.EXPLICIT_DATE : command.yearSource());
+  }
+
+  private List<String> configuredHeaderTokens(
+      List<String> headerMustContain, PdfWizardColumnMapping mapping) {
+    if (headerMustContain != null
+        && headerMustContain.stream().anyMatch(value -> value != null && !value.isBlank())) {
+      return headerMustContain.stream().filter(value -> value != null && !value.isBlank()).toList();
+    }
+    var headers = new ArrayList<String>();
+    addHeader(headers, mapping.dateHeader());
+    addHeader(headers, mapping.descriptionHeader());
+    if (mapping.amountMode() == PdfWizardAmountMode.SIGNED_AMOUNT) {
+      addHeader(headers, mapping.amountHeader());
+    } else {
+      addHeader(headers, mapping.debitHeader());
+      addHeader(headers, mapping.creditHeader());
+    }
+    return List.copyOf(headers);
+  }
+
+  private void addHeader(List<String> headers, String header) {
+    if (header != null && !header.isBlank()) {
+      headers.add(header);
+    }
+  }
+
+  private void validateBankAndCurrency(String bankName, String defaultCurrencyIsoCode) {
+    var fieldErrors = new ArrayList<FieldError>();
+    if (bankName == null || bankName.isBlank()) {
+      fieldErrors.add(FieldError.of("bankName", "Bank name is required.", bankName));
+    }
+    if (defaultCurrencyIsoCode == null || defaultCurrencyIsoCode.isBlank()) {
+      fieldErrors.add(
+          FieldError.of(
+              "defaultCurrencyIsoCode",
+              "Default currency ISO code is required.",
+              defaultCurrencyIsoCode));
+    } else {
+      try {
+        Currency.getInstance(defaultCurrencyIsoCode.toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException illegalArgumentException) {
+        fieldErrors.add(
+            FieldError.of(
+                "defaultCurrencyIsoCode",
+                "Default currency ISO code must be a valid ISO 4217 code.",
+                defaultCurrencyIsoCode));
+      }
+    }
+    if (!fieldErrors.isEmpty()) {
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          fieldErrors);
+    }
+  }
+
+  private String resolveParserErrorField(BusinessException businessException) {
+    var message = businessException.getMessage().toLowerCase(Locale.ROOT);
+    if (message.contains("date") || message.contains("year")) {
+      return "mapping.dateHeader";
+    }
+    if (message.contains("amount") || message.contains("debit") || message.contains("credit")) {
+      return "mapping.amountHeader";
+    }
+    if (message.contains("description")) {
+      return "mapping.descriptionHeader";
+    }
+    return "mapping";
   }
 
   private PdfWizardTableCandidate scoreCandidate(PdfTextTableCandidate pdfTextTableCandidate) {

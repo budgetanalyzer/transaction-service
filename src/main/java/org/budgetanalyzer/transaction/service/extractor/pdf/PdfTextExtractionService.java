@@ -229,11 +229,12 @@ public class PdfTextExtractionService {
       return;
     }
 
-    var headerCells = block.getFirst().cells().stream().map(PdfTextCell::text).toList();
+    var headerTextCells = block.getFirst().cells();
+    var headerCells = headerTextCells.stream().map(PdfTextCell::text).toList();
     var dataRows = new ArrayList<List<String>>();
     var repeatedHeaderCount = 0;
     for (var pdfTextLine : block.stream().skip(1).toList()) {
-      var row = pdfTextLine.cells().stream().map(PdfTextCell::text).toList();
+      var row = alignRowToHeader(pdfTextLine.cells(), headerTextCells);
       if (normalizedCells(row).equals(normalizedCells(headerCells))) {
         repeatedHeaderCount++;
       } else {
@@ -247,9 +248,43 @@ public class PdfTextExtractionService {
             block.getFirst().lineNumber(),
             block.getLast().lineNumber(),
             headerCells,
+            List.copyOf(dataRows),
             sampleRows,
             dataRows.size(),
             repeatedHeaderCount));
+  }
+
+  private List<String> alignRowToHeader(List<PdfTextCell> rowCells, List<PdfTextCell> headerCells) {
+    if (rowCells.size() == headerCells.size()) {
+      return rowCells.stream().map(PdfTextCell::text).toList();
+    }
+    var alignedRow = new ArrayList<String>();
+    for (var headerCell : headerCells) {
+      var nearestCell = nearestCell(rowCells, headerCell);
+      alignedRow.add(nearestCell == null ? "" : nearestCell.text());
+    }
+    return List.copyOf(alignedRow);
+  }
+
+  private PdfTextCell nearestCell(List<PdfTextCell> rowCells, PdfTextCell headerCell) {
+    var headerCenterX = centerX(headerCell);
+    var bestCell = (PdfTextCell) null;
+    var bestDistance = Float.MAX_VALUE;
+    for (var rowCell : rowCells) {
+      var distance = Math.abs(centerX(rowCell) - headerCenterX);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestCell = rowCell;
+      }
+    }
+    if (bestCell == null || bestDistance > CELL_GAP_THRESHOLD * 4) {
+      return null;
+    }
+    return bestCell;
+  }
+
+  private float centerX(PdfTextCell pdfTextCell) {
+    return (pdfTextCell.startX() + pdfTextCell.endX()) / 2.0F;
   }
 
   private List<String> normalizedCells(List<String> cells) {

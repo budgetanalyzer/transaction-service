@@ -49,6 +49,8 @@ import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
@@ -502,6 +504,40 @@ class StatementFormatControllerTest {
               jsonPath("$.rejectionReasons[0]")
                   .value("PDF does not contain enough extractable text."));
     }
+
+    @Test
+    void previewReturnsReadOnlyParsedRowsAndDiagnostics() throws Exception {
+      when(pdfStatementFormatWizardService.preview(
+              any(byte[].class), eq("sample.pdf"), any(PdfWizardMappingPreviewCommand.class)))
+          .thenReturn(
+              new PdfWizardPreviewResult(
+                  List.of(
+                      new PreviewTransaction(
+                          LocalDate.parse("2025-01-02"),
+                          "Coffee Shop",
+                          new BigDecimal("4.50"),
+                          TransactionType.DEBIT,
+                          null,
+                          "Example Bank",
+                          "USD",
+                          "checking-001")),
+                  List.of("Matched a text-PDF table using 3 configured header token(s).")));
+
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/preview")
+                  .file(pdfFile())
+                  .file(jsonPart("request", pdfPreviewRequestJson()))
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.transactions.length()").value(1))
+          .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
+          .andExpect(
+              jsonPath("$.diagnostics[0]")
+                  .value("Matched a text-PDF table using 3 configured header token(s)."));
+    }
   }
 
   private StatementFormat createCsvFormat(String bankName) {
@@ -573,6 +609,27 @@ class StatementFormatControllerTest {
             "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
             "amountColumn": "Amount",
             "typeColumn": "Type"
+          }
+        }
+        """;
+  }
+
+  private String pdfPreviewRequestJson() {
+    return """
+        {
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "accountId": "checking-001",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
           }
         }
         """;

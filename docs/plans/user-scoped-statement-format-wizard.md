@@ -533,11 +533,12 @@ with transaction-like tables.
 5. **Owner: transaction-service** - Add PDF mapping preview support that accepts
    the sample PDF plus the confirmed table and column mapping, builds an
    in-memory `PDF_TEXT_TABLE_CONFIG`, parses read-only preview rows, and returns
-   diagnostics without creating import state.
+   diagnostics without creating import state. **Implemented.**
 6. **Owner: transaction-service** - Add the deterministic
    `PDF_TEXT_TABLE_CONFIG` extractor to normal import revision selection so a
    saved user PDF format works through `/v1/transactions/preview` and then
    `/v1/transactions/batch` with the winning `parserRevisionId` recorded.
+   **Implemented.**
 7. **Owner: transaction-service** - Add save support for user-scoped PDF formats
    with one enabled `PDF_TEXT_TABLE_CONFIG` parser revision. Validate bank name,
    default currency, date parsing, amount parsing, direction inference,

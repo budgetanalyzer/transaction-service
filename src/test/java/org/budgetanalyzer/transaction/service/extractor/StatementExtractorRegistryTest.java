@@ -3,10 +3,17 @@ package org.budgetanalyzer.transaction.service.extractor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -31,9 +38,15 @@ import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
+import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 
 @ExtendWith(MockitoExtension.class)
 class StatementExtractorRegistryTest {
+
+  private static final float FONT_SIZE = 10F;
+  private static final float DATE_X = 50F;
+  private static final float DESCRIPTION_X = 130F;
+  private static final float AMOUNT_X = 360F;
 
   @Mock private ParserRevisionRepository parserRevisionRepository;
   @Mock private CsvParser csvParser;
@@ -52,7 +65,8 @@ class StatementExtractorRegistryTest {
             List.of(staticPdfExtractor),
             parserRevisionRepository,
             csvParser,
-            new ObjectMapper().findAndRegisterModules());
+            new ObjectMapper().findAndRegisterModules(),
+            new PdfTextExtractionService());
     registry.initialize();
   }
 
@@ -77,7 +91,8 @@ class StatementExtractorRegistryTest {
               List.of(firstStatementExtractor, secondStatementExtractor),
               parserRevisionRepository,
               csvParser,
-              new ObjectMapper().findAndRegisterModules());
+              new ObjectMapper().findAndRegisterModules(),
+              new PdfTextExtractionService());
 
       when(parserRevisionRepository
               .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
@@ -112,7 +127,7 @@ class StatementExtractorRegistryTest {
     }
 
     @Test
-    void returnsNotApplicableForPdfTextTableConfigWithoutUsingStaticHandlerKey() throws Exception {
+    void matchesPdfTextTableConfigWithoutUsingStaticHandlerKey() throws Exception {
       var statementFormat =
           StatementFormat.createSystemPdfFormat("Test Bank PDF", "Test Bank", "USD");
       ReflectionTestUtils.setField(statementFormat, "id", 42L);
@@ -122,9 +137,9 @@ class StatementExtractorRegistryTest {
                   new PdfTextTableParserConfig(
                       PdfTextTableFileType.TEXT_PDF,
                       List.of("Date", "Description", "Amount"),
-                      3,
+                      1,
                       "Date",
-                      "MMM d",
+                      "MM/dd/uuuu",
                       "Description",
                       "Amount",
                       null,
@@ -140,12 +155,21 @@ class StatementExtractorRegistryTest {
           .thenReturn(List.of(parserRevision));
 
       var parserAttempts =
-          registry.attemptParse(statementFormat, "pdf".getBytes(), "statement.pdf", "account-123");
+          registry.attemptParse(
+              statementFormat,
+              pdfWithRows(
+                  List.of(
+                      List.of("Date", "Description", "Amount"),
+                      List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+              "statement.pdf",
+              "account-123");
 
       assertThat(parserRevision.getParserType()).isEqualTo(ParserType.PDF_TEXT_TABLE_CONFIG);
       assertThat(parserRevision.getHandlerKey()).isNull();
       assertThat(parserAttempts).hasSize(1);
-      assertThat(parserAttempts.getFirst().status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+      assertThat(parserAttempts.getFirst().status()).isEqualTo(ParserAttemptStatus.MATCHED);
+      assertThat(parserAttempts.getFirst().transactions().getFirst().description())
+          .isEqualTo("Coffee Shop");
     }
   }
 
@@ -201,6 +225,36 @@ class StatementExtractorRegistryTest {
         "Test Bank",
         "USD",
         "checking");
+  }
+
+  private byte[] pdfWithRows(List<List<String>> rows) throws IOException {
+    try (var document = new PDDocument()) {
+      var page = new PDPage();
+      document.addPage(page);
+      var font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+      try (var contentStream = new PDPageContentStream(document, page)) {
+        var y = 750F;
+        for (var row : rows) {
+          writeText(contentStream, font, row.get(0), DATE_X, y);
+          writeText(contentStream, font, row.get(1), DESCRIPTION_X, y);
+          writeText(contentStream, font, row.get(2), AMOUNT_X, y);
+          y -= 16F;
+        }
+      }
+      var byteArrayOutputStream = new ByteArrayOutputStream();
+      document.save(byteArrayOutputStream);
+      return byteArrayOutputStream.toByteArray();
+    }
+  }
+
+  private void writeText(
+      PDPageContentStream contentStream, PDType1Font font, String text, float x, float y)
+      throws IOException {
+    contentStream.beginText();
+    contentStream.setFont(font, FONT_SIZE);
+    contentStream.newLineAtOffset(x, y);
+    contentStream.showText(text);
+    contentStream.endText();
   }
 
   private static class TestStatementExtractor implements StatementExtractor {

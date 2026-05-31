@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -11,10 +12,16 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
+import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 
 class PdfStatementFormatWizardServiceTest {
@@ -91,6 +98,63 @@ class PdfStatementFormatWizardServiceTest {
   }
 
   @Test
+  void previewParsesConfirmedSignedAmountMapping() throws IOException {
+    var result =
+        pdfStatementFormatWizardService.preview(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount"),
+                    List.of("01/02/2025", "Coffee Shop", "$4.50"),
+                    List.of("01/03/2025", "Payment", "-$100.00"))),
+            "statement.pdf",
+            signedAmountPreviewCommand());
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().getFirst().date()).isEqualTo(LocalDate.of(2025, 1, 2));
+    assertThat(result.transactions().getFirst().description()).isEqualTo("Coffee Shop");
+    assertThat(result.transactions().getFirst().amount()).isEqualByComparingTo("4.50");
+    assertThat(result.transactions().getFirst().type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(result.transactions().get(1).type()).isEqualTo(TransactionType.CREDIT);
+    assertThat(result.diagnostics()).isNotEmpty();
+  }
+
+  @Test
+  void previewRejectsInvalidMappingWithFieldErrors() throws IOException {
+    var command =
+        new PdfWizardMappingPreviewCommand(
+            "Example Bank",
+            "USD",
+            null,
+            List.of("Date", "Description", "Amount"),
+            1,
+            PdfTextTableYearSource.EXPLICIT_DATE,
+            new PdfWizardColumnMapping(
+                null,
+                "MM/dd/uuuu",
+                "Description",
+                PdfWizardAmountMode.SIGNED_AMOUNT,
+                "Amount",
+                null,
+                null,
+                null,
+                PdfTextTableNegativeMeans.CREDIT));
+
+    assertThat(
+            org.assertj.core.api.Assertions.catchThrowable(
+                () ->
+                    pdfStatementFormatWizardService.preview(
+                        pdfWithRows(
+                            List.of(
+                                List.of("Date", "Description", "Amount"),
+                                List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+                        "statement.pdf",
+                        command)))
+        .asInstanceOf(InstanceOfAssertFactories.type(BusinessException.class))
+        .extracting(BusinessException::getCode)
+        .isEqualTo(BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name());
+  }
+
+  @Test
   void analyzeReportsLowConfidenceWhenNoTransactionColumnsAreFound() throws IOException {
     var result =
         pdfStatementFormatWizardService.analyze(
@@ -106,6 +170,26 @@ class PdfStatementFormatWizardServiceTest {
         .contains("No confident transaction table was found in the PDF sample.");
     assertThat(result.candidates().getFirst().rejectionReasons())
         .contains("No confident date column was detected.");
+  }
+
+  private PdfWizardMappingPreviewCommand signedAmountPreviewCommand() {
+    return new PdfWizardMappingPreviewCommand(
+        "Example Bank",
+        "USD",
+        "checking",
+        List.of("Date", "Description", "Amount"),
+        1,
+        PdfTextTableYearSource.EXPLICIT_DATE,
+        new PdfWizardColumnMapping(
+            "Date",
+            "MM/dd/uuuu",
+            "Description",
+            PdfWizardAmountMode.SIGNED_AMOUNT,
+            "Amount",
+            null,
+            null,
+            null,
+            PdfTextTableNegativeMeans.CREDIT));
   }
 
   @SafeVarargs

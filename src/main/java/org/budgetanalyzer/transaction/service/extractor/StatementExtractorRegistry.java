@@ -26,6 +26,7 @@ import org.budgetanalyzer.transaction.service.PdfTextTableParserConfigValidator;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
+import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 
 /**
  * Registry for statement extractors, managing static handlers and dynamic CSV parser revisions.
@@ -42,10 +43,13 @@ public class StatementExtractorRegistry {
   private final ParserRevisionRepository parserRevisionRepository;
   private final CsvParser csvParser;
   private final ObjectMapper objectMapper;
+  private final PdfTextExtractionService pdfTextExtractionService;
   private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
       new PdfTextTableParserConfigValidator();
 
   private final Map<Long, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
+  private final Map<Long, StatementExtractor> pdfTextTableExtractorCache =
+      new ConcurrentHashMap<>();
   private final Map<String, StatementExtractor> staticExtractorsByHandlerKey =
       new ConcurrentHashMap<>();
 
@@ -56,16 +60,19 @@ public class StatementExtractorRegistry {
    * @param parserRevisionRepository repository for parser revision entities
    * @param csvParser the CSV parser to use for dynamic extractors
    * @param objectMapper JSON mapper for parser configuration
+   * @param pdfTextExtractionService text-PDF extraction service
    */
   public StatementExtractorRegistry(
       List<StatementExtractor> staticExtractors,
       ParserRevisionRepository parserRevisionRepository,
       CsvParser csvParser,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      PdfTextExtractionService pdfTextExtractionService) {
     this.staticExtractors = staticExtractors;
     this.parserRevisionRepository = parserRevisionRepository;
     this.csvParser = csvParser;
     this.objectMapper = objectMapper;
+    this.pdfTextExtractionService = pdfTextExtractionService;
   }
 
   @PostConstruct
@@ -144,6 +151,7 @@ public class StatementExtractorRegistry {
   public List<StatementExtractor> getAllExtractors() {
     var allStatementExtractors = new ArrayList<>(staticExtractors);
     allStatementExtractors.addAll(csvExtractorCache.values());
+    allStatementExtractors.addAll(pdfTextTableExtractorCache.values());
     return allStatementExtractors;
   }
 
@@ -186,8 +194,14 @@ public class StatementExtractorRegistry {
     }
     if (parserRevision.getParserType() == ParserType.PDF_TEXT_TABLE_CONFIG
         && statementFormat.getFormatType() == FormatType.PDF) {
-      validatePdfTextTableConfig(parserRevision);
-      return Optional.empty();
+      var statementExtractor = pdfTextTableExtractorCache.get(parserRevision.getId());
+      if (statementExtractor != null) {
+        return Optional.of(statementExtractor);
+      }
+
+      statementExtractor = createPdfTextTableExtractor(statementFormat, parserRevision);
+      pdfTextTableExtractorCache.put(parserRevision.getId(), statementExtractor);
+      return Optional.of(statementExtractor);
     }
     return Optional.empty();
   }
@@ -207,11 +221,14 @@ public class StatementExtractorRegistry {
     }
   }
 
-  private void validatePdfTextTableConfig(ParserRevision parserRevision) {
+  private ConfigurablePdfTextTableStatementExtractor createPdfTextTableExtractor(
+      StatementFormat statementFormat, ParserRevision parserRevision) {
     try {
       var pdfTextTableParserConfig =
           objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
       pdfTextTableParserConfigValidator.validateOrThrow(pdfTextTableParserConfig);
+      return new ConfigurablePdfTextTableStatementExtractor(
+          statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
     } catch (BusinessException businessException) {
       throw businessException;
     } catch (Exception exception) {
