@@ -337,6 +337,26 @@ Permission: statementformats:write or statementformats:write:any
 Notes: Returns ranked text-table candidates, inferred mappings, confidence, sample rows, and rejection reasons. Does not persist the sample or create import state.
 ```
 
+**Preview PDF Wizard Mapping**
+```
+POST /v1/statement-formats/pdf-wizard/preview
+Content-Type: multipart/form-data
+Parts: file, request
+Response: PdfWizardPreviewResponse
+Permission: statementformats:write or statementformats:write:any
+Notes: Parser validation preview only; does not create preview tokens, file_import rows, statement formats, or transactions.
+```
+
+**Save PDF Wizard Format**
+```
+POST /v1/statement-formats/pdf-wizard/save
+Content-Type: multipart/form-data
+Parts: file, request
+Response: StatementFormatResponse (201 Created)
+Permission: statementformats:write or statementformats:write:any
+Notes: Validates the confirmed mapping against the uploaded sample, then creates a user-scoped PDF format with one enabled PDF_TEXT_TABLE_CONFIG parser revision. The returned id can be used as statementFormatId in the normal import preview flow.
+```
+
 ## Request/Response Examples
 
 ### TransactionUpdateRequest
@@ -456,6 +476,87 @@ opaque source-file token required by `/batch`. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for details.
 Preview and batch rows still carry `accountId`, but duplicate detection does
 not require account IDs to match.
+
+### PdfWizardMappingPreviewRequest
+
+This request is submitted as the multipart `request` part on
+`POST /v1/statement-formats/pdf-wizard/preview`.
+
+```json
+{
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "accountId": "checking-001",
+  "headerMustContain": ["Date", "Description", "Amount"],
+  "minimumRows": 1,
+  "yearSource": "EXPLICIT_DATE",
+  "mapping": {
+    "dateHeader": "Date",
+    "dateFormat": "MM/dd/uuuu",
+    "descriptionHeader": "Description",
+    "amountMode": "SIGNED_AMOUNT",
+    "amountHeader": "Amount",
+    "debitHeader": null,
+    "creditHeader": null,
+    "typeHeader": null,
+    "negativeMeans": "CREDIT"
+  }
+}
+```
+
+### PdfWizardPreviewResponse
+
+```json
+{
+  "transactions": [
+    {
+      "date": "2025-01-02",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Example Bank",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "diagnostics": [
+    "Matched a text-PDF table using 3 configured header token(s)."
+  ]
+}
+```
+
+### PdfWizardSaveRequest
+
+This request is submitted as the multipart `request` part on
+`POST /v1/statement-formats/pdf-wizard/save`. It uses the same table mapping
+shape as preview and adds `displayName`.
+
+```json
+{
+  "displayName": "Example Bank PDF",
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "headerMustContain": ["Date", "Description", "Amount"],
+  "minimumRows": 1,
+  "yearSource": "EXPLICIT_DATE",
+  "mapping": {
+    "dateHeader": "Date",
+    "dateFormat": "MM/dd/uuuu",
+    "descriptionHeader": "Description",
+    "amountMode": "SIGNED_AMOUNT",
+    "amountHeader": "Amount",
+    "negativeMeans": "CREDIT"
+  }
+}
+```
+
+PDF wizard analysis returns unsupported or low-confidence files as `200 OK`
+with user-facing `rejectionReasons`. Mapping preview and save validation
+failures return `422 Unprocessable Entity` with `code:
+PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
 
 ### BatchImportRequest
 

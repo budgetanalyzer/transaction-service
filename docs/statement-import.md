@@ -265,16 +265,17 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 
 ### Generic Text-PDF Parser Foundation
 
-`PDF_TEXT_TABLE_CONFIG` is reserved for deterministic user-created PDF table
-formats. Its parser configuration is stored as opaque text in
+`PDF_TEXT_TABLE_CONFIG` powers deterministic user-created PDF table formats. Its
+parser configuration is stored as opaque text in
 `parser_revision.parser_config`, with queryable metadata kept in normal
-`parser_revision` columns. The current implementation includes the typed config
-record, schema version 1 validation, a parser-revision factory method, and a
-PDFBox-based text extraction component that rejects scanned or OCR-dependent
-PDFs when embedded text is unavailable. The PDF wizard analysis endpoint now
-scores text table candidates by header detection, repeated headers, row
-continuity, row count, date-like columns, description-like columns, signed
-amount columns, debit/credit column pairs, and optional type columns.
+`parser_revision` columns. Schema version 1 supports text-based PDFs with one
+transaction-like table, a date column, a description column, and either a
+signed amount column or separate debit and credit columns. A PDFBox-based text
+extraction component rejects scanned or OCR-dependent PDFs when embedded text
+is unavailable. The PDF wizard analysis endpoint scores text table candidates
+by header detection, repeated headers, row continuity, row count, date-like
+columns, description-like columns, signed amount columns, debit/credit column
+pairs, and optional type columns.
 
 The same deterministic extractor is used by the PDF wizard preview endpoint
 and by normal import revision selection for saved `PDF_TEXT_TABLE_CONFIG`
@@ -282,6 +283,11 @@ parser revisions. A matched normal import records the winning parser revision
 ID in the preview token and later on `file_import`. Static PDF handlers
 continue to use `parser_type = STATIC_HANDLER` and internal `handler_key`
 values.
+
+PDF wizard uploads are setup samples only. The service does not persist the
+sample file or extracted text during analysis, mapping preview, or save. The
+preview endpoint returns short parser diagnostics in the response; failed
+normal import revision attempts remain transient and are not stored.
 
 ### PDF Wizard Analysis
 
@@ -339,9 +345,10 @@ curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/analyze \
 
 Unsupported or low-confidence PDFs return `200 OK` with empty or low-confidence
 candidates plus user-facing `rejectionReasons`, for example scanned-PDF
-rejection when the file has too little extractable text. The client should show
-these reasons in the wizard instead of treating the response as an import
-preview.
+rejection when the file has too little extractable text. Malformed PDF bytes or
+other text extraction failures are also represented as analysis rejection
+reasons. The client should show these reasons in the wizard instead of treating
+the response as an import preview.
 
 ### PDF Wizard Preview
 
@@ -454,6 +461,10 @@ must declare `negativeMeans`, separate debit and credit columns must be
 unambiguous, and the sample must parse at least `minimumRows` transactions.
 Validation errors return `422 Unprocessable Entity` with `code:
 PDF_WIZARD_VALIDATION_FAILED`.
+
+The saved format participates in the same revision-selection behavior as
+seeded PDF formats. Clients do not select parser revisions directly; they keep
+using the returned top-level statement format `id`.
 
 ### CSV Wizard Flow
 

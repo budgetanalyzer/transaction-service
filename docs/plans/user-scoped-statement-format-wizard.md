@@ -552,6 +552,7 @@ with transaction-like tables.
 9. **Owner: transaction-service** - Update `docs/statement-import.md`, API docs,
    and this plan's open questions if retention, diagnostics, or unsupported-PDF
    behavior changes during implementation.
+   **Implemented.**
 10. **Owner: budget-analyzer-web** - Extend the existing create-format wizard to
     branch by file type. Keep CSV behavior unchanged and add PDF upload,
     candidate table review, simple column mapping, read-only parser preview,
@@ -597,11 +598,17 @@ Permissions for phase 5 should mirror the transaction `:any` model:
 
 - Should a user custom format be shareable with another user, or only promotable
   to a reviewed system format?
-- Should parser setup sessions store sample files temporarily, or only extracted
-  normalized table data?
-- What retention and consent rules are required if users submit statements for
-  support or system-template promotion?
-- Should support users be able to force a parser revision for diagnostics, or
-  should revision selection always be automatic outside test tooling?
 - Should the application prevent duplicate active display names per user as UX
   validation, or only disambiguate duplicates in the dropdown?
+
+Resolved for phase 4:
+
+- Parser setup remains stateless in `transaction-service`: sample files and
+  extracted normalized PDF text are not persisted by analysis, mapping preview,
+  or save.
+- Support submission, consent, and retention are deferred to a future support
+  or promotion workflow. The wizard endpoints do not retain uploaded samples.
+- PDF wizard diagnostics are response-only for setup previews. Normal import
+  parser attempts stay transient and are not persisted.
+- Parser revision selection remains automatic outside tests; users and support
+  users do not force a parser revision through the public import API.
