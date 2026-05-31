@@ -26,6 +26,10 @@ import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @ExtendWith(MockitoExtension.class)
@@ -103,6 +107,43 @@ class StatementExtractorRegistryTest {
       var parserAttempts =
           registry.attemptParse(statementFormat, "pdf".getBytes(), "statement.pdf", "account-123");
 
+      assertThat(parserAttempts).hasSize(1);
+      assertThat(parserAttempts.getFirst().status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+    }
+
+    @Test
+    void returnsNotApplicableForPdfTextTableConfigWithoutUsingStaticHandlerKey() throws Exception {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("Test Bank PDF", "Test Bank", "USD");
+      ReflectionTestUtils.setField(statementFormat, "id", 42L);
+      var parserConfig =
+          new ObjectMapper()
+              .writeValueAsString(
+                  new PdfTextTableParserConfig(
+                      PdfTextTableFileType.TEXT_PDF,
+                      List.of("Date", "Description", "Amount"),
+                      3,
+                      "Date",
+                      "MMM d",
+                      "Description",
+                      "Amount",
+                      null,
+                      null,
+                      null,
+                      PdfTextTableNegativeMeans.CREDIT,
+                      PdfTextTableYearSource.STATEMENT_PERIOD));
+      var parserRevision =
+          ParserRevision.createPdfTextTableConfig(statementFormat, 1, parserConfig);
+      ReflectionTestUtils.setField(parserRevision, "id", 101L);
+      when(parserRevisionRepository
+              .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
+          .thenReturn(List.of(parserRevision));
+
+      var parserAttempts =
+          registry.attemptParse(statementFormat, "pdf".getBytes(), "statement.pdf", "account-123");
+
+      assertThat(parserRevision.getParserType()).isEqualTo(ParserType.PDF_TEXT_TABLE_CONFIG);
+      assertThat(parserRevision.getHandlerKey()).isNull();
       assertThat(parserAttempts).hasSize(1);
       assertThat(parserAttempts.getFirst().status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
     }

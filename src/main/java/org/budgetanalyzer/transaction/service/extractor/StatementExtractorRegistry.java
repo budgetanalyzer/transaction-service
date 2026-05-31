@@ -22,8 +22,10 @@ import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.PdfTextTableParserConfigValidator;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
 
 /**
  * Registry for statement extractors, managing static handlers and dynamic CSV parser revisions.
@@ -40,6 +42,8 @@ public class StatementExtractorRegistry {
   private final ParserRevisionRepository parserRevisionRepository;
   private final CsvParser csvParser;
   private final ObjectMapper objectMapper;
+  private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
+      new PdfTextTableParserConfigValidator();
 
   private final Map<Long, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
   private final Map<String, StatementExtractor> staticExtractorsByHandlerKey =
@@ -180,6 +184,11 @@ public class StatementExtractorRegistry {
       csvExtractorCache.put(parserRevision.getId(), statementExtractor);
       return Optional.of(statementExtractor);
     }
+    if (parserRevision.getParserType() == ParserType.PDF_TEXT_TABLE_CONFIG
+        && statementFormat.getFormatType() == FormatType.PDF) {
+      validatePdfTextTableConfig(parserRevision);
+      return Optional.empty();
+    }
     return Optional.empty();
   }
 
@@ -194,6 +203,22 @@ public class StatementExtractorRegistry {
       throw new BusinessException(
           "Invalid CSV parser configuration for parser revision " + parserRevision.getId(),
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+          exception);
+    }
+  }
+
+  private void validatePdfTextTableConfig(ParserRevision parserRevision) {
+    try {
+      var pdfTextTableParserConfig =
+          objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
+      pdfTextTableParserConfigValidator.validateOrThrow(pdfTextTableParserConfig);
+    } catch (BusinessException businessException) {
+      throw businessException;
+    } catch (Exception exception) {
+      throw new BusinessException(
+          "Invalid PDF text-table parser configuration for parser revision "
+              + parserRevision.getId(),
+          BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name(),
           exception);
     }
   }

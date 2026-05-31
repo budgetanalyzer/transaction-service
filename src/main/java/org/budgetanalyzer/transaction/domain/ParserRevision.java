@@ -112,6 +112,27 @@ public class ParserRevision {
     return parserRevision;
   }
 
+  /**
+   * Creates a PDF text-table parser revision.
+   *
+   * @param statementFormat parent statement format
+   * @param revisionNumber revision number under the parent format
+   * @param parserConfig serialized deterministic parser configuration
+   * @return new parser revision
+   */
+  public static ParserRevision createPdfTextTableConfig(
+      StatementFormat statementFormat, Integer revisionNumber, String parserConfig) {
+    var parserRevision = new ParserRevision();
+    parserRevision.statementFormat = statementFormat;
+    parserRevision.revisionNumber = revisionNumber;
+    parserRevision.parserType = ParserType.PDF_TEXT_TABLE_CONFIG;
+    parserRevision.configSchemaVersion = 1;
+    parserRevision.parserConfig = parserConfig;
+    parserRevision.priority = 0;
+    parserRevision.enabled = true;
+    return parserRevision;
+  }
+
   @PrePersist
   protected void onCreate() {
     var now = Instant.now();

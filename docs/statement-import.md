@@ -2,11 +2,13 @@
 
 ## Overview
 
-The statement import system provides configuration-driven CSV parsing and
-dedicated PDF extractors for multiple bank statement formats. Banks have
-different export formats with varying column headers, date formats, amount
+The statement import system provides configuration-driven CSV parsing,
+dedicated PDF extractors for multiple bank statement formats, and internal
+configuration primitives for text-based PDF table parsing. Banks have different
+export formats with varying column headers, date formats, amount
 representations, and PDF layouts. CSV formats can usually be added without code
-changes; new PDF layouts require a dedicated `StatementExtractor`.
+changes. User-created generic PDF formats are still behind the PDF wizard plan;
+normal imports currently use the seeded static PDF handlers.
 
 ## Supported Banks
 
@@ -55,10 +57,10 @@ CREATE TABLE parser_revision (
     id BIGSERIAL PRIMARY KEY,
     statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
     revision_number INTEGER NOT NULL,
-    parser_type VARCHAR(30) NOT NULL,        -- STATIC_HANDLER, CSV_COLUMN_CONFIG
-    handler_key VARCHAR(100),                -- internal static extractor key
+    parser_type VARCHAR(30) NOT NULL,        -- STATIC_HANDLER, CSV_COLUMN_CONFIG, PDF_TEXT_TABLE_CONFIG
+    handler_key VARCHAR(100),                -- internal static extractor key; null for config parsers
     config_schema_version INTEGER NOT NULL,
-    parser_config TEXT,                      -- CSV column mapping JSON
+    parser_config TEXT,                      -- opaque parser config JSON for config parsers
     priority INTEGER NOT NULL DEFAULT 0,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -253,6 +255,20 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 - Omit `typeHeader` if using separate credit/debit columns
 - The JSON create endpoint only creates CSV formats. Built-in PDF formats need
   parser revisions with internal handler keys and are seeded by migrations.
+
+### Generic Text-PDF Parser Foundation
+
+`PDF_TEXT_TABLE_CONFIG` is reserved for deterministic user-created PDF table
+formats. Its parser configuration is stored as opaque text in
+`parser_revision.parser_config`, with queryable metadata kept in normal
+`parser_revision` columns. The current implementation includes the typed config
+record, schema version 1 validation, a parser-revision factory method, and a
+PDFBox-based text extraction component that rejects scanned or OCR-dependent
+PDFs when embedded text is unavailable.
+
+This foundation does not yet expose PDF wizard endpoints or route saved generic
+PDF formats through normal transaction import. Static PDF handlers continue to
+use `parser_type = STATIC_HANDLER` and internal `handler_key` values.
 
 ### CSV Wizard Flow
 

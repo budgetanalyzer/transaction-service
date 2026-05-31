@@ -517,11 +517,11 @@ with transaction-like tables.
 1. **Owner: transaction-service** - Add the `PDF_TEXT_TABLE_CONFIG` parser type,
    typed parser config record, config schema version, validation rules, and
    parser revision factory support. Do not route generic PDF parsing through
-   static handler keys.
+   static handler keys. **Implemented.**
 2. **Owner: transaction-service** - Add a PDF text extraction component based on
    PDFBox output that rejects scanned or OCR-dependent PDFs clearly. Normalize
    extracted text into page, line, cell, and table-candidate structures without
-   persisting the source file.
+   persisting the source file. **Implemented.**
 3. **Owner: transaction-service** - Add table candidate detection and scoring
    for text PDFs: header detection, repeated headers, row continuity, minimum
    row count, date-like columns, description-like columns, signed amount columns,
