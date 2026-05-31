@@ -25,6 +25,7 @@ public class PdfTextExtractionService {
   private static final int SAMPLE_ROW_LIMIT = 5;
   private static final float LINE_Y_TOLERANCE = 2.0F;
   private static final float CELL_GAP_THRESHOLD = 8.0F;
+  private static final float TABLE_VERTICAL_GAP_THRESHOLD = 24.0F;
 
   /**
    * Extracts normalized pages, lines, cells, and coarse table candidates from a text PDF.
@@ -205,6 +206,12 @@ public class PdfTextExtractionService {
       var currentBlock = new ArrayList<PdfTextLine>();
       for (var pdfTextLine : pdfTextPage.lines()) {
         if (pdfTextLine.cells().size() >= 2) {
+          if (!currentBlock.isEmpty()
+              && Math.abs(pdfTextLine.y() - currentBlock.getLast().y())
+                  > TABLE_VERTICAL_GAP_THRESHOLD) {
+            addTableCandidateIfPresent(pdfTextPage.pageNumber(), currentBlock, tableCandidates);
+            currentBlock.clear();
+          }
           currentBlock.add(pdfTextLine);
         } else {
           addTableCandidateIfPresent(pdfTextPage.pageNumber(), currentBlock, tableCandidates);
@@ -223,19 +230,30 @@ public class PdfTextExtractionService {
     }
 
     var headerCells = block.getFirst().cells().stream().map(PdfTextCell::text).toList();
-    var sampleRows =
-        block.stream()
-            .skip(1)
-            .limit(SAMPLE_ROW_LIMIT)
-            .map(pdfTextLine -> pdfTextLine.cells().stream().map(PdfTextCell::text).toList())
-            .toList();
+    var dataRows = new ArrayList<List<String>>();
+    var repeatedHeaderCount = 0;
+    for (var pdfTextLine : block.stream().skip(1).toList()) {
+      var row = pdfTextLine.cells().stream().map(PdfTextCell::text).toList();
+      if (normalizedCells(row).equals(normalizedCells(headerCells))) {
+        repeatedHeaderCount++;
+      } else {
+        dataRows.add(row);
+      }
+    }
+    var sampleRows = dataRows.stream().limit(SAMPLE_ROW_LIMIT).toList();
     tableCandidates.add(
         new PdfTextTableCandidate(
             pageNumber,
             block.getFirst().lineNumber(),
             block.getLast().lineNumber(),
             headerCells,
-            sampleRows));
+            sampleRows,
+            dataRows.size(),
+            repeatedHeaderCount));
+  }
+
+  private List<String> normalizedCells(List<String> cells) {
+    return cells.stream().map(cell -> cell.toLowerCase().replaceAll("[^a-z0-9]", "")).toList();
   }
 
   private BusinessException pdfParsingError(String message) {

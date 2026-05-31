@@ -37,6 +37,7 @@ import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
+import org.budgetanalyzer.transaction.service.PdfStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
@@ -44,6 +45,11 @@ import org.budgetanalyzer.transaction.service.dto.CsvWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardMappingPreviewCommand;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardSaveCommand;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
@@ -56,6 +62,7 @@ class StatementFormatControllerTest {
 
   @MockitoBean private StatementFormatService statementFormatService;
   @MockitoBean private CsvStatementFormatWizardService csvStatementFormatWizardService;
+  @MockitoBean private PdfStatementFormatWizardService pdfStatementFormatWizardService;
 
   @Nested
   class ListFormats {
@@ -424,6 +431,79 @@ class StatementFormatControllerTest {
     }
   }
 
+  @Nested
+  class PdfWizard {
+
+    @Test
+    void analyzeReturnsRankedTableCandidates() throws Exception {
+      when(pdfStatementFormatWizardService.analyze(any(byte[].class), eq("sample.pdf")))
+          .thenReturn(
+              new PdfWizardAnalysisResult(
+                  List.of(
+                      new PdfWizardTableCandidate(
+                          "p1-l1-3",
+                          1,
+                          1,
+                          3,
+                          2,
+                          0,
+                          List.of("Date", "Description", "Amount"),
+                          List.of(
+                              List.of("Jan 1", "Coffee Shop", "$4.50"),
+                              List.of("Jan 2", "Payment", "-$100.00")),
+                          new PdfWizardColumnMapping(
+                              "Date",
+                              "MMM d",
+                              "Description",
+                              PdfWizardAmountMode.SIGNED_AMOUNT,
+                              "Amount",
+                              null,
+                              null,
+                              null,
+                              PdfTextTableNegativeMeans.CREDIT),
+                          0.91,
+                          Map.of("dateHeader", 0.95),
+                          List.of())),
+                  0.91,
+                  List.of()));
+
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/analyze")
+                  .file(pdfFile())
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.candidates.length()").value(1))
+          .andExpect(jsonPath("$.candidates[0].candidateId").value("p1-l1-3"))
+          .andExpect(jsonPath("$.candidates[0].inferredMapping.dateHeader").value("Date"))
+          .andExpect(jsonPath("$.candidates[0].inferredMapping.amountMode").value("SIGNED_AMOUNT"))
+          .andExpect(jsonPath("$.confidence").value(0.91));
+    }
+
+    @Test
+    void analyzeReturnsUnsupportedReasons() throws Exception {
+      when(pdfStatementFormatWizardService.analyze(any(byte[].class), eq("sample.pdf")))
+          .thenReturn(
+              new PdfWizardAnalysisResult(
+                  List.of(), 0.0, List.of("PDF does not contain enough extractable text.")));
+
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/analyze")
+                  .file(pdfFile())
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.candidates.length()").value(0))
+          .andExpect(
+              jsonPath("$.rejectionReasons[0]")
+                  .value("PDF does not contain enough extractable text."));
+    }
+  }
+
   private StatementFormat createCsvFormat(String bankName) {
     return StatementFormat.createCsvFormat(bankName + " - Export", bankName, "USD", "usr_test123");
   }
@@ -451,6 +531,11 @@ class StatementFormatControllerTest {
         04/12/24,Coffee Shop,4.50,Debit
         """
             .getBytes());
+  }
+
+  private MockMultipartFile pdfFile() {
+    return new MockMultipartFile(
+        "file", "sample.pdf", "application/pdf", "%PDF-1.4 sample".getBytes());
   }
 
   private MockMultipartFile jsonPart(String name, String content) {

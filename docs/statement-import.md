@@ -80,6 +80,8 @@ CREATE TABLE parser_revision (
   mapping and return read-only parser preview rows
 - `POST /v1/statement-formats/csv-wizard/save` - Save a user-scoped CSV format
   with one enabled parser revision
+- `POST /v1/statement-formats/pdf-wizard/analyze` - Analyze a text-PDF sample
+  and return ranked transaction-table candidates
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
@@ -264,11 +266,75 @@ formats. Its parser configuration is stored as opaque text in
 `parser_revision` columns. The current implementation includes the typed config
 record, schema version 1 validation, a parser-revision factory method, and a
 PDFBox-based text extraction component that rejects scanned or OCR-dependent
-PDFs when embedded text is unavailable.
+PDFs when embedded text is unavailable. The PDF wizard analysis endpoint now
+scores text table candidates by header detection, repeated headers, row
+continuity, row count, date-like columns, description-like columns, signed
+amount columns, debit/credit column pairs, and optional type columns.
 
-This foundation does not yet expose PDF wizard endpoints or route saved generic
-PDF formats through normal transaction import. Static PDF handlers continue to
-use `parser_type = STATIC_HANDLER` and internal `handler_key` values.
+This foundation does not yet support PDF wizard mapping preview, saving generic
+PDF formats, or routing saved generic PDF formats through normal transaction
+import. Static PDF handlers continue to use `parser_type = STATIC_HANDLER` and
+internal `handler_key` values.
+
+### PDF Wizard Analysis
+
+The PDF wizard analysis endpoint is a setup helper only. It extracts text from
+a sample PDF, returns ranked transaction-table candidates and inferred mappings,
+and never persists the uploaded file or creates import state.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/analyze \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf"
+```
+
+**Response:** `200 OK`
+```json
+{
+  "candidates": [
+    {
+      "candidateId": "p1-l12-42",
+      "pageNumber": 1,
+      "startLineNumber": 12,
+      "endLineNumber": 42,
+      "rowCount": 30,
+      "repeatedHeaderCount": 1,
+      "headers": ["Date", "Description", "Amount"],
+      "sampleRows": [
+        ["Jan 1", "Coffee Shop", "$4.50"],
+        ["Jan 2", "Payment", "-$100.00"]
+      ],
+      "inferredMapping": {
+        "dateHeader": "Date",
+        "dateFormat": "MMM d",
+        "descriptionHeader": "Description",
+        "amountMode": "SIGNED_AMOUNT",
+        "amountHeader": "Amount",
+        "debitHeader": null,
+        "creditHeader": null,
+        "typeHeader": null,
+        "negativeMeans": "CREDIT"
+      },
+      "confidence": 0.91,
+      "columnConfidences": {
+        "dateHeader": 0.95,
+        "descriptionHeader": 0.95,
+        "amountHeader": 0.95
+      },
+      "rejectionReasons": []
+    }
+  ],
+  "confidence": 0.91,
+  "rejectionReasons": []
+}
+```
+
+Unsupported or low-confidence PDFs return `200 OK` with empty or low-confidence
+candidates plus user-facing `rejectionReasons`, for example scanned-PDF
+rejection when the file has too little extractable text. The client should show
+these reasons in the wizard instead of treating the response as an import
+preview.
 
 ### CSV Wizard Flow
 

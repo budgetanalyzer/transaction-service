@@ -525,11 +525,11 @@ with transaction-like tables.
 3. **Owner: transaction-service** - Add table candidate detection and scoring
    for text PDFs: header detection, repeated headers, row continuity, minimum
    row count, date-like columns, description-like columns, signed amount columns,
-   debit/credit column pairs, and optional type columns.
+   debit/credit column pairs, and optional type columns. **Implemented.**
 4. **Owner: transaction-service** - Add PDF wizard analysis endpoint support
    that accepts a sample PDF upload and returns ranked table candidates,
    inferred field mappings, confidence, sample rows, and user-facing rejection
-   reasons for unsupported files.
+   reasons for unsupported files. **Implemented.**
 5. **Owner: transaction-service** - Add PDF mapping preview support that accepts
    the sample PDF plus the confirmed table and column mapping, builds an
    in-memory `PDF_TEXT_TABLE_CONFIG`, parses read-only preview rows, and returns

@@ -48,6 +48,8 @@ class PdfTextExtractionServiceTest {
     assertThat(pdfTextDocument.tableCandidates().getFirst().sampleRows())
         .containsExactly(
             List.of("Jan 1", "Coffee Shop", "$4.50"), List.of("Jan 2", "Payroll", "-$100.00"));
+    assertThat(pdfTextDocument.tableCandidates().getFirst().rowCount()).isEqualTo(2);
+    assertThat(pdfTextDocument.tableCandidates().getFirst().repeatedHeaderCount()).isZero();
   }
 
   @Test

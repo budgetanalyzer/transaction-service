@@ -8,4 +8,6 @@ public record PdfTextTableCandidate(
     int startLineNumber,
     int endLineNumber,
     List<String> headerCells,
-    List<List<String>> sampleRows) {}
+    List<List<String>> sampleRows,
+    int rowCount,
+    int repeatedHeaderCount) {}

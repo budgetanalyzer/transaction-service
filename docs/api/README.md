@@ -298,6 +298,45 @@ Response: StatementFormatResponse
 Permission: statementformats:write or statementformats:write:any
 ```
 
+**Analyze CSV Statement Format Sample**
+```
+POST /v1/statement-formats/csv-wizard/analyze
+Content-Type: multipart/form-data
+Parts: file
+Response: CsvWizardAnalysisResponse
+Permission: statementformats:write or statementformats:write:any
+Notes: Infers CSV columns without persisting the sample or creating import state.
+```
+
+**Preview CSV Wizard Mapping**
+```
+POST /v1/statement-formats/csv-wizard/preview
+Content-Type: multipart/form-data
+Parts: file, request
+Response: CsvWizardPreviewResponse
+Permission: statementformats:write or statementformats:write:any
+Notes: Parser validation preview only; does not create preview tokens, file_import rows, or transactions.
+```
+
+**Save CSV Wizard Format**
+```
+POST /v1/statement-formats/csv-wizard/save
+Content-Type: multipart/form-data
+Parts: file, request
+Response: StatementFormatResponse (201 Created)
+Permission: statementformats:write or statementformats:write:any
+```
+
+**Analyze PDF Statement Format Sample**
+```
+POST /v1/statement-formats/pdf-wizard/analyze
+Content-Type: multipart/form-data
+Parts: file
+Response: PdfWizardAnalysisResponse
+Permission: statementformats:write or statementformats:write:any
+Notes: Returns ranked text-table candidates, inferred mappings, confidence, sample rows, and rejection reasons. Does not persist the sample or create import state.
+```
+
 ## Request/Response Examples
 
 ### TransactionUpdateRequest
