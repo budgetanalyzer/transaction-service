@@ -30,6 +30,14 @@ public class PdfTextTableParserConfigValidator {
           "MMM dd",
           "MMM d uuuu",
           "MMM dd uuuu",
+          "MMM d, uuuu",
+          "MMM dd, uuuu",
+          "MMMM d",
+          "MMMM dd",
+          "MMMM d uuuu",
+          "MMMM dd uuuu",
+          "MMMM d, uuuu",
+          "MMMM dd, uuuu",
           "d MMM uuuu",
           "dd MMM uuuu");
 
@@ -130,7 +138,8 @@ public class PdfTextTableParserConfigValidator {
       return;
     }
     try {
-      DateTimeFormatter.ofPattern(dateFormat, Locale.ROOT).withResolverStyle(ResolverStyle.SMART);
+      DateTimeFormatter.ofPattern(dateFormat, Locale.ENGLISH)
+          .withResolverStyle(ResolverStyle.SMART);
     } catch (IllegalArgumentException illegalArgumentException) {
       fieldErrors.add(FieldError.of("dateFormat", "Date format pattern is invalid.", dateFormat));
     }
@@ -152,11 +161,12 @@ public class PdfTextTableParserConfigValidator {
       return;
     }
     if (hasSignedAmountColumn) {
-      if (pdfTextTableParserConfig.negativeMeans() == null) {
+      if (pdfTextTableParserConfig.negativeMeans() == null
+          && isBlank(pdfTextTableParserConfig.typeHeader())) {
         fieldErrors.add(
             FieldError.of(
                 "negativeMeans",
-                "A signed amount column requires a negative amount direction.",
+                "A signed amount column requires a type header or negative amount direction.",
                 null));
       }
       return;

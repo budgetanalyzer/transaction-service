@@ -113,6 +113,31 @@ class PdfStatementFormatWizardServiceTest {
   }
 
   @Test
+  void analyzeInfersCommaAndFullMonthDateFormats() throws IOException {
+    var abbreviatedResult =
+        pdfStatementFormatWizardService.analyze(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount"),
+                    List.of("Jan 1, 2025", "Coffee Shop", "$4.50"),
+                    List.of("Jan 2, 2025", "Payment", "-$100.00"))),
+            "statement.pdf");
+    var fullMonthResult =
+        pdfStatementFormatWizardService.analyze(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount"),
+                    List.of("January 1, 2025", "Coffee Shop", "$4.50"),
+                    List.of("January 2, 2025", "Payment", "-$100.00"))),
+            "statement.pdf");
+
+    assertThat(abbreviatedResult.candidates().getFirst().inferredMapping().dateFormat())
+        .isEqualTo("MMM d, uuuu");
+    assertThat(fullMonthResult.candidates().getFirst().inferredMapping().dateFormat())
+        .isEqualTo("MMMM d, uuuu");
+  }
+
+  @Test
   void analyzeReturnsRejectionReasonsForBlankPdf() throws IOException {
     var result = pdfStatementFormatWizardService.analyze(blankPdf(), "statement.pdf");
 
@@ -143,6 +168,93 @@ class PdfStatementFormatWizardServiceTest {
     assertThat(result.transactions().getFirst().type()).isEqualTo(TransactionType.DEBIT);
     assertThat(result.transactions().get(1).type()).isEqualTo(TransactionType.CREDIT);
     assertThat(result.diagnostics()).isNotEmpty();
+  }
+
+  @Test
+  void previewParsesSignedAmountMappingWithTypeHeaderAndNoNegativeMeans() throws IOException {
+    var command =
+        new PdfWizardMappingPreviewCommand(
+            "Example Bank",
+            "USD",
+            "checking",
+            List.of("Date", "Description", "Amount", "Type"),
+            1,
+            PdfTextTableYearSource.EXPLICIT_DATE,
+            new PdfWizardColumnMapping(
+                "Date",
+                "MM/dd/uuuu",
+                "Description",
+                PdfWizardAmountMode.SIGNED_AMOUNT,
+                "Amount",
+                null,
+                null,
+                "Type",
+                null));
+
+    var result =
+        pdfStatementFormatWizardService.preview(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount", "Type"),
+                    List.of("01/02/2025", "Coffee Shop", "$4.50", "Debit"),
+                    List.of("01/03/2025", "Refund", "$2.00", "Credit"))),
+            "statement.pdf",
+            command);
+
+    assertThat(result.transactions()).hasSize(2);
+    assertThat(result.transactions().getFirst().type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(result.transactions().get(1).type()).isEqualTo(TransactionType.CREDIT);
+  }
+
+  @Test
+  void previewParsesFullMonthCommaDateFormat() throws IOException {
+    var command =
+        new PdfWizardMappingPreviewCommand(
+            "Example Bank",
+            "USD",
+            "checking",
+            List.of("Date", "Description", "Amount"),
+            1,
+            PdfTextTableYearSource.EXPLICIT_DATE,
+            new PdfWizardColumnMapping(
+                "Date",
+                "MMMM d, uuuu",
+                "Description",
+                PdfWizardAmountMode.SIGNED_AMOUNT,
+                "Amount",
+                null,
+                null,
+                null,
+                PdfTextTableNegativeMeans.CREDIT));
+
+    var result =
+        pdfStatementFormatWizardService.preview(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount"),
+                    List.of("March 2, 2025", "Coffee Shop", "$4.50"))),
+            "statement.pdf",
+            command);
+
+    assertThat(result.transactions().getFirst().date()).isEqualTo(LocalDate.of(2025, 3, 2));
+  }
+
+  @Test
+  void previewRejectsNonPdfFilename() throws IOException {
+    assertThatThrownBy(
+            () ->
+                pdfStatementFormatWizardService.preview(
+                    pdfWithRows(
+                        List.of(
+                            List.of("Date", "Description", "Amount"),
+                            List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+                    "statement.txt",
+                    signedAmountPreviewCommand()))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getCode())
+                    .isEqualTo(BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name()));
   }
 
   @Test
@@ -215,6 +327,28 @@ class PdfStatementFormatWizardServiceTest {
                 assertThat(((BusinessException) exception).getFieldErrors())
                     .extracting("field")
                     .contains("negativeMeans"));
+
+    verify(statementFormatRepository, never()).save(any());
+    verify(parserRevisionRepository, never()).save(any());
+  }
+
+  @Test
+  void saveRejectsNonPdfFilenameBeforePersisting() throws IOException {
+    assertThatThrownBy(
+            () ->
+                pdfStatementFormatWizardService.save(
+                    pdfWithRows(
+                        List.of(
+                            List.of("Date", "Description", "Amount"),
+                            List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+                    "statement.txt",
+                    signedAmountSaveCommand(),
+                    "usr_test123"))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getCode())
+                    .isEqualTo(BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name()));
 
     verify(statementFormatRepository, never()).save(any());
     verify(parserRevisionRepository, never()).save(any());

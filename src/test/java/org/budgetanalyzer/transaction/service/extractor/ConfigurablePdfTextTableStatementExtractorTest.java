@@ -72,6 +72,28 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   }
 
   @Test
+  void extractParsesMatchingTablesAcrossPagesAgainstTotalMinimumRows() throws IOException {
+    var extractor = extractor(signedAmountConfig(PdfTextTableYearSource.EXPLICIT_DATE, 3));
+    var pdfContent =
+        pdfWithPages(
+            List.of(
+                List.of("Date", "Description", "Amount"),
+                List.of("01/02/2025", "Coffee Shop", "$4.50"),
+                List.of("01/03/2025", "Grocery", "$25.20")),
+            List.of(
+                List.of("Date", "Description", "Amount"),
+                List.of("01/04/2025", "Payment", "-$100.00"),
+                List.of("01/05/2025", "Refund", "$2.00")));
+
+    var transactions = extractor.extract(pdfContent, "checking");
+
+    assertThat(transactions).hasSize(4);
+    assertThat(transactions)
+        .extracting("description")
+        .containsExactly("Coffee Shop", "Grocery", "Payment", "Refund");
+  }
+
+  @Test
   void extractUsesStatementPeriodYearForYearlessDates() throws IOException {
     var extractor = extractor(signedAmountConfig(PdfTextTableYearSource.STATEMENT_PERIOD));
     var pdfContent =
@@ -89,6 +111,22 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   @Test
   void extractUsesTypeHeaderWhenPresent() throws IOException {
     var extractor = extractor(signedAmountWithTypeConfig());
+    var pdfContent =
+        pdfWithRows(
+            List.of(
+                List.of("Date", "Description", "Amount", "Type"),
+                List.of("01/02/2025", "Coffee Shop", "4.50", "Debit"),
+                List.of("01/03/2025", "Refund", "2.00", "Credit")));
+
+    var transactions = extractor.extract(pdfContent, "checking");
+
+    assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
+  }
+
+  @Test
+  void extractUsesTypeHeaderWithoutNegativeMeans() throws IOException {
+    var extractor = extractor(signedAmountWithTypeConfig(null));
     var pdfContent =
         pdfWithRows(
             List.of(
@@ -128,11 +166,16 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   }
 
   private PdfTextTableParserConfig signedAmountConfig(PdfTextTableYearSource yearSource) {
+    return signedAmountConfig(yearSource, 1);
+  }
+
+  private PdfTextTableParserConfig signedAmountConfig(
+      PdfTextTableYearSource yearSource, int minimumRows) {
     var dateFormat = yearSource == PdfTextTableYearSource.STATEMENT_PERIOD ? "MMM d" : "MM/dd/uuuu";
     return new PdfTextTableParserConfig(
         PdfTextTableFileType.TEXT_PDF,
         List.of("Date", "Description", "Amount"),
-        1,
+        minimumRows,
         "Date",
         dateFormat,
         "Description",
@@ -145,6 +188,11 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   }
 
   private PdfTextTableParserConfig signedAmountWithTypeConfig() {
+    return signedAmountWithTypeConfig(PdfTextTableNegativeMeans.CREDIT);
+  }
+
+  private PdfTextTableParserConfig signedAmountWithTypeConfig(
+      PdfTextTableNegativeMeans pdfTextTableNegativeMeans) {
     return new PdfTextTableParserConfig(
         PdfTextTableFileType.TEXT_PDF,
         List.of("Date", "Description", "Amount"),
@@ -156,7 +204,7 @@ class ConfigurablePdfTextTableStatementExtractorTest {
         null,
         null,
         "Type",
-        PdfTextTableNegativeMeans.CREDIT,
+        pdfTextTableNegativeMeans,
         PdfTextTableYearSource.EXPLICIT_DATE);
   }
 
@@ -194,6 +242,27 @@ class ConfigurablePdfTextTableStatementExtractorTest {
         for (var row : rows) {
           writeRow(contentStream, font, row, y);
           y -= 16F;
+        }
+      }
+      var byteArrayOutputStream = new ByteArrayOutputStream();
+      document.save(byteArrayOutputStream);
+      return byteArrayOutputStream.toByteArray();
+    }
+  }
+
+  @SafeVarargs
+  private byte[] pdfWithPages(List<List<String>>... pages) throws IOException {
+    try (var document = new PDDocument()) {
+      var font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+      for (var rows : pages) {
+        var page = new PDPage();
+        document.addPage(page);
+        try (var contentStream = new PDPageContentStream(document, page)) {
+          var y = 750F;
+          for (var row : rows) {
+            writeRow(contentStream, font, row, y);
+            y -= 16F;
+          }
         }
       }
       var byteArrayOutputStream = new ByteArrayOutputStream();

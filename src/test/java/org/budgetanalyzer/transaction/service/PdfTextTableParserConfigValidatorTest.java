@@ -41,6 +41,50 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
+  void validate_withSignedAmountAndTypeHeaderDoesNotRequireNegativeMeans() {
+    var pdfTextTableParserConfig =
+        new PdfTextTableParserConfig(
+            PdfTextTableFileType.TEXT_PDF,
+            List.of("Date", "Description", "Amount", "Type"),
+            3,
+            "Date",
+            "MM/dd/uuuu",
+            "Description",
+            "Amount",
+            null,
+            null,
+            "Type",
+            null,
+            PdfTextTableYearSource.EXPLICIT_DATE);
+
+    var fieldErrors = pdfTextTableParserConfigValidator.validate(pdfTextTableParserConfig);
+
+    assertThat(fieldErrors).isEmpty();
+  }
+
+  @Test
+  void validate_withSignedAmountAndNoDirectionSourceReturnsFieldErrors() {
+    var pdfTextTableParserConfig =
+        new PdfTextTableParserConfig(
+            PdfTextTableFileType.TEXT_PDF,
+            List.of("Date", "Description", "Amount"),
+            3,
+            "Date",
+            "MM/dd/uuuu",
+            "Description",
+            "Amount",
+            null,
+            null,
+            null,
+            null,
+            PdfTextTableYearSource.EXPLICIT_DATE);
+
+    var fieldErrors = pdfTextTableParserConfigValidator.validate(pdfTextTableParserConfig);
+
+    assertThat(fieldErrors).extracting("field").containsExactly("negativeMeans");
+  }
+
+  @Test
   void validate_withDebitCreditColumnsReturnsNoErrors() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(

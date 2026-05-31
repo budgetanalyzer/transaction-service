@@ -49,7 +49,7 @@ public class PdfStatementFormatWizardService {
   private static final Pattern MONTH_DATE_PATTERN =
       Pattern.compile(
           "\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\s+"
-              + "\\d{1,2}(?:,?\\s+\\d{2,4})?\\b",
+              + "\\d{1,2}(?:,?\\s+\\d{4})?\\b",
           Pattern.CASE_INSENSITIVE);
   private static final Pattern AMOUNT_PATTERN =
       Pattern.compile("\\(?-?\\$?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?\\)?");
@@ -133,6 +133,7 @@ public class PdfStatementFormatWizardService {
     var transactions =
         parsePreviewRows(
             fileContent,
+            filename,
             command.bankName(),
             command.defaultCurrencyIsoCode(),
             command.accountId(),
@@ -175,6 +176,7 @@ public class PdfStatementFormatWizardService {
 
     parsePreviewRows(
         fileContent,
+        filename,
         command.bankName(),
         command.defaultCurrencyIsoCode(),
         null,
@@ -240,6 +242,7 @@ public class PdfStatementFormatWizardService {
       addHeader(headers, mapping.debitHeader());
       addHeader(headers, mapping.creditHeader());
     }
+    addHeader(headers, mapping.typeHeader());
     return List.copyOf(headers);
   }
 
@@ -290,6 +293,7 @@ public class PdfStatementFormatWizardService {
 
   private List<org.budgetanalyzer.transaction.service.dto.PreviewTransaction> parsePreviewRows(
       byte[] fileContent,
+      String filename,
       String bankName,
       String defaultCurrencyIsoCode,
       String accountId,
@@ -302,7 +306,7 @@ public class PdfStatementFormatWizardService {
         new ConfigurablePdfTextTableStatementExtractor(
             statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
     try {
-      return statementExtractor.extract(fileContent, accountId);
+      return statementExtractor.extract(fileContent, filename, accountId);
     } catch (BusinessException businessException) {
       if (businessException.hasFieldErrors()) {
         throw businessException;
@@ -336,6 +340,9 @@ public class PdfStatementFormatWizardService {
     }
     if (message.contains("amount") || message.contains("debit") || message.contains("credit")) {
       return "mapping.amountHeader";
+    }
+    if (message.contains("type")) {
+      return "mapping.typeHeader";
     }
     if (message.contains("description")) {
       return "mapping.descriptionHeader";
@@ -531,7 +538,22 @@ public class PdfStatementFormatWizardService {
       return "uuuu-MM-dd";
     }
     if (MONTH_DATE_PATTERN.matcher(normalizedValue).find()) {
-      return normalizedValue.matches(".*\\b\\d{4}\\b.*") ? "MMM d uuuu" : "MMM d";
+      var hasYear = normalizedValue.matches(".*\\b\\d{4}\\b.*");
+      var hasComma = normalizedValue.contains(",");
+      var hasFullMonth = normalizedValue.split("\\s+")[0].length() > 3;
+      if (hasFullMonth && hasComma) {
+        return "MMMM d, uuuu";
+      }
+      if (hasFullMonth && hasYear) {
+        return "MMMM d uuuu";
+      }
+      if (hasFullMonth) {
+        return "MMMM d";
+      }
+      if (hasComma) {
+        return "MMM d, uuuu";
+      }
+      return hasYear ? "MMM d uuuu" : "MMM d";
     }
     if (NUMERIC_DATE_PATTERN.matcher(normalizedValue).find()) {
       var dateParts = normalizedValue.split("/");

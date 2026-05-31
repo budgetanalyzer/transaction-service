@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -65,7 +67,7 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
     }
     try {
       var pdfTextDocument = pdfTextExtractionService.extract(fileContent, filename);
-      return selectCandidate(pdfTextDocument) != null;
+      return !selectCandidates(pdfTextDocument).isEmpty();
     } catch (BusinessException businessException) {
       return false;
     }
@@ -73,10 +75,22 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
 
   @Override
   public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
+    return extract(fileContent, "preview.pdf", accountId);
+  }
+
+  /**
+   * Extracts preview transactions from a PDF file using the supplied filename for validation.
+   *
+   * @param fileContent uploaded PDF bytes
+   * @param filename uploaded filename
+   * @param accountId account identifier to attach to preview rows
+   * @return parsed preview transactions
+   */
+  public List<PreviewTransaction> extract(byte[] fileContent, String filename, String accountId) {
     try {
-      var pdfTextDocument = pdfTextExtractionService.extract(fileContent, "preview.pdf");
-      var pdfTextTableCandidate = requireCandidate(pdfTextDocument);
-      return parseRows(pdfTextDocument, pdfTextTableCandidate, accountId);
+      var pdfTextDocument = pdfTextExtractionService.extract(fileContent, filename);
+      var pdfTextTableCandidates = requireCandidates(pdfTextDocument);
+      return parseRows(pdfTextDocument, pdfTextTableCandidates, accountId);
     } catch (BusinessException businessException) {
       throw businessException;
     } catch (Exception exception) {
@@ -104,23 +118,30 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
         + "-pdf-text-table";
   }
 
-  private PdfTextTableCandidate requireCandidate(PdfTextDocument pdfTextDocument) {
-    var pdfTextTableCandidate = selectCandidate(pdfTextDocument);
-    if (pdfTextTableCandidate == null) {
+  private List<PdfTextTableCandidate> requireCandidates(PdfTextDocument pdfTextDocument) {
+    var pdfTextTableCandidates = selectCandidates(pdfTextDocument);
+    if (pdfTextTableCandidates.isEmpty()) {
       throw new BusinessException(
           "No PDF text table matched the parser configuration.",
           BudgetAnalyzerError.PDF_PARSING_ERROR.name());
     }
-    return pdfTextTableCandidate;
+    return pdfTextTableCandidates;
   }
 
-  private PdfTextTableCandidate selectCandidate(PdfTextDocument pdfTextDocument) {
-    return pdfTextDocument.tableCandidates().stream()
-        .filter(this::matchesHeaderRules)
-        .filter(this::hasMappedHeaders)
-        .filter(this::hasEnoughRows)
-        .findFirst()
-        .orElse(null);
+  private List<PdfTextTableCandidate> selectCandidates(PdfTextDocument pdfTextDocument) {
+    var pdfTextTableCandidates =
+        pdfTextDocument.tableCandidates().stream()
+            .filter(this::matchesHeaderRules)
+            .filter(this::hasMappedHeaders)
+            .sorted(
+                Comparator.comparing(PdfTextTableCandidate::pageNumber)
+                    .thenComparing(PdfTextTableCandidate::startLineNumber))
+            .toList();
+    var rowCount = pdfTextTableCandidates.stream().mapToInt(PdfTextTableCandidate::rowCount).sum();
+    if (rowCount < pdfTextTableParserConfig.minimumRows()) {
+      return List.of();
+    }
+    return pdfTextTableCandidates;
   }
 
   private boolean matchesHeaderRules(PdfTextTableCandidate pdfTextTableCandidate) {
@@ -139,6 +160,10 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
         || !headerIndexes.containsKey(normalize(pdfTextTableParserConfig.descriptionHeader()))) {
       return false;
     }
+    if (!isBlank(pdfTextTableParserConfig.typeHeader())
+        && !headerIndexes.containsKey(normalize(pdfTextTableParserConfig.typeHeader()))) {
+      return false;
+    }
     if (hasSignedAmountColumn()) {
       return headerIndexes.containsKey(normalize(pdfTextTableParserConfig.amountHeader()));
     }
@@ -146,26 +171,24 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
         && headerIndexes.containsKey(normalize(pdfTextTableParserConfig.creditHeader()));
   }
 
-  private boolean hasEnoughRows(PdfTextTableCandidate pdfTextTableCandidate) {
-    return pdfTextTableCandidate.rowCount() >= pdfTextTableParserConfig.minimumRows();
-  }
-
   private List<PreviewTransaction> parseRows(
       PdfTextDocument pdfTextDocument,
-      PdfTextTableCandidate pdfTextTableCandidate,
+      List<PdfTextTableCandidate> pdfTextTableCandidates,
       String accountId) {
-    var headerIndexes = headerIndexes(pdfTextTableCandidate);
     var statementYear = resolveStatementYear(pdfTextDocument);
-    var transactions =
-        pdfTextTableCandidate.dataRows().stream()
-            .map(row -> parseRow(row, headerIndexes, statementYear, accountId))
-            .toList();
+    var transactions = new ArrayList<PreviewTransaction>();
+    for (var pdfTextTableCandidate : pdfTextTableCandidates) {
+      var headerIndexes = headerIndexes(pdfTextTableCandidate);
+      pdfTextTableCandidate.dataRows().stream()
+          .map(row -> parseRow(row, headerIndexes, statementYear, accountId))
+          .forEach(transactions::add);
+    }
     if (transactions.size() < pdfTextTableParserConfig.minimumRows()) {
       throw new BusinessException(
           "PDF text-table parser did not parse enough transaction rows.",
           BudgetAnalyzerError.PDF_PARSING_ERROR.name());
     }
-    return transactions;
+    return List.copyOf(transactions);
   }
 
   private PreviewTransaction parseRow(
@@ -254,6 +277,11 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
     }
 
     var negativeAmount = signedAmount.signum() < 0;
+    if (pdfTextTableParserConfig.negativeMeans() == null) {
+      throw new BusinessException(
+          "PDF text-table row has an unrecognized transaction type value.",
+          BudgetAnalyzerError.PDF_PARSING_ERROR.name());
+    }
     if (negativeAmount) {
       return pdfTextTableParserConfig.negativeMeans() == PdfTextTableNegativeMeans.CREDIT
           ? TransactionType.CREDIT
@@ -353,7 +381,7 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
   }
 
   private DateTimeFormatter buildDateFormatter(String dateFormat) {
-    return DateTimeFormatter.ofPattern(dateFormat, Locale.ROOT)
+    return DateTimeFormatter.ofPattern(dateFormat, Locale.ENGLISH)
         .withResolverStyle(ResolverStyle.SMART);
   }
 
@@ -364,6 +392,10 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
   private boolean hasSignedAmountColumn() {
     return pdfTextTableParserConfig.amountHeader() != null
         && !pdfTextTableParserConfig.amountHeader().isBlank();
+  }
+
+  private boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 
   private String normalize(String value) {

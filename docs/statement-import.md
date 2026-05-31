@@ -268,9 +268,12 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 `PDF_TEXT_TABLE_CONFIG` powers deterministic user-created PDF table formats. Its
 parser configuration is stored as opaque text in
 `parser_revision.parser_config`, with queryable metadata kept in normal
-`parser_revision` columns. Schema version 1 supports text-based PDFs with one
-transaction-like table, a date column, a description column, and either a
-signed amount column or separate debit and credit columns. A PDFBox-based text
+`parser_revision` columns. Schema version 1 supports text-based PDFs with
+transaction-like tables, a date column, a description column, and either a
+signed amount column or separate debit and credit columns. Multi-page
+statements are supported when continuation tables repeat the configured
+headers; matching table candidates are parsed in page and line order. A
+PDFBox-based text
 extraction component rejects scanned or OCR-dependent PDFs when embedded text
 is unavailable. The PDF wizard analysis endpoint scores text table candidates
 by header detection, repeated headers, row continuity, row count, date-like
@@ -402,13 +405,19 @@ curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/preview \
 }
 ```
 
-For signed amount columns, `negativeMeans` defines the transaction direction
-for negative values; positive values are imported as the opposite direction.
+Preview uploads must include a `.pdf` filename. For signed amount columns,
+`negativeMeans` defines the transaction direction for negative values; positive
+values are imported as the opposite direction. As an alternative, a configured
+`typeHeader` can provide row direction values such as `Debit`, `Credit`, `Dr`,
+or `Cr`, in which case `negativeMeans` is only used as a fallback when present.
 For separate debit and credit columns, exactly one of those columns must be
-populated per row. Yearless date formats require `yearSource:
-STATEMENT_PERIOD` and a four-digit year elsewhere in the extracted PDF text.
-Mapping validation errors return `422 Unprocessable Entity` with `code:
-PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
+populated per row. Supported month-name date formats include abbreviated and
+full month names, with or without a comma before a four-digit year, for example
+`MMM d`, `MMM d, uuuu`, `MMMM d`, and `MMMM d, uuuu`. Yearless date formats
+require `yearSource: STATEMENT_PERIOD` and a four-digit year elsewhere in the
+extracted PDF text. Mapping validation errors return `422 Unprocessable
+Entity` with `code: PDF_WIZARD_VALIDATION_FAILED` and field-addressable
+`fieldErrors`.
 
 ### PDF Wizard Save
 
@@ -456,10 +465,11 @@ curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/save \
 ```
 
 Save uses the same validation rules as PDF wizard preview: bank name and ISO
-currency are required, the date format must be supported, signed amount columns
-must declare `negativeMeans`, separate debit and credit columns must be
-unambiguous, and the sample must parse at least `minimumRows` transactions.
-Validation errors return `422 Unprocessable Entity` with `code:
+currency are required, the uploaded sample must have a `.pdf` filename, the
+date format must be supported, signed amount columns must declare either
+`negativeMeans` or a usable `typeHeader`, separate debit and credit columns
+must be unambiguous, and the sample must parse at least `minimumRows`
+transactions. Validation errors return `422 Unprocessable Entity` with `code:
 PDF_WIZARD_VALIDATION_FAILED`.
 
 The saved format participates in the same revision-selection behavior as
