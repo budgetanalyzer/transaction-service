@@ -85,6 +85,8 @@ CREATE TABLE parser_revision (
   and return ranked transaction-table candidates
 - `POST /v1/statement-formats/pdf-wizard/preview` - Validate a confirmed
   text-PDF table mapping and return read-only parser preview rows
+- `POST /v1/statement-formats/pdf-wizard/save` - Save a user-scoped PDF format
+  with one enabled `PDF_TEXT_TABLE_CONFIG` parser revision
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
@@ -400,6 +402,58 @@ populated per row. Yearless date formats require `yearSource:
 STATEMENT_PERIOD` and a four-digit year elsewhere in the extracted PDF text.
 Mapping validation errors return `422 Unprocessable Entity` with `code:
 PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
+
+### PDF Wizard Save
+
+The save endpoint validates the confirmed mapping against the uploaded sample
+PDF before persisting anything. On success it creates a user-scoped
+`statement_format` with `formatType = PDF` and exactly one enabled
+`PDF_TEXT_TABLE_CONFIG` parser revision. The saved `id` can immediately be used
+as `statementFormatId` in `POST /v1/transactions/preview`.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/save \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf" \
+  -F 'request={
+    "displayName": "Example Bank PDF",
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "headerMustContain": ["Date", "Description", "Amount"],
+    "minimumRows": 1,
+    "yearSource": "EXPLICIT_DATE",
+    "mapping": {
+      "dateHeader": "Date",
+      "dateFormat": "MM/dd/uuuu",
+      "descriptionHeader": "Description",
+      "amountMode": "SIGNED_AMOUNT",
+      "amountHeader": "Amount",
+      "negativeMeans": "CREDIT"
+    }
+  };type=application/json'
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": 124,
+  "displayName": "Example Bank PDF",
+  "formatType": "PDF",
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "scope": "USER",
+  "ownerId": "usr_test123",
+  "enabled": true
+}
+```
+
+Save uses the same validation rules as PDF wizard preview: bank name and ISO
+currency are required, the date format must be supported, signed amount columns
+must declare `negativeMeans`, separate debit and credit columns must be
+unambiguous, and the sample must parse at least `minimumRows` transactions.
+Validation errors return `422 Unprocessable Entity` with `code:
+PDF_WIZARD_VALIDATION_FAILED`.
 
 ### CSV Wizard Flow
 

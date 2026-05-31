@@ -1,6 +1,11 @@
 package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,14 +19,27 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.domain.FormatType;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.ParserType;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
+import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
+import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 
 class PdfStatementFormatWizardServiceTest {
@@ -32,8 +50,17 @@ class PdfStatementFormatWizardServiceTest {
   private static final float DEBIT_X = 340F;
   private static final float CREDIT_X = 430F;
 
+  private final StatementFormatRepository statementFormatRepository =
+      Mockito.mock(StatementFormatRepository.class);
+  private final ParserRevisionRepository parserRevisionRepository =
+      Mockito.mock(ParserRevisionRepository.class);
+  private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
   private final PdfStatementFormatWizardService pdfStatementFormatWizardService =
-      new PdfStatementFormatWizardService(new PdfTextExtractionService());
+      new PdfStatementFormatWizardService(
+          new PdfTextExtractionService(),
+          statementFormatRepository,
+          parserRevisionRepository,
+          objectMapper);
 
   @Test
   void analyzeRanksTransactionTableAndInfersSignedAmountMapping() throws IOException {
@@ -119,6 +146,81 @@ class PdfStatementFormatWizardServiceTest {
   }
 
   @Test
+  void saveCreatesUserScopedPdfFormatAndParserRevision() throws Exception {
+    when(statementFormatRepository.save(any(StatementFormat.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result =
+        pdfStatementFormatWizardService.save(
+            pdfWithRows(
+                List.of(
+                    List.of("Date", "Description", "Amount"),
+                    List.of("01/02/2025", "Coffee Shop", "$4.50"),
+                    List.of("01/03/2025", "Payment", "-$100.00"))),
+            "statement.pdf",
+            signedAmountSaveCommand(),
+            "usr_test123");
+
+    var parserRevisionCaptor = ArgumentCaptor.forClass(ParserRevision.class);
+    verify(parserRevisionRepository).save(parserRevisionCaptor.capture());
+    var parserRevision = parserRevisionCaptor.getValue();
+    var parserConfig =
+        objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
+
+    assertThat(result.getDisplayName()).isEqualTo("Example PDF");
+    assertThat(result.getFormatType()).isEqualTo(FormatType.PDF);
+    assertThat(result.getScope()).isEqualTo(StatementFormatScope.USER);
+    assertThat(result.getOwnerId()).isEqualTo("usr_test123");
+    assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("USD");
+    assertThat(parserRevision.getParserType()).isEqualTo(ParserType.PDF_TEXT_TABLE_CONFIG);
+    assertThat(parserRevision.getHandlerKey()).isNull();
+    assertThat(parserConfig.headerMustContain()).containsExactly("Date", "Description", "Amount");
+    assertThat(parserConfig.amountHeader()).isEqualTo("Amount");
+  }
+
+  @Test
+  void saveRejectsAmbiguousSignedAmountDirectionBeforePersisting() throws IOException {
+    var command =
+        new PdfWizardSaveCommand(
+            "Example PDF",
+            "Example Bank",
+            "USD",
+            List.of("Date", "Description", "Amount"),
+            1,
+            PdfTextTableYearSource.EXPLICIT_DATE,
+            new PdfWizardColumnMapping(
+                "Date",
+                "MM/dd/uuuu",
+                "Description",
+                PdfWizardAmountMode.SIGNED_AMOUNT,
+                "Amount",
+                null,
+                null,
+                null,
+                null));
+
+    assertThatThrownBy(
+            () ->
+                pdfStatementFormatWizardService.save(
+                    pdfWithRows(
+                        List.of(
+                            List.of("Date", "Description", "Amount"),
+                            List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+                    "statement.pdf",
+                    command,
+                    "usr_test123"))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getFieldErrors())
+                    .extracting("field")
+                    .contains("negativeMeans"));
+
+    verify(statementFormatRepository, never()).save(any());
+    verify(parserRevisionRepository, never()).save(any());
+  }
+
+  @Test
   void previewRejectsInvalidMappingWithFieldErrors() throws IOException {
     var command =
         new PdfWizardMappingPreviewCommand(
@@ -177,6 +279,26 @@ class PdfStatementFormatWizardServiceTest {
         "Example Bank",
         "USD",
         "checking",
+        List.of("Date", "Description", "Amount"),
+        1,
+        PdfTextTableYearSource.EXPLICIT_DATE,
+        new PdfWizardColumnMapping(
+            "Date",
+            "MM/dd/uuuu",
+            "Description",
+            PdfWizardAmountMode.SIGNED_AMOUNT,
+            "Amount",
+            null,
+            null,
+            null,
+            PdfTextTableNegativeMeans.CREDIT));
+  }
+
+  private PdfWizardSaveCommand signedAmountSaveCommand() {
+    return new PdfWizardSaveCommand(
+        "Example PDF",
+        "Example Bank",
+        "usd",
         List.of("Date", "Description", "Amount"),
         1,
         PdfTextTableYearSource.EXPLICIT_DATE,

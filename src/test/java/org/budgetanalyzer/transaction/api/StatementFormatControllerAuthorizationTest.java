@@ -33,6 +33,7 @@ import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
@@ -65,6 +66,9 @@ class StatementFormatControllerAuthorizationTest {
         .thenReturn(new PdfWizardAnalysisResult(List.of(), 0.0, List.of()));
     when(pdfStatementFormatWizardService.preview(any(byte[].class), anyString(), any()))
         .thenReturn(new PdfWizardPreviewResult(List.of(), List.of()));
+    when(pdfStatementFormatWizardService.save(
+            any(byte[].class), anyString(), any(PdfWizardSaveCommand.class), anyString()))
+        .thenReturn(createPdfStubFormat());
   }
 
   // ==================== No authentication ====================
@@ -248,6 +252,32 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
+  @Test
+  void pdfWizardSave_withWritePermission_returns201() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/save")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfSaveRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
+  void pdfWizardSave_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/save")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfSaveRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
   // ==================== Admin with full permissions ====================
 
   @Test
@@ -273,6 +303,10 @@ class StatementFormatControllerAuthorizationTest {
   private StatementFormat createStubFormat() {
     return StatementFormat.createCsvFormat(
         "Capital One - Export", "Capital One", "USD", "usr_test123");
+  }
+
+  private StatementFormat createPdfStubFormat() {
+    return StatementFormat.createUserPdfFormat("Example PDF", "Example Bank", "USD", "usr_test123");
   }
 
   private String createValidFormatJson() {
@@ -308,6 +342,27 @@ class StatementFormatControllerAuthorizationTest {
   private String pdfPreviewRequestJson() {
     return """
         {
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
+          }
+        }
+        """;
+  }
+
+  private String pdfSaveRequestJson() {
+    return """
+        {
+          "displayName": "Example PDF",
           "bankName": "Example Bank",
           "defaultCurrencyIsoCode": "USD",
           "headerMustContain": ["Date", "Description", "Amount"],

@@ -543,10 +543,12 @@ with transaction-like tables.
    with one enabled `PDF_TEXT_TABLE_CONFIG` parser revision. Validate bank name,
    default currency, date parsing, amount parsing, direction inference,
    minimum-row match, and ambiguity before persisting.
+   **Implemented.**
 8. **Owner: transaction-service** - Add fixture-based tests with text PDFs for
    table detection, mapping preview, unsupported scanned PDFs, ambiguous amount
    direction, saved-format normal preview, and coexistence with existing static
    PDF handlers under revision selection.
+   **Implemented.**
 9. **Owner: transaction-service** - Update `docs/statement-import.md`, API docs,
    and this plan's open questions if retention, diagnostics, or unsupported-PDF
    behavior changes during implementation.

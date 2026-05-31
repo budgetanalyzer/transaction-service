@@ -51,6 +51,7 @@ import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
@@ -538,6 +539,31 @@ class StatementFormatControllerTest {
               jsonPath("$.diagnostics[0]")
                   .value("Matched a text-PDF table using 3 configured header token(s)."));
     }
+
+    @Test
+    void saveCreatesPdfStatementFormat() throws Exception {
+      var saved =
+          StatementFormat.createUserPdfFormat("Example PDF", "Example Bank", "USD", "usr_test123");
+      when(pdfStatementFormatWizardService.save(
+              any(byte[].class),
+              eq("sample.pdf"),
+              any(PdfWizardSaveCommand.class),
+              eq("usr_test123")))
+          .thenReturn(saved);
+
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/save")
+                  .file(pdfFile())
+                  .file(jsonPart("request", pdfSaveRequestJson()))
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.displayName").value("Example PDF"))
+          .andExpect(jsonPath("$.formatType").value("PDF"))
+          .andExpect(jsonPath("$.bankName").value("Example Bank"));
+    }
   }
 
   private StatementFormat createCsvFormat(String bankName) {
@@ -620,6 +646,27 @@ class StatementFormatControllerTest {
           "bankName": "Example Bank",
           "defaultCurrencyIsoCode": "USD",
           "accountId": "checking-001",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
+          }
+        }
+        """;
+  }
+
+  private String pdfSaveRequestJson() {
+    return """
+        {
+          "displayName": "Example PDF",
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
           "headerMustContain": ["Date", "Description", "Amount"],
           "minimumRows": 1,
           "yearSource": "EXPLICIT_DATE",

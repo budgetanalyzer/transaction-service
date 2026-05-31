@@ -11,11 +11,17 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
+import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
+import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
@@ -25,6 +31,7 @@ import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
 import org.budgetanalyzer.transaction.service.extractor.ConfigurablePdfTextTableStatementExtractor;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
@@ -48,6 +55,9 @@ public class PdfStatementFormatWizardService {
       Pattern.compile("\\(?-?\\$?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?\\)?");
 
   private final PdfTextExtractionService pdfTextExtractionService;
+  private final StatementFormatRepository statementFormatRepository;
+  private final ParserRevisionRepository parserRevisionRepository;
+  private final ObjectMapper objectMapper;
   private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
       new PdfTextTableParserConfigValidator();
 
@@ -55,9 +65,19 @@ public class PdfStatementFormatWizardService {
    * Constructs a PDF statement format wizard service.
    *
    * @param pdfTextExtractionService text-PDF extraction service
+   * @param statementFormatRepository repository for statement format persistence
+   * @param parserRevisionRepository repository for parser revision persistence
+   * @param objectMapper JSON mapper for parser configuration
    */
-  public PdfStatementFormatWizardService(PdfTextExtractionService pdfTextExtractionService) {
+  public PdfStatementFormatWizardService(
+      PdfTextExtractionService pdfTextExtractionService,
+      StatementFormatRepository statementFormatRepository,
+      ParserRevisionRepository parserRevisionRepository,
+      ObjectMapper objectMapper) {
     this.pdfTextExtractionService = pdfTextExtractionService;
+    this.statementFormatRepository = statementFormatRepository;
+    this.parserRevisionRepository = parserRevisionRepository;
+    this.objectMapper = objectMapper;
   }
 
   /**
@@ -97,7 +117,12 @@ public class PdfStatementFormatWizardService {
   public PdfWizardPreviewResult preview(
       byte[] fileContent, String filename, PdfWizardMappingPreviewCommand command) {
     validateBankAndCurrency(command.bankName(), command.defaultCurrencyIsoCode());
-    var pdfTextTableParserConfig = buildParserConfig(command);
+    var pdfTextTableParserConfig =
+        buildParserConfig(
+            command.headerMustContain(),
+            command.minimumRows(),
+            command.yearSource(),
+            command.mapping());
     var fieldErrors = pdfTextTableParserConfigValidator.validate(pdfTextTableParserConfig);
     if (!fieldErrors.isEmpty()) {
       throw new BusinessException(
@@ -105,52 +130,86 @@ public class PdfStatementFormatWizardService {
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
           fieldErrors);
     }
-    var statementFormat =
-        StatementFormat.createUserPdfFormat(
-            "PDF Wizard Preview",
+    var transactions =
+        parsePreviewRows(
+            fileContent,
             command.bankName(),
-            command.defaultCurrencyIsoCode().toUpperCase(Locale.ROOT),
-            null);
-    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
-    var statementExtractor =
-        new ConfigurablePdfTextTableStatementExtractor(
-            statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
-    try {
-      var transactions = statementExtractor.extract(fileContent, command.accountId());
-      return new PdfWizardPreviewResult(
-          transactions,
-          List.of(
-              "Matched a text-PDF table using "
-                  + pdfTextTableParserConfig.headerMustContain().size()
-                  + " configured header token(s)."));
-    } catch (BusinessException businessException) {
-      if (businessException.hasFieldErrors()) {
-        throw businessException;
-      }
+            command.defaultCurrencyIsoCode(),
+            command.accountId(),
+            pdfTextTableParserConfig);
+    return new PdfWizardPreviewResult(
+        transactions,
+        List.of(
+            "Matched a text-PDF table using "
+                + pdfTextTableParserConfig.headerMustContain().size()
+                + " configured header token(s)."));
+  }
+
+  /**
+   * Saves a user-scoped PDF statement format after validating its confirmed mapping.
+   *
+   * @param fileContent uploaded PDF bytes
+   * @param filename uploaded filename
+   * @param command save command
+   * @param userId current user ID
+   * @return saved statement format
+   */
+  @Transactional
+  public StatementFormat save(
+      byte[] fileContent, String filename, PdfWizardSaveCommand command, String userId) {
+    validateDisplayName(command.displayName());
+    validateBankAndCurrency(command.bankName(), command.defaultCurrencyIsoCode());
+    var pdfTextTableParserConfig =
+        buildParserConfig(
+            command.headerMustContain(),
+            command.minimumRows(),
+            command.yearSource(),
+            command.mapping());
+    var fieldErrors = pdfTextTableParserConfigValidator.validate(pdfTextTableParserConfig);
+    if (!fieldErrors.isEmpty()) {
       throw new BusinessException(
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
-          List.of(
-              FieldError.of(
-                  resolveParserErrorField(businessException),
-                  businessException.getMessage(),
-                  null)));
+          fieldErrors);
     }
+
+    parsePreviewRows(
+        fileContent,
+        command.bankName(),
+        command.defaultCurrencyIsoCode(),
+        null,
+        pdfTextTableParserConfig);
+
+    var statementFormat =
+        StatementFormat.createUserPdfFormat(
+            command.displayName(),
+            command.bankName(),
+            command.defaultCurrencyIsoCode().toUpperCase(Locale.ROOT),
+            userId);
+    var savedStatementFormat = statementFormatRepository.save(statementFormat);
+    var parserRevision =
+        ParserRevision.createPdfTextTableConfig(
+            savedStatementFormat, 1, serializeParserConfig(pdfTextTableParserConfig));
+    parserRevisionRepository.save(parserRevision);
+    return savedStatementFormat;
   }
 
-  private PdfTextTableParserConfig buildParserConfig(PdfWizardMappingPreviewCommand command) {
-    if (command.mapping() == null) {
+  private PdfTextTableParserConfig buildParserConfig(
+      List<String> headerMustContain,
+      Integer minimumRows,
+      PdfTextTableYearSource yearSource,
+      PdfWizardColumnMapping mapping) {
+    if (mapping == null) {
       throw new BusinessException(
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
           List.of(FieldError.of("mapping", "PDF column mapping is required.", null)));
     }
-    var mapping = command.mapping();
-    var headerMustContain = configuredHeaderTokens(command.headerMustContain(), mapping);
+    var configuredHeaderMustContain = configuredHeaderTokens(headerMustContain, mapping);
     return new PdfTextTableParserConfig(
         PdfTextTableFileType.TEXT_PDF,
-        headerMustContain,
-        command.minimumRows() == null ? MIN_TRANSACTION_ROWS : command.minimumRows(),
+        configuredHeaderMustContain,
+        minimumRows == null ? MIN_TRANSACTION_ROWS : minimumRows,
         mapping.dateHeader(),
         mapping.dateFormat(),
         mapping.descriptionHeader(),
@@ -163,7 +222,7 @@ public class PdfStatementFormatWizardService {
             : null,
         mapping.typeHeader(),
         mapping.negativeMeans(),
-        command.yearSource() == null ? PdfTextTableYearSource.EXPLICIT_DATE : command.yearSource());
+        yearSource == null ? PdfTextTableYearSource.EXPLICIT_DATE : yearSource);
   }
 
   private List<String> configuredHeaderTokens(
@@ -217,6 +276,56 @@ public class PdfStatementFormatWizardService {
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
           fieldErrors);
+    }
+  }
+
+  private void validateDisplayName(String displayName) {
+    if (displayName == null || displayName.isBlank()) {
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          List.of(FieldError.of("displayName", "Display name is required.", displayName)));
+    }
+  }
+
+  private List<org.budgetanalyzer.transaction.service.dto.PreviewTransaction> parsePreviewRows(
+      byte[] fileContent,
+      String bankName,
+      String defaultCurrencyIsoCode,
+      String accountId,
+      PdfTextTableParserConfig pdfTextTableParserConfig) {
+    var statementFormat =
+        StatementFormat.createUserPdfFormat(
+            "PDF Wizard Preview", bankName, defaultCurrencyIsoCode.toUpperCase(Locale.ROOT), null);
+    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
+    var statementExtractor =
+        new ConfigurablePdfTextTableStatementExtractor(
+            statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
+    try {
+      return statementExtractor.extract(fileContent, accountId);
+    } catch (BusinessException businessException) {
+      if (businessException.hasFieldErrors()) {
+        throw businessException;
+      }
+      throw new BusinessException(
+          "PDF wizard mapping validation failed.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          List.of(
+              FieldError.of(
+                  resolveParserErrorField(businessException),
+                  businessException.getMessage(),
+                  null)));
+    }
+  }
+
+  private String serializeParserConfig(PdfTextTableParserConfig pdfTextTableParserConfig) {
+    try {
+      return objectMapper.writeValueAsString(pdfTextTableParserConfig);
+    } catch (JsonProcessingException jsonProcessingException) {
+      throw new BusinessException(
+          "Failed to serialize PDF parser configuration.",
+          BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+          jsonProcessingException);
     }
   }
 

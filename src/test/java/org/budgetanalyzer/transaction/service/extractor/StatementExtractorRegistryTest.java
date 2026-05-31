@@ -171,6 +171,65 @@ class StatementExtractorRegistryTest {
       assertThat(parserAttempts.getFirst().transactions().getFirst().description())
           .isEqualTo("Coffee Shop");
     }
+
+    @Test
+    void canSelectPdfTextTableRevisionWhenStaticPdfRevisionDoesNotMatch() throws Exception {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("Test Bank PDF", "Test Bank", "USD");
+      ReflectionTestUtils.setField(statementFormat, "id", 42L);
+      var staticParserRevision =
+          ParserRevision.createStaticHandler(statementFormat, 1, "static-pdf-handler");
+      var parserConfig =
+          new ObjectMapper()
+              .writeValueAsString(
+                  new PdfTextTableParserConfig(
+                      PdfTextTableFileType.TEXT_PDF,
+                      List.of("Date", "Description", "Amount"),
+                      1,
+                      "Date",
+                      "MM/dd/uuuu",
+                      "Description",
+                      "Amount",
+                      null,
+                      null,
+                      null,
+                      PdfTextTableNegativeMeans.CREDIT,
+                      PdfTextTableYearSource.EXPLICIT_DATE));
+      var pdfTextTableParserRevision =
+          ParserRevision.createPdfTextTableConfig(statementFormat, 2, parserConfig);
+      ReflectionTestUtils.setField(pdfTextTableParserRevision, "id", 102L);
+      var staticStatementExtractor =
+          new TestStatementExtractor("static-pdf-handler", false, List.of());
+      var parserRegistry =
+          new StatementExtractorRegistry(
+              List.of(staticStatementExtractor),
+              parserRevisionRepository,
+              csvParser,
+              new ObjectMapper().findAndRegisterModules(),
+              new PdfTextExtractionService());
+
+      when(parserRevisionRepository
+              .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
+          .thenReturn(List.of(staticParserRevision, pdfTextTableParserRevision));
+      parserRegistry.initialize();
+
+      var parserAttempts =
+          parserRegistry.attemptParse(
+              statementFormat,
+              pdfWithRows(
+                  List.of(
+                      List.of("Date", "Description", "Amount"),
+                      List.of("01/02/2025", "Coffee Shop", "$4.50"))),
+              "statement.pdf",
+              "account-123");
+
+      assertThat(parserAttempts)
+          .extracting("status")
+          .containsExactly(ParserAttemptStatus.NOT_APPLICABLE, ParserAttemptStatus.MATCHED);
+      assertThat(parserAttempts.get(1).parserRevision()).isEqualTo(pdfTextTableParserRevision);
+      assertThat(parserAttempts.get(1).transactions().getFirst().description())
+          .isEqualTo("Coffee Shop");
+    }
   }
 
   @Nested
