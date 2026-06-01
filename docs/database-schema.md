@@ -189,7 +189,39 @@ CREATE INDEX idx_statement_format_scope_owner ON statement_format(scope, owner_i
 
 Parser-specific configuration lives outside this table in `parser_revision`.
 System formats are visible to every user. User-scoped formats are visible only
-to their owner unless the caller has `statementformats:*:any`.
+to their owner unless the caller has `statementformats:*:any`. Per-user hide
+preferences live in `statement_format_user_preference`; they do not replace
+`statement_format.enabled`.
+
+### statement_format_user_preference
+
+**Purpose:** Stores per-user format visibility preferences for normal import
+selection.
+
+```sql
+CREATE TABLE statement_format_user_preference (
+    id BIGSERIAL PRIMARY KEY,
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    user_id VARCHAR(50) NOT NULL,
+    hidden BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    CONSTRAINT uq_statement_format_user_preference
+        UNIQUE (statement_format_id, user_id)
+);
+
+CREATE INDEX idx_statement_format_user_preference_user_hidden
+    ON statement_format_user_preference(user_id, hidden);
+```
+
+**Key Columns:**
+- `statement_format_id` - Format selected by the user preference
+- `user_id` - User that owns the preference
+- `hidden` - Whether this user has hidden the format from normal selection
+
+The preference table is personal UI state. A hidden format is not disabled and
+does not affect other users. Operational availability continues to be controlled
+by `statement_format.enabled`.
 
 ### parser_revision
 

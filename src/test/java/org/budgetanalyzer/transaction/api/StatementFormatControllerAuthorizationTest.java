@@ -179,6 +179,50 @@ class StatementFormatControllerAuthorizationTest {
   }
 
   @Test
+  void hideEndpoint_withWritePermission_returns204() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/hide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void hideEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/hide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void unhideEndpoint_withWritePermission_returns204() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/unhide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void unhideEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/unhide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   void csvWizardAnalyze_withWritePermission_returns200() throws Exception {
     mockMvc
         .perform(

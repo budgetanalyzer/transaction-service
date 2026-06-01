@@ -17,6 +17,7 @@ import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.StatementFormatScope;
+import org.budgetanalyzer.transaction.domain.StatementFormatUserPreference;
 
 @DataJpaTest
 @Testcontainers
@@ -31,6 +32,10 @@ class StatementFormatRepositoryIntegrationTest {
           .withPassword("test");
 
   @Autowired private StatementFormatRepository statementFormatRepository;
+
+  @Autowired
+  private StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
+
   @Autowired private ParserRevisionRepository parserRevisionRepository;
 
   @DynamicPropertySource
@@ -106,6 +111,44 @@ class StatementFormatRepositoryIntegrationTest {
       var result = statementFormatRepository.findEnabledVisibleToUser(saved.getId(), "usr_owner");
 
       assertThat(result).isEmpty();
+    }
+  }
+
+  @Nested
+  class UserPreference {
+
+    @Test
+    void savesStatementFormatUserPreference() {
+      var statementFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Owned Format", "Owned Bank", "USD", "usr_owner"));
+      var statementFormatUserPreference =
+          StatementFormatUserPreference.createHidden(statementFormat, "usr_owner");
+
+      var saved = statementFormatUserPreferenceRepository.save(statementFormatUserPreference);
+
+      assertThat(saved.getId()).isNotNull();
+      assertThat(saved.getStatementFormat().getId()).isEqualTo(statementFormat.getId());
+      assertThat(saved.getUserId()).isEqualTo("usr_owner");
+      assertThat(saved.isHidden()).isTrue();
+      assertThat(saved.getCreatedAt()).isNotNull();
+      assertThat(saved.getUpdatedAt()).isNotNull();
+    }
+
+    @Test
+    void findsPreferenceByStatementFormatAndUser() {
+      var statementFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Owned Format", "Owned Bank", "USD", "usr_owner"));
+      statementFormatUserPreferenceRepository.save(
+          StatementFormatUserPreference.createHidden(statementFormat, "usr_owner"));
+
+      var result =
+          statementFormatUserPreferenceRepository.findByStatementFormatIdAndUserId(
+              statementFormat.getId(), "usr_owner");
+
+      assertThat(result).isPresent();
+      assertThat(result.get().isHidden()).isTrue();
     }
   }
 

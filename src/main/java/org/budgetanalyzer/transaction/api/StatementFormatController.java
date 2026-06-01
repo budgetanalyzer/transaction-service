@@ -487,6 +487,60 @@ public class StatementFormatController {
         statementFormatService.updateFormat(id, patch, userId, canWriteAny));
   }
 
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Hide a statement format",
+      description =
+          "Hides a statement format from the current user's normal import selection lists. The "
+              + "operation is idempotent and does not disable the format for other users.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "204", description = "Statement format hidden"),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Statement format not found or not visible to the caller",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/hide")
+  public ResponseEntity<Void> hideFormat(
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id")
+          Long id) {
+    log.info("Received hide statement format request: {}", id);
+
+    statementFormatService.hideFormat(id, getCurrentUserId());
+    return ResponseEntity.noContent().build();
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Unhide a statement format",
+      description =
+          "Restores a statement format to the current user's normal import selection lists. The "
+              + "operation is idempotent.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "204", description = "Statement format unhidden"),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Statement format not found or not visible to the caller",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/unhide")
+  public ResponseEntity<Void> unhideFormat(
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id")
+          Long id) {
+    log.info("Received unhide statement format request: {}", id);
+
+    statementFormatService.unhideFormat(id, getCurrentUserId());
+    return ResponseEntity.noContent().build();
+  }
+
   private String getCurrentUserId() {
     return SecurityContextUtil.getCurrentUserId()
         .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));

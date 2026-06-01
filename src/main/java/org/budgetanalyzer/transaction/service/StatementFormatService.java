@@ -20,8 +20,10 @@ import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.StatementFormatScope;
+import org.budgetanalyzer.transaction.domain.StatementFormatUserPreference;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
+import org.budgetanalyzer.transaction.repository.StatementFormatUserPreferenceRepository;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
@@ -34,6 +36,7 @@ public class StatementFormatService {
   private static final Logger log = LoggerFactory.getLogger(StatementFormatService.class);
 
   private final StatementFormatRepository statementFormatRepository;
+  private final StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
   private final ParserRevisionRepository parserRevisionRepository;
   private final StatementExtractorRegistry statementExtractorRegistry;
   private final ObjectMapper objectMapper;
@@ -42,16 +45,19 @@ public class StatementFormatService {
    * Constructs a new StatementFormatService.
    *
    * @param statementFormatRepository repository for format persistence
+   * @param statementFormatUserPreferenceRepository repository for user format preferences
    * @param parserRevisionRepository repository for parser revision persistence
    * @param statementExtractorRegistry registry to notify of format changes
    * @param objectMapper JSON mapper for parser configuration
    */
   public StatementFormatService(
       StatementFormatRepository statementFormatRepository,
+      StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository,
       ParserRevisionRepository parserRevisionRepository,
       StatementExtractorRegistry statementExtractorRegistry,
       ObjectMapper objectMapper) {
     this.statementFormatRepository = statementFormatRepository;
+    this.statementFormatUserPreferenceRepository = statementFormatUserPreferenceRepository;
     this.parserRevisionRepository = parserRevisionRepository;
     this.statementExtractorRegistry = statementExtractorRegistry;
     this.objectMapper = objectMapper;
@@ -165,6 +171,52 @@ public class StatementFormatService {
     }
 
     return saved;
+  }
+
+  /**
+   * Hides a statement format from the current user's normal selection lists.
+   *
+   * @param id statement format ID
+   * @param userId current user ID
+   * @throws ResourceNotFoundException if the format is not visible to the user
+   */
+  @Transactional
+  public void hideFormat(Long id, String userId) {
+    var statementFormat =
+        statementFormatRepository
+            .findVisibleToUserById(id, userId)
+            .orElseThrow(() -> statementFormatNotFound(id));
+    var statementFormatUserPreference =
+        statementFormatUserPreferenceRepository
+            .findByStatementFormatIdAndUserId(id, userId)
+            .orElseGet(() -> StatementFormatUserPreference.createHidden(statementFormat, userId));
+    statementFormatUserPreference.setHidden(true);
+    statementFormatUserPreferenceRepository.save(statementFormatUserPreference);
+
+    log.info("Hid statement format {} for user {}", id, userId);
+  }
+
+  /**
+   * Unhides a statement format for the current user's normal selection lists.
+   *
+   * @param id statement format ID
+   * @param userId current user ID
+   * @throws ResourceNotFoundException if the format is not visible to the user
+   */
+  @Transactional
+  public void unhideFormat(Long id, String userId) {
+    statementFormatRepository
+        .findVisibleToUserById(id, userId)
+        .orElseThrow(() -> statementFormatNotFound(id));
+    statementFormatUserPreferenceRepository
+        .findByStatementFormatIdAndUserId(id, userId)
+        .ifPresent(
+            statementFormatUserPreference -> {
+              statementFormatUserPreference.setHidden(false);
+              statementFormatUserPreferenceRepository.save(statementFormatUserPreference);
+            });
+
+    log.info("Unhid statement format {} for user {}", id, userId);
   }
 
   private StatementFormat mapToEntity(

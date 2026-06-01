@@ -67,6 +67,17 @@ CREATE TABLE parser_revision (
     created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL
 );
+
+CREATE TABLE statement_format_user_preference (
+    id BIGSERIAL PRIMARY KEY,
+    statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
+    user_id VARCHAR(50) NOT NULL,
+    hidden BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    CONSTRAINT uq_statement_format_user_preference
+        UNIQUE (statement_format_id, user_id)
+);
 ```
 
 ### Statement Format API
@@ -75,6 +86,10 @@ CREATE TABLE parser_revision (
 - `GET /v1/statement-formats/{id}` - Get a specific format by ID
 - `POST /v1/statement-formats` - Create new format
 - `PUT /v1/statement-formats/{id}` - Update format metadata or enablement
+- `POST /v1/statement-formats/{id}/hide` - Hide a format from the current
+  user's normal import selection lists
+- `POST /v1/statement-formats/{id}/unhide` - Restore a hidden format to the
+  current user's normal import selection lists
 - `POST /v1/statement-formats/csv-wizard/analyze` - Analyze a CSV sample and
   infer a column mapping
 - `POST /v1/statement-formats/csv-wizard/preview` - Validate a confirmed CSV
@@ -90,6 +105,13 @@ CREATE TABLE parser_revision (
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
+
+Hiding is a per-user preference stored in
+`statement_format_user_preference.hidden`. It is idempotent, does not disable
+the format, and does not affect other users. Hidden formats remain separate from
+disabled formats: disabled formats are operationally unavailable for new
+previews, while hidden formats are only intended to be omitted from normal
+dropdown-style selection lists.
 
 ### Amount Column Patterns
 

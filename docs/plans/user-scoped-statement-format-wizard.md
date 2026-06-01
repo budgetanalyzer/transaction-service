@@ -593,10 +593,12 @@ catalog level.
    Add a unique constraint on `(statement_format_id, user_id)` and an index for
    listing hidden formats by `user_id`. Keep this table scoped to user
    preference only; it must not replace `statement_format.enabled`.
+   **Implemented.**
 2. **Owner: transaction-service** - Add hide and unhide operations for formats
    visible to the current user. Hiding should be idempotent and should create or
    update the preference row with `hidden = true`; unhiding should either set
    `hidden = false` or remove the preference row. Use one approach consistently.
+   **Implemented.**
 3. **Owner: transaction-service** - Change the normal
    `GET /v1/statement-formats` list to exclude formats hidden by the current
    user. Add an `includeHidden=true` option for management screens and include a

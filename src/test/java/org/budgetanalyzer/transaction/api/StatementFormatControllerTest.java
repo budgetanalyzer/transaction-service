@@ -325,6 +325,36 @@ class StatementFormatControllerTest {
   }
 
   @Nested
+  class UserPreference {
+
+    @Test
+    void hideFormatReturnsNoContent() throws Exception {
+      mockMvc
+          .perform(
+              post("/v1/statement-formats/1/hide")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isNoContent());
+
+      verify(statementFormatService).hideFormat(1L, "usr_test123");
+    }
+
+    @Test
+    void unhideFormatReturnsNoContent() throws Exception {
+      mockMvc
+          .perform(
+              post("/v1/statement-formats/1/unhide")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isNoContent());
+
+      verify(statementFormatService).unhideFormat(1L, "usr_test123");
+    }
+  }
+
+  @Nested
   class CsvWizard {
 
     @Test
