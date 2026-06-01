@@ -35,6 +35,7 @@ import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 @WebMvcTest(StatementFormatController.class)
@@ -49,7 +50,8 @@ class StatementFormatControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    when(statementFormatService.getVisibleFormats(anyString(), anyBoolean())).thenReturn(List.of());
+    when(statementFormatService.listFormats(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(List.of(new StatementFormatListItem(createStubFormat(), false)));
     when(statementFormatService.getById(anyLong(), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
     when(statementFormatService.createFormat(

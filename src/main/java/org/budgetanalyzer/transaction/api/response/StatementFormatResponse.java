@@ -2,11 +2,14 @@ package org.budgetanalyzer.transaction.api.response;
 
 import java.time.Instant;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.StatementFormatScope;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 
 /**
  * Response DTO for statement format details.
@@ -19,6 +22,7 @@ import org.budgetanalyzer.transaction.domain.StatementFormatScope;
  * @param scope visibility scope
  * @param ownerId owner ID for user-scoped formats
  * @param enabled whether this format is enabled for use
+ * @param hidden whether the current user has hidden this format from normal selection
  * @param createdAt timestamp when the format was created
  * @param updatedAt timestamp when the format was last updated
  * @param createdBy user ID that created the format
@@ -33,6 +37,13 @@ public record StatementFormatResponse(
     StatementFormatScope scope,
     String ownerId,
     boolean enabled,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+        @Schema(
+            description =
+                "Whether the current user has hidden this format from normal import selection",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+            example = "false")
+        Boolean hidden,
     @Schema(
             description = "Timestamp when the statement format was created",
             requiredMode = Schema.RequiredMode.REQUIRED,
@@ -70,6 +81,31 @@ public record StatementFormatResponse(
         format.getScope(),
         format.getOwnerId(),
         format.isEnabled(),
+        null,
+        format.getCreatedAt(),
+        format.getUpdatedAt(),
+        format.getCreatedBy(),
+        format.getUpdatedBy());
+  }
+
+  /**
+   * Creates a response DTO from a list item.
+   *
+   * @param statementFormatListItem the service-layer list item to convert
+   * @return the response DTO
+   */
+  public static StatementFormatResponse from(StatementFormatListItem statementFormatListItem) {
+    var format = statementFormatListItem.statementFormat();
+    return new StatementFormatResponse(
+        format.getId(),
+        format.getDisplayName(),
+        format.getFormatType(),
+        format.getBankName(),
+        format.getDefaultCurrencyIsoCode(),
+        format.getScope(),
+        format.getOwnerId(),
+        format.isEnabled(),
+        statementFormatListItem.hidden(),
         format.getCreatedAt(),
         format.getUpdatedAt(),
         format.getCreatedBy(),

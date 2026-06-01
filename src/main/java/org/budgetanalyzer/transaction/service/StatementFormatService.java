@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +28,7 @@ import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatUserPreferenceRepository;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
@@ -64,18 +67,31 @@ public class StatementFormatService {
   }
 
   /**
-   * Returns statement formats visible to the current user.
+   * Lists statement formats for the current user with their hidden preference state.
    *
    * @param userId current user ID
    * @param canReadAny whether the user can read all statement formats
-   * @return list of visible formats
+   * @param includeHidden whether to include formats hidden by the current user
+   * @return list of statement formats and per-user hidden state
    */
   @Transactional(readOnly = true)
-  public List<StatementFormat> getVisibleFormats(String userId, boolean canReadAny) {
-    if (canReadAny) {
-      return statementFormatRepository.findAll();
-    }
-    return statementFormatRepository.findVisibleToUser(userId);
+  public List<StatementFormatListItem> listFormats(
+      String userId, boolean canReadAny, boolean includeHidden) {
+    var statementFormats =
+        canReadAny
+            ? statementFormatRepository.findAll()
+            : statementFormatRepository.findVisibleToUser(userId);
+    var hiddenStatementFormatIds = findHiddenStatementFormatIds(userId);
+
+    return statementFormats.stream()
+        .filter(
+            statementFormat ->
+                includeHidden || !hiddenStatementFormatIds.contains(statementFormat.getId()))
+        .map(
+            statementFormat ->
+                new StatementFormatListItem(
+                    statementFormat, hiddenStatementFormatIds.contains(statementFormat.getId())))
+        .toList();
   }
 
   /**
@@ -302,6 +318,13 @@ public class StatementFormatService {
 
   private ResourceNotFoundException statementFormatNotFound(Long id) {
     return new ResourceNotFoundException("Statement format not found with id: " + id);
+  }
+
+  private Set<Long> findHiddenStatementFormatIds(String userId) {
+    return statementFormatUserPreferenceRepository
+        .findHiddenStatementFormatIdsByUserId(userId)
+        .stream()
+        .collect(Collectors.toSet());
   }
 
   private void validateCreateCommand(StatementFormatCommand command) {

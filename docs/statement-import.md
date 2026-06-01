@@ -82,7 +82,11 @@ CREATE TABLE statement_format_user_preference (
 
 ### Statement Format API
 
-- `GET /v1/statement-formats` - List formats visible to the caller
+- `GET /v1/statement-formats` - List formats visible to the caller, excluding
+  formats hidden by the current user
+- `GET /v1/statement-formats?includeHidden=true` - Include the current user's
+  hidden formats for management screens; list responses include a `hidden`
+  field
 - `GET /v1/statement-formats/{id}` - Get a specific format by ID
 - `POST /v1/statement-formats` - Create new format
 - `PUT /v1/statement-formats/{id}` - Update format metadata or enablement
@@ -108,10 +112,12 @@ Disable a format through `PUT /v1/statement-formats/{id}` with
 
 Hiding is a per-user preference stored in
 `statement_format_user_preference.hidden`. It is idempotent, does not disable
-the format, and does not affect other users. Hidden formats remain separate from
+the format, and does not affect other users. Hidden formats remain
+operationally available through direct ID lookups and import previews when the
+caller has access and the format is enabled. Hidden formats remain separate from
 disabled formats: disabled formats are operationally unavailable for new
-previews, while hidden formats are only intended to be omitted from normal
-dropdown-style selection lists.
+previews, while hidden formats are only omitted from normal dropdown-style
+selection lists.
 
 ### Amount Column Patterns
 

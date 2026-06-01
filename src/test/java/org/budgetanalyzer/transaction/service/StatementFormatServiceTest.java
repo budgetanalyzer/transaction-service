@@ -58,26 +58,74 @@ class StatementFormatServiceTest {
   class Visibility {
 
     @Test
-    void getVisibleFormatsReturnsAllFormatsWhenReadAnyAllowed() {
+    void listFormatsReturnsAllFormatsWhenReadAnyAllowed() {
       var systemFormat =
           StatementFormat.createSystemPdfFormat("System Format", "System Bank", "USD");
+      setId(systemFormat, 1L);
       when(statementFormatRepository.findAll()).thenReturn(List.of(systemFormat));
+      when(statementFormatUserPreferenceRepository.findHiddenStatementFormatIdsByUserId(
+              "usr_owner"))
+          .thenReturn(List.of());
 
-      var result = statementFormatService.getVisibleFormats("usr_owner", true);
+      var result = statementFormatService.listFormats("usr_owner", true, false);
 
-      assertThat(result).containsExactly(systemFormat);
+      assertThat(result).extracting("statementFormat").containsExactly(systemFormat);
     }
 
     @Test
-    void getVisibleFormatsReturnsUserVisibleFormatsWhenReadAnyNotAllowed() {
+    void listFormatsReturnsUserVisibleFormatsWhenReadAnyNotAllowed() {
       var userFormat =
           StatementFormat.createCsvFormat("User Format", "User Bank", "USD", "usr_owner");
+      setId(userFormat, 1L);
       when(statementFormatRepository.findVisibleToUser("usr_owner"))
           .thenReturn(List.of(userFormat));
+      when(statementFormatUserPreferenceRepository.findHiddenStatementFormatIdsByUserId(
+              "usr_owner"))
+          .thenReturn(List.of());
 
-      var result = statementFormatService.getVisibleFormats("usr_owner", false);
+      var result = statementFormatService.listFormats("usr_owner", false, false);
 
-      assertThat(result).containsExactly(userFormat);
+      assertThat(result).extracting("statementFormat").containsExactly(userFormat);
+    }
+
+    @Test
+    void listFormatsExcludesHiddenFormatsByDefault() {
+      var visibleFormat =
+          StatementFormat.createCsvFormat("Visible Format", "Visible Bank", "USD", "usr_owner");
+      var hiddenFormat =
+          StatementFormat.createCsvFormat("Hidden Format", "Hidden Bank", "USD", "usr_owner");
+      setId(visibleFormat, 1L);
+      setId(hiddenFormat, 2L);
+      when(statementFormatRepository.findVisibleToUser("usr_owner"))
+          .thenReturn(List.of(visibleFormat, hiddenFormat));
+      when(statementFormatUserPreferenceRepository.findHiddenStatementFormatIdsByUserId(
+              "usr_owner"))
+          .thenReturn(List.of(2L));
+
+      var result = statementFormatService.listFormats("usr_owner", false, false);
+
+      assertThat(result).extracting("statementFormat").containsExactly(visibleFormat);
+      assertThat(result).extracting("hidden").containsExactly(false);
+    }
+
+    @Test
+    void listFormatsIncludesHiddenFormatsWhenRequested() {
+      var visibleFormat =
+          StatementFormat.createCsvFormat("Visible Format", "Visible Bank", "USD", "usr_owner");
+      var hiddenFormat =
+          StatementFormat.createCsvFormat("Hidden Format", "Hidden Bank", "USD", "usr_owner");
+      setId(visibleFormat, 1L);
+      setId(hiddenFormat, 2L);
+      when(statementFormatRepository.findVisibleToUser("usr_owner"))
+          .thenReturn(List.of(visibleFormat, hiddenFormat));
+      when(statementFormatUserPreferenceRepository.findHiddenStatementFormatIdsByUserId(
+              "usr_owner"))
+          .thenReturn(List.of(2L));
+
+      var result = statementFormatService.listFormats("usr_owner", false, true);
+
+      assertThat(result).extracting("statementFormat").containsExactly(visibleFormat, hiddenFormat);
+      assertThat(result).extracting("hidden").containsExactly(false, true);
     }
 
     @Test
@@ -399,6 +447,17 @@ class StatementFormatServiceTest {
                       .contains("displayName"));
 
       verify(statementFormatRepository, never()).save(any());
+    }
+  }
+
+  private void setId(StatementFormat statementFormat, Long id) {
+    try {
+      var idField = StatementFormat.class.getDeclaredField("id");
+      idField.setAccessible(true);
+      idField.set(statementFormat, id);
+    } catch (ReflectiveOperationException reflectiveOperationException) {
+      throw new IllegalStateException(
+          "Failed to set statement format ID", reflectiveOperationException);
     }
   }
 }

@@ -1,8 +1,11 @@
 package org.budgetanalyzer.transaction.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import org.budgetanalyzer.transaction.domain.StatementFormatUserPreference;
 
@@ -19,4 +22,19 @@ public interface StatementFormatUserPreferenceRepository
    */
   Optional<StatementFormatUserPreference> findByStatementFormatIdAndUserId(
       Long statementFormatId, String userId);
+
+  /**
+   * Finds statement format IDs hidden by a user.
+   *
+   * @param userId user ID
+   * @return hidden statement format IDs
+   */
+  @Query(
+      """
+      select statementFormatUserPreference.statementFormat.id
+      from StatementFormatUserPreference statementFormatUserPreference
+      where statementFormatUserPreference.userId = :userId
+        and statementFormatUserPreference.hidden = true
+      """)
+  List<Long> findHiddenStatementFormatIdsByUserId(@Param("userId") String userId);
 }

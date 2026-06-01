@@ -219,9 +219,11 @@ CREATE INDEX idx_statement_format_user_preference_user_hidden
 - `user_id` - User that owns the preference
 - `hidden` - Whether this user has hidden the format from normal selection
 
-The preference table is personal UI state. A hidden format is not disabled and
-does not affect other users. Operational availability continues to be controlled
-by `statement_format.enabled`.
+The preference table is personal UI state. A hidden format is excluded from the
+default `GET /v1/statement-formats` list for that user, but it is not disabled
+and does not affect other users. `includeHidden=true` returns those formats with
+a per-response `hidden` flag for management screens. Operational availability
+continues to be controlled by `statement_format.enabled`.
 
 ### parser_revision
 

@@ -55,6 +55,7 @@ import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardTableCandidate;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 @WebMvcTest(StatementFormatController.class)
@@ -74,8 +75,11 @@ class StatementFormatControllerTest {
     void returnsAllFormats() throws Exception {
       var format1 = createCsvFormat("Bank 1");
       var format2 = createCsvFormat("Bank 2");
-      when(statementFormatService.getVisibleFormats("usr_test123", false))
-          .thenReturn(List.of(format1, format2));
+      when(statementFormatService.listFormats("usr_test123", false, false))
+          .thenReturn(
+              List.of(
+                  new StatementFormatListItem(format1, false),
+                  new StatementFormatListItem(format2, false)));
 
       mockMvc
           .perform(
@@ -87,12 +91,13 @@ class StatementFormatControllerTest {
           .andExpect(jsonPath("$.length()").value(2))
           .andExpect(jsonPath("$[0].displayName").value("Bank 1 - Export"))
           .andExpect(jsonPath("$[0].bankName").value("Bank 1"))
+          .andExpect(jsonPath("$[0].hidden").value(false))
           .andExpect(jsonPath("$[1].displayName").value("Bank 2 - Export"));
     }
 
     @Test
     void returnsEmptyListWhenNoFormats() throws Exception {
-      when(statementFormatService.getVisibleFormats("usr_test123", false)).thenReturn(List.of());
+      when(statementFormatService.listFormats("usr_test123", false, false)).thenReturn(List.of());
 
       mockMvc
           .perform(
@@ -102,6 +107,26 @@ class StatementFormatControllerTest {
                           .withPermissions("statementformats:read")))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void passesIncludeHiddenToService() throws Exception {
+      var format = createCsvFormat("Hidden Bank");
+      when(statementFormatService.listFormats("usr_test123", false, true))
+          .thenReturn(List.of(new StatementFormatListItem(format, true)));
+
+      mockMvc
+          .perform(
+              get("/v1/statement-formats?includeHidden=true")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:read")))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.length()").value(1))
+          .andExpect(jsonPath("$[0].displayName").value("Hidden Bank - Export"))
+          .andExpect(jsonPath("$[0].hidden").value(true));
+
+      verify(statementFormatService).listFormats("usr_test123", false, true);
     }
   }
 

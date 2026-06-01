@@ -150,6 +150,29 @@ class StatementFormatRepositoryIntegrationTest {
       assertThat(result).isPresent();
       assertThat(result.get().isHidden()).isTrue();
     }
+
+    @Test
+    void findsHiddenStatementFormatIdsForOneUser() {
+      var ownerStatementFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Owner Format", "Owner Bank", "USD", "usr_owner"));
+      var otherStatementFormat =
+          statementFormatRepository.save(
+              StatementFormat.createCsvFormat("Other Format", "Other Bank", "USD", "usr_other"));
+      var visiblePreference =
+          StatementFormatUserPreference.createHidden(otherStatementFormat, "usr_owner");
+      visiblePreference.setHidden(false);
+      statementFormatUserPreferenceRepository.save(
+          StatementFormatUserPreference.createHidden(ownerStatementFormat, "usr_owner"));
+      statementFormatUserPreferenceRepository.save(
+          StatementFormatUserPreference.createHidden(otherStatementFormat, "usr_other"));
+      statementFormatUserPreferenceRepository.save(visiblePreference);
+
+      var result =
+          statementFormatUserPreferenceRepository.findHiddenStatementFormatIdsByUserId("usr_owner");
+
+      assertThat(result).containsExactly(ownerStatementFormat.getId());
+    }
   }
 
   @Nested
