@@ -78,6 +78,9 @@ CREATE TABLE statement_format_user_preference (
     CONSTRAINT uq_statement_format_user_preference
         UNIQUE (statement_format_id, user_id)
 );
+
+CREATE INDEX idx_statement_format_user_preference_user_hidden
+    ON statement_format_user_preference(user_id, hidden);
 ```
 
 ### Statement Format API
@@ -118,6 +121,10 @@ caller has access and the format is enabled. Hidden formats remain separate from
 disabled formats: disabled formats are operationally unavailable for new
 previews, while hidden formats are only omitted from normal dropdown-style
 selection lists.
+
+Hide and unhide require `statementformats:write` or `statementformats:write:any`.
+The target format must be visible to the current user; users cannot create
+preferences for another user's private custom formats.
 
 ### Amount Column Patterns
 

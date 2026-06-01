@@ -619,10 +619,12 @@ catalog level.
 6. **Owner: transaction-service** - Add tests for hiding system formats, hiding
    user-owned custom formats, default list exclusion, `includeHidden=true`,
    unhide recovery, idempotent repeat calls, and isolation between users.
+   **Implemented.**
 7. **Owner: transaction-service** - Update `docs/statement-import.md`,
    `docs/database-schema.md`, and API documentation examples with the
    preference table, hide/unhide endpoints or patch shape, default list
    behavior, and hidden-versus-disabled semantics.
+   **Implemented.**
 8. **Owner: budget-analyzer-web** - Add a statement-format management UI where
    users can hide and unhide formats. The import dropdown should use the default
    list and therefore omit hidden formats without carrying separate client-side

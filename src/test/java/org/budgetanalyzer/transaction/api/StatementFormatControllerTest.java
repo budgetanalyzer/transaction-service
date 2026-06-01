@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.api;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -366,6 +367,23 @@ class StatementFormatControllerTest {
     }
 
     @Test
+    void hideFormatReturns404WhenFormatIsNotVisible() throws Exception {
+      doThrow(new ResourceNotFoundException("Statement format not found with id: 999"))
+          .when(statementFormatService)
+          .hideFormat(999L, "usr_test123");
+
+      mockMvc
+          .perform(
+              post("/v1/statement-formats/999/hide")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.type").value("NOT_FOUND"))
+          .andExpect(jsonPath("$.message").value("Statement format not found with id: 999"));
+    }
+
+    @Test
     void unhideFormatReturnsNoContent() throws Exception {
       mockMvc
           .perform(
@@ -376,6 +394,23 @@ class StatementFormatControllerTest {
           .andExpect(status().isNoContent());
 
       verify(statementFormatService).unhideFormat(1L, "usr_test123");
+    }
+
+    @Test
+    void unhideFormatReturns404WhenFormatIsNotVisible() throws Exception {
+      doThrow(new ResourceNotFoundException("Statement format not found with id: 999"))
+          .when(statementFormatService)
+          .unhideFormat(999L, "usr_test123");
+
+      mockMvc
+          .perform(
+              post("/v1/statement-formats/999/unhide")
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.type").value("NOT_FOUND"))
+          .andExpect(jsonPath("$.message").value("Statement format not found with id: 999"));
     }
   }
 

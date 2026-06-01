@@ -312,6 +312,13 @@ Hides the format from the current user's default statement-format list. The
 format remains usable by ID when the caller has access and the format is
 enabled.
 
+Example:
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/123/hide \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write"
+```
+
 **Unhide Statement Format**
 ```
 POST /v1/statement-formats/{id}/unhide
@@ -319,6 +326,13 @@ Response: 204 No Content
 Permission: statementformats:write or statementformats:write:any
 ```
 Restores the format to the current user's default statement-format list.
+
+Example:
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/123/unhide \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write"
+```
 
 **Analyze CSV Statement Format Sample**
 ```

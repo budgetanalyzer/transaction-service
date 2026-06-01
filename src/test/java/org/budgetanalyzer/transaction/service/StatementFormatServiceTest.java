@@ -174,12 +174,49 @@ class StatementFormatServiceTest {
     }
 
     @Test
+    void hideFormatCreatesHiddenPreferenceForSystemFormat() {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("System Format", "System Bank", "USD");
+      when(statementFormatRepository.findVisibleToUserById(7L, "usr_owner"))
+          .thenReturn(Optional.of(statementFormat));
+      when(statementFormatUserPreferenceRepository.findByStatementFormatIdAndUserId(
+              7L, "usr_owner"))
+          .thenReturn(Optional.empty());
+
+      statementFormatService.hideFormat(7L, "usr_owner");
+
+      var preferenceCaptor = ArgumentCaptor.forClass(StatementFormatUserPreference.class);
+      verify(statementFormatUserPreferenceRepository).save(preferenceCaptor.capture());
+      assertThat(preferenceCaptor.getValue().getStatementFormat()).isSameAs(statementFormat);
+      assertThat(preferenceCaptor.getValue().getUserId()).isEqualTo("usr_owner");
+      assertThat(preferenceCaptor.getValue().isHidden()).isTrue();
+    }
+
+    @Test
     void hideFormatUpdatesExistingPreferenceToHidden() {
       var statementFormat =
           StatementFormat.createCsvFormat("User Format", "User Bank", "USD", "usr_owner");
       var statementFormatUserPreference =
           StatementFormatUserPreference.createHidden(statementFormat, "usr_owner");
       statementFormatUserPreference.setHidden(false);
+      when(statementFormatRepository.findVisibleToUserById(7L, "usr_owner"))
+          .thenReturn(Optional.of(statementFormat));
+      when(statementFormatUserPreferenceRepository.findByStatementFormatIdAndUserId(
+              7L, "usr_owner"))
+          .thenReturn(Optional.of(statementFormatUserPreference));
+
+      statementFormatService.hideFormat(7L, "usr_owner");
+
+      assertThat(statementFormatUserPreference.isHidden()).isTrue();
+      verify(statementFormatUserPreferenceRepository).save(statementFormatUserPreference);
+    }
+
+    @Test
+    void hideFormatIsIdempotentWhenPreferenceIsAlreadyHidden() {
+      var statementFormat =
+          StatementFormat.createCsvFormat("User Format", "User Bank", "USD", "usr_owner");
+      var statementFormatUserPreference =
+          StatementFormatUserPreference.createHidden(statementFormat, "usr_owner");
       when(statementFormatRepository.findVisibleToUserById(7L, "usr_owner"))
           .thenReturn(Optional.of(statementFormat));
       when(statementFormatUserPreferenceRepository.findByStatementFormatIdAndUserId(

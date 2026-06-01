@@ -224,6 +224,8 @@ default `GET /v1/statement-formats` list for that user, but it is not disabled
 and does not affect other users. `includeHidden=true` returns those formats with
 a per-response `hidden` flag for management screens. Operational availability
 continues to be controlled by `statement_format.enabled`.
+Hide operations create or update one row per `(statement_format_id, user_id)`;
+unhide sets the same row's `hidden` value back to `false`.
 
 ### parser_revision
 
