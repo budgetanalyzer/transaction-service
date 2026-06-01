@@ -481,6 +481,10 @@ not require account IDs to match.
 
 This request is submitted as the multipart `request` part on
 `POST /v1/statement-formats/pdf-wizard/preview`.
+If `minimumRows` is omitted, the service defaults it to `1` so single-row
+activity statements can be validated. Yearless numeric date mappings such as
+`MM/dd` require `yearSource: "STATEMENT_PERIOD"` and a statement year in the
+PDF text.
 
 ```json
 {

@@ -17,6 +17,10 @@ public class PdfTextTableParserConfigValidator {
   private static final int MINIMUM_ALLOWED_ROWS = 1;
   private static final List<String> SUPPORTED_DATE_FORMATS =
       List.of(
+          "MM/dd",
+          "M/d",
+          "dd/MM",
+          "d/M",
           "MM/dd/uu",
           "M/d/uu",
           "MM/dd/uuuu",

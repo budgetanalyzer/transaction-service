@@ -287,6 +287,11 @@ ID in the preview token and later on `file_import`. Static PDF handlers
 continue to use `parser_type = STATIC_HANDLER` and internal `handler_key`
 values.
 
+PDF wizard mappings default to `minimumRows = 1` when the client omits the
+field, because valid statements can contain a single transaction row. Yearless
+numeric dates such as `05/18` are supported when `yearSource` is
+`STATEMENT_PERIOD` and the statement text contains a four-digit year.
+
 PDF wizard uploads are setup samples only. The service does not persist the
 sample file or extracted text during analysis, mapping preview, or save. The
 preview endpoint returns short parser diagnostics in the response; failed

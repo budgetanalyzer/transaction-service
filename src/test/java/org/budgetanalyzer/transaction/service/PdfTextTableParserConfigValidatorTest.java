@@ -26,7 +26,7 @@ class PdfTextTableParserConfigValidatorTest {
             List.of("Date", "Description", "Amount"),
             3,
             "Date",
-            "MMM d",
+            "MM/dd",
             "Description",
             "Amount",
             null,

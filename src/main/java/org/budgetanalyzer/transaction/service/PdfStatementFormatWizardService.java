@@ -41,8 +41,10 @@ import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextTableCandidat
 @Service
 public class PdfStatementFormatWizardService {
 
-  private static final int MIN_TRANSACTION_ROWS = 2;
+  private static final int MIN_TRANSACTION_ROWS = 1;
   private static final double MIN_CONFIDENT_CANDIDATE_SCORE = 0.55;
+  private static final Pattern YEARLESS_NUMERIC_DATE_PATTERN =
+      Pattern.compile("\\b\\d{1,2}/\\d{1,2}\\b");
   private static final Pattern NUMERIC_DATE_PATTERN =
       Pattern.compile("\\b\\d{1,2}/\\d{1,2}/\\d{2,4}\\b");
   private static final Pattern ISO_DATE_PATTERN = Pattern.compile("\\b\\d{4}-\\d{1,2}-\\d{1,2}\\b");
@@ -52,7 +54,7 @@ public class PdfStatementFormatWizardService {
               + "\\d{1,2}(?:,?\\s+\\d{4})?\\b",
           Pattern.CASE_INSENSITIVE);
   private static final Pattern AMOUNT_PATTERN =
-      Pattern.compile("\\(?-?\\$?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?\\)?");
+      Pattern.compile("^\\(?-?\\$?\\s*\\d+(?:\\.\\d{2})?\\)?$");
 
   private final PdfTextExtractionService pdfTextExtractionService;
   private final StatementFormatRepository statementFormatRepository;
@@ -383,7 +385,8 @@ public class PdfStatementFormatWizardService {
             inferNegativeMeans(amountMode, amountMatch.sampleValues(), typeMatch.acceptedHeader()));
     var rejectionReasons =
         rejectionReasons(pdfTextTableCandidate, dateMatch, descriptionMatch, amountMode, mapping);
-    var confidence = calculateConfidence(pdfTextTableCandidate, columnConfidences, amountMode);
+    var confidence =
+        calculateConfidence(pdfTextTableCandidate, columnConfidences, amountMode, mapping);
     return new PdfWizardTableCandidate(
         candidateId(pdfTextTableCandidate),
         pdfTextTableCandidate.pageNumber(),
@@ -557,12 +560,34 @@ public class PdfStatementFormatWizardService {
     }
     if (NUMERIC_DATE_PATTERN.matcher(normalizedValue).find()) {
       var dateParts = normalizedValue.split("/");
-      if (dateParts.length >= 3 && Integer.parseInt(dateParts[0]) > 12) {
-        return dateParts[2].length() == 4 ? "dd/MM/uuuu" : "dd/MM/uu";
+      if (dateParts.length >= 3) {
+        return numericDateFormat(dateParts[0], dateParts[1], dateParts[2]);
       }
-      return dateParts[2].length() == 4 ? "MM/dd/uuuu" : "MM/dd/uu";
+    }
+    if (YEARLESS_NUMERIC_DATE_PATTERN.matcher(normalizedValue).find()) {
+      var dateParts = normalizedValue.split("/");
+      if (dateParts.length >= 2) {
+        return numericDateFormat(dateParts[0], dateParts[1], null);
+      }
     }
     return null;
+  }
+
+  private String numericDateFormat(String firstPart, String secondPart, String yearPart) {
+    var firstMonthPattern = firstPart.length() == 1 ? "M" : "MM";
+    var firstDayPattern = firstPart.length() == 1 ? "d" : "dd";
+    var secondMonthPattern = secondPart.length() == 1 ? "M" : "MM";
+    var secondDayPattern = secondPart.length() == 1 ? "d" : "dd";
+    var yearPattern = yearPart == null ? null : yearPart.length() == 4 ? "uuuu" : "uu";
+    var dayFirst = Integer.parseInt(firstPart) > 12;
+    var dateFormat =
+        dayFirst
+            ? firstDayPattern + "/" + secondMonthPattern
+            : firstMonthPattern + "/" + secondDayPattern;
+    if (yearPattern == null) {
+      return dateFormat;
+    }
+    return dateFormat + "/" + yearPattern;
   }
 
   private PdfTextTableNegativeMeans inferNegativeMeans(
@@ -611,7 +636,8 @@ public class PdfStatementFormatWizardService {
   private double calculateConfidence(
       PdfTextTableCandidate pdfTextTableCandidate,
       Map<String, Double> columnConfidences,
-      PdfWizardAmountMode amountMode) {
+      PdfWizardAmountMode amountMode,
+      PdfWizardColumnMapping pdfWizardColumnMapping) {
     var keys = new ArrayList<>(List.of("dateHeader", "descriptionHeader"));
     if (amountMode == PdfWizardAmountMode.SIGNED_AMOUNT) {
       keys.add("amountHeader");
@@ -628,10 +654,36 @@ public class PdfStatementFormatWizardService {
             .mapToDouble(Double::doubleValue)
             .average()
             .orElse(0.0);
-    return roundToTwoDecimals(
+    var confidence =
         (columnScore * 0.7)
             + (rowContinuityScore(pdfTextTableCandidate) * 0.2)
-            + (minimumRowsScore(pdfTextTableCandidate) * 0.1));
+            + (minimumRowsScore(pdfTextTableCandidate) * 0.1);
+    if (missingRequiredColumnConfidence(columnConfidences, amountMode, pdfWizardColumnMapping)) {
+      confidence = Math.min(confidence, MIN_CONFIDENT_CANDIDATE_SCORE - 0.01);
+    }
+    return roundToTwoDecimals(confidence);
+  }
+
+  private boolean missingRequiredColumnConfidence(
+      Map<String, Double> columnConfidences,
+      PdfWizardAmountMode amountMode,
+      PdfWizardColumnMapping pdfWizardColumnMapping) {
+    if (columnConfidences.getOrDefault("dateHeader", 0.0) < MIN_CONFIDENT_CANDIDATE_SCORE
+        || columnConfidences.getOrDefault("descriptionHeader", 0.0)
+            < MIN_CONFIDENT_CANDIDATE_SCORE) {
+      return true;
+    }
+    if (isBlank(pdfWizardColumnMapping.dateFormat())) {
+      return true;
+    }
+    if (amountMode == PdfWizardAmountMode.SIGNED_AMOUNT) {
+      return columnConfidences.getOrDefault("amountHeader", 0.0) < MIN_CONFIDENT_CANDIDATE_SCORE;
+    }
+    if (amountMode == PdfWizardAmountMode.DEBIT_CREDIT_COLUMNS) {
+      return columnConfidences.getOrDefault("debitHeader", 0.0) < MIN_CONFIDENT_CANDIDATE_SCORE
+          || columnConfidences.getOrDefault("creditHeader", 0.0) < MIN_CONFIDENT_CANDIDATE_SCORE;
+    }
+    return true;
   }
 
   private double rowContinuityScore(PdfTextTableCandidate pdfTextTableCandidate) {
@@ -669,6 +721,7 @@ public class PdfStatementFormatWizardService {
       return false;
     }
     return NUMERIC_DATE_PATTERN.matcher(value).find()
+        || YEARLESS_NUMERIC_DATE_PATTERN.matcher(value).find()
         || ISO_DATE_PATTERN.matcher(value).find()
         || MONTH_DATE_PATTERN.matcher(value).find();
   }
@@ -677,7 +730,7 @@ public class PdfStatementFormatWizardService {
     if (value == null) {
       return false;
     }
-    return AMOUNT_PATTERN.matcher(value.replace(",", "")).find();
+    return AMOUNT_PATTERN.matcher(value.replace(",", "").strip()).matches();
   }
 
   private boolean isNegativeAmountLike(String value) {

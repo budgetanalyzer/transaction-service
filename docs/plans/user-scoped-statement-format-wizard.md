@@ -144,7 +144,7 @@ Built-in statement formats should be system-scoped:
 - `scope = SYSTEM`
 - no user owner
 - maintained by the application
-- visible when globally enabled or enabled by the user
+- visible when globally enabled and not hidden by the user
 
 Do not create a separate `userstatementformats` permission resource. Keep the
 resource as `statementformats` and use the same scope pattern already used by
@@ -156,14 +156,14 @@ transactions:
 - `statementformats:read:any` reads all user and system formats for admin or
   support workflows.
 - `statementformats:write:any` creates and updates system formats, manages
-  global visibility, and promotes user formats into system formats.
+  global availability, and promotes user formats into system formats.
 
 If the built-in catalog grows, add a lightweight user visibility model:
 
 - user custom formats are visible by default
-- built-in formats can be enabled or hidden per user
+- built-in formats can be hidden or unhidden per user
 - dropdown sorting favors recent use
-- a management screen can later support search, enable, disable, rename custom,
+- a management screen can later support search, hide, unhide, rename custom,
   archive custom, and duplicate custom format actions
 
 ## Hidden Parser Revisions
@@ -356,8 +356,9 @@ The implementation should separate these concepts:
   path.
 - `ParserAttempt`: transient in-memory parse result used during revision
   selection.
-- `UserStatementFormatVisibility`: optional future table for per-user visibility
-  of system formats.
+- `StatementFormatUserPreference`: per-user visibility preferences for formats
+  that should be hidden from normal selection without changing operational
+  availability.
 - `FileImport`: import history, extended to record `statementFormatId` and
   `parserRevisionId`.
 
@@ -568,15 +569,83 @@ with transaction-like tables.
     unsupported scanned PDF, mapping correction, save, and normal import preview
     using the saved PDF format.
 
-### Phase 5: System Promotion And Catalog Management
+### Phase 5: Per-User Format Visibility
+
+Add a user preference layer so a user can hide a format from normal import
+selection without disabling it for other users or making it unusable at the
+catalog level.
+
+1. **Owner: transaction-service** - Add a singular table named
+   `statement_format_user_preference`, consistent with existing singular table
+   names such as `statement_format`, `parser_revision`, and `file_import`.
+   Suggested shape:
+
+   ```text
+   statement_format_user_preference
+     id
+     statement_format_id
+     user_id
+     hidden
+     created_at
+     updated_at
+   ```
+
+   Add a unique constraint on `(statement_format_id, user_id)` and an index for
+   listing hidden formats by `user_id`. Keep this table scoped to user
+   preference only; it must not replace `statement_format.enabled`.
+2. **Owner: transaction-service** - Add hide and unhide operations for formats
+   visible to the current user. Hiding should be idempotent and should create or
+   update the preference row with `hidden = true`; unhiding should either set
+   `hidden = false` or remove the preference row. Use one approach consistently.
+3. **Owner: transaction-service** - Change the normal
+   `GET /v1/statement-formats` list to exclude formats hidden by the current
+   user. Add an `includeHidden=true` option for management screens and include a
+   `hidden` field in the response when hidden formats may be returned.
+4. **Owner: transaction-service** - Keep hidden separate from disabled:
+   hidden formats are excluded from dropdown-style lists, but still remain
+   operationally available if the user has access and the format is globally
+   enabled. Disabled formats are handled in phase 6 and must not be accepted for
+   new previews.
+5. **Owner: transaction-service** - Apply current permission boundaries:
+   `statementformats:read` can list visible and optionally hidden formats for
+   the current user, and `statementformats:write` can hide or unhide formats for
+   the current user. Cross-user preference inspection or support actions, if
+   added later, require the `:any` permissions.
+6. **Owner: transaction-service** - Add tests for hiding system formats, hiding
+   user-owned custom formats, default list exclusion, `includeHidden=true`,
+   unhide recovery, idempotent repeat calls, and isolation between users.
+7. **Owner: transaction-service** - Update `docs/statement-import.md`,
+   `docs/database-schema.md`, and API documentation examples with the
+   preference table, hide/unhide endpoints or patch shape, default list
+   behavior, and hidden-versus-disabled semantics.
+8. **Owner: budget-analyzer-web** - Add a statement-format management UI where
+   users can hide and unhide formats. The import dropdown should use the default
+   list and therefore omit hidden formats without carrying separate client-side
+   filtering rules.
+9. **Owner: budget-analyzer-web** - Add UI tests for hiding a global format,
+   hiding a custom format, restoring a hidden format, and verifying that hidden
+   formats disappear from the import dropdown but remain recoverable from the
+   management screen.
+
+### Phase 6: System Promotion, Disablement, And Catalog Management
 
 - Let maintainers clone proven user formats into system templates after review.
-- Add per-user enable or hide controls for system templates if the catalog
-  becomes too large.
+- Keep per-user hide/unhide in phase 5. Phase 6 catalog controls manage
+  operational availability through `statement_format.enabled`.
+- Let maintainers globally enable or disable system formats.
+- Let users enable or disable their own custom formats when a saved parser
+  should no longer be usable for new imports.
+- Disabled formats must not be accepted by new transaction preview requests,
+  even if a caller posts the `statementFormatId` directly.
+- Re-enable must be supported for disabled formats so accidental disablement is
+  recoverable.
+- Normal statement-format lists should exclude disabled formats by default.
+  Management/admin lists can use an explicit `includeDisabled=true` option and
+  should expose both `enabled` and `hidden` when both concepts are relevant.
 - Add tooling for parser revision diagnostics and fixture-based regression
   tests.
 
-Permissions for phase 5 should mirror the transaction `:any` model:
+Permissions for phase 6 should mirror the transaction `:any` model:
 
 - `statementformats:read` and `statementformats:write` are the user-scope
   permissions for visible formats and the caller's own custom formats.
@@ -585,9 +654,12 @@ Permissions for phase 5 should mirror the transaction `:any` model:
   updates, and promotion of user formats into system formats.
 - ADMIN should use `statementformats:write:any` for statement-format writes
   instead of also carrying the unscoped user-format write grant.
-- Promotion and system catalog changes must require `statementformats:write:any`;
-  cross-user diagnostics and catalog review should require
-  `statementformats:read:any`.
+- Promotion, system catalog changes, and global enable/disable actions must
+  require `statementformats:write:any`; cross-user diagnostics and catalog
+  review should require `statementformats:read:any`.
+- User-owned custom format enable/disable actions should require
+  `statementformats:write` and ownership. Enabling or disabling another user's
+  custom format requires `statementformats:write:any`.
 - Do not add `statementformats:delete` or `statementformats:delete:any` until a
   real delete/archive endpoint exists. Hiding, disabling, and promotion remain
   write operations.

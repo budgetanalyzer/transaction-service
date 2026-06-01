@@ -113,6 +113,56 @@ class PdfStatementFormatWizardServiceTest {
   }
 
   @Test
+  void previewParsesChaseLikeSingleTransactionPdf() throws IOException {
+    var pdfContent = chaseLikeSingleTransactionPdf();
+
+    var analysis = pdfStatementFormatWizardService.analyze(pdfContent, "chase-statement.pdf");
+
+    assertThat(analysis.rejectionReasons()).isEmpty();
+    var topCandidate = analysis.candidates().getFirst();
+    assertThat(topCandidate.rowCount()).isEqualTo(1);
+    assertThat(topCandidate.headers())
+        .containsExactly(
+            "Date of Transaction", "Merchant Name or Transaction Description", "$ Amount");
+    assertThat(topCandidate.inferredMapping().dateFormat()).isEqualTo("MM/dd");
+    assertThat(topCandidate.rejectionReasons())
+        .doesNotContain("Too few data rows were detected in this table candidate.");
+
+    var inferredMapping = topCandidate.inferredMapping();
+    var confirmedMapping =
+        new PdfWizardColumnMapping(
+            inferredMapping.dateHeader(),
+            inferredMapping.dateFormat(),
+            inferredMapping.descriptionHeader(),
+            inferredMapping.amountMode(),
+            inferredMapping.amountHeader(),
+            inferredMapping.debitHeader(),
+            inferredMapping.creditHeader(),
+            inferredMapping.typeHeader(),
+            PdfTextTableNegativeMeans.CREDIT);
+    var result =
+        pdfStatementFormatWizardService.preview(
+            pdfContent,
+            "chase-statement.pdf",
+            new PdfWizardMappingPreviewCommand(
+                "Chase",
+                "USD",
+                "card-2231",
+                topCandidate.headers(),
+                null,
+                PdfTextTableYearSource.STATEMENT_PERIOD,
+                confirmedMapping));
+
+    assertThat(result.transactions()).hasSize(1);
+    var transaction = result.transactions().getFirst();
+    assertThat(transaction.date()).isEqualTo(LocalDate.of(2023, 5, 18));
+    assertThat(transaction.description()).isEqualTo("GOOGLE *Domains g.co/helppay# CA");
+    assertThat(transaction.amount()).isEqualByComparingTo("12.00");
+    assertThat(transaction.type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(transaction.accountId()).isEqualTo("card-2231");
+  }
+
+  @Test
   void analyzeInfersCommaAndFullMonthDateFormats() throws IOException {
     var abbreviatedResult =
         pdfStatementFormatWizardService.analyze(
@@ -473,6 +523,32 @@ class PdfStatementFormatWizardServiceTest {
   private byte[] blankPdf() throws IOException {
     try (var document = new PDDocument()) {
       document.addPage(new PDPage());
+      var byteArrayOutputStream = new ByteArrayOutputStream();
+      document.save(byteArrayOutputStream);
+      return byteArrayOutputStream.toByteArray();
+    }
+  }
+
+  private byte[] chaseLikeSingleTransactionPdf() throws IOException {
+    try (var document = new PDDocument()) {
+      var page = new PDPage();
+      document.addPage(page);
+      var font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+      try (var contentStream = new PDPageContentStream(document, page)) {
+        writeText(contentStream, font, "ACCOUNT ACTIVITY", DATE_X, 750F);
+        writeText(contentStream, font, "Statement Date: 05/27/23", CREDIT_X, 750F);
+        writeText(contentStream, font, "2023 Totals Year-to-Date", DESCRIPTION_X, 720F);
+        writeText(contentStream, font, "Date of", DATE_X, 680F);
+        writeText(contentStream, font, "Transaction", DATE_X, 664F);
+        writeText(
+            contentStream, font, "Merchant Name or Transaction Description", DESCRIPTION_X, 661F);
+        writeText(contentStream, font, "$ Amount", CREDIT_X, 661F);
+        writeText(contentStream, font, "05/18     GOOGLE *Domains g.co/helppay# CA", DATE_X, 642F);
+        writeText(contentStream, font, "12.00", CREDIT_X, 642F);
+        writeText(contentStream, font, "ABRAHAM RUBIN", DESCRIPTION_X, 626F);
+        writeText(
+            contentStream, font, "TRANSACTIONS THIS CYCLE (CARD 2231) $12.00", DESCRIPTION_X, 610F);
+      }
       var byteArrayOutputStream = new ByteArrayOutputStream();
       document.save(byteArrayOutputStream);
       return byteArrayOutputStream.toByteArray();
