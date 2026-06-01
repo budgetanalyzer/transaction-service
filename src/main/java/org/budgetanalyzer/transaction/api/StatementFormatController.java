@@ -34,11 +34,16 @@ import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.CreateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.request.CsvWizardMappingPreviewRequest;
 import org.budgetanalyzer.transaction.api.request.CsvWizardSaveRequest;
+import org.budgetanalyzer.transaction.api.request.PdfWizardMappingPreviewRequest;
+import org.budgetanalyzer.transaction.api.request.PdfWizardSaveRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateStatementFormatRequest;
 import org.budgetanalyzer.transaction.api.response.CsvWizardAnalysisResponse;
 import org.budgetanalyzer.transaction.api.response.CsvWizardPreviewResponse;
+import org.budgetanalyzer.transaction.api.response.PdfWizardAnalysisResponse;
+import org.budgetanalyzer.transaction.api.response.PdfWizardPreviewResponse;
 import org.budgetanalyzer.transaction.api.response.StatementFormatResponse;
 import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
+import org.budgetanalyzer.transaction.service.PdfStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
@@ -57,12 +62,15 @@ public class StatementFormatController {
 
   private final StatementFormatService statementFormatService;
   private final CsvStatementFormatWizardService csvStatementFormatWizardService;
+  private final PdfStatementFormatWizardService pdfStatementFormatWizardService;
 
   public StatementFormatController(
       StatementFormatService statementFormatService,
-      CsvStatementFormatWizardService csvStatementFormatWizardService) {
+      CsvStatementFormatWizardService csvStatementFormatWizardService,
+      PdfStatementFormatWizardService pdfStatementFormatWizardService) {
     this.statementFormatService = statementFormatService;
     this.csvStatementFormatWizardService = csvStatementFormatWizardService;
+    this.pdfStatementFormatWizardService = pdfStatementFormatWizardService;
   }
 
   @PreAuthorize("hasAnyAuthority('statementformats:read', 'statementformats:read:any')")
@@ -310,6 +318,126 @@ public class StatementFormatController {
             request.toServiceDto(),
             userId,
             canWriteAny);
+    var location =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/v1/statement-formats/{id}")
+            .buildAndExpand(created.getId())
+            .toUri();
+
+    return ResponseEntity.created(location).body(StatementFormatResponse.from(created));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Analyze a PDF sample for statement format creation",
+      description =
+          "Extracts text from a multipart PDF sample and returns ranked transaction-table "
+              + "candidates with inferred mappings, confidence, sample rows, and unsupported-file "
+              + "rejection reasons. This does not persist the uploaded file or create import "
+              + "state.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = PdfWizardAnalysisResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "PDF parsing or analysis error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/pdf-wizard/analyze",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public PdfWizardAnalysisResponse analyzePdfSample(@RequestPart("file") MultipartFile file)
+      throws java.io.IOException {
+    log.info("Received PDF statement format wizard analysis request");
+
+    return PdfWizardAnalysisResponse.from(
+        pdfStatementFormatWizardService.analyze(file.getBytes(), file.getOriginalFilename()));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Preview a PDF wizard mapping",
+      description =
+          "Parses read-only transaction preview rows from a multipart text-PDF sample and "
+              + "confirmed table mapping. This does not create a statement format, preview token, "
+              + "file import, or transactions.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "200",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = PdfWizardPreviewResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "Mapping validation error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/pdf-wizard/preview",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public PdfWizardPreviewResponse previewPdfMapping(
+      @RequestPart("file") MultipartFile file,
+      @Valid @RequestPart("request") PdfWizardMappingPreviewRequest request)
+      throws java.io.IOException {
+    log.info("Received PDF statement format wizard mapping preview request");
+
+    return PdfWizardPreviewResponse.from(
+        pdfStatementFormatWizardService.preview(
+            file.getBytes(), file.getOriginalFilename(), request.toServiceDto()));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Save a PDF wizard statement format",
+      description =
+          "Validates the confirmed text-PDF table mapping against the sample PDF and creates a "
+              + "user-scoped PDF statement format with one enabled PDF_TEXT_TABLE_CONFIG parser "
+              + "revision.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "201",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = StatementFormatResponse.class))),
+        @ApiResponse(
+            responseCode = "422",
+            description = "Mapping validation error",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/pdf-wizard/save",
+      consumes = "multipart/form-data",
+      produces = "application/json")
+  public ResponseEntity<StatementFormatResponse> savePdfWizardFormat(
+      @RequestPart("file") MultipartFile file,
+      @Valid @RequestPart("request") PdfWizardSaveRequest request)
+      throws java.io.IOException {
+    log.info("Received PDF statement format wizard save request: {}", request.displayName());
+
+    var userId = getCurrentUserId();
+    var created =
+        pdfStatementFormatWizardService.save(
+            file.getBytes(), file.getOriginalFilename(), request.toServiceDto(), userId);
     var location =
         ServletUriComponentsBuilder.fromCurrentContextPath()
             .path("/v1/statement-formats/{id}")

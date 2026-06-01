@@ -2,11 +2,14 @@
 
 ## Overview
 
-The statement import system provides configuration-driven CSV parsing and
-dedicated PDF extractors for multiple bank statement formats. Banks have
-different export formats with varying column headers, date formats, amount
+The statement import system provides configuration-driven CSV parsing,
+dedicated PDF extractors for multiple bank statement formats, and internal
+configuration primitives for text-based PDF table parsing. Banks have different
+export formats with varying column headers, date formats, amount
 representations, and PDF layouts. CSV formats can usually be added without code
-changes; new PDF layouts require a dedicated `StatementExtractor`.
+changes. User-created generic PDF formats can be validated with the PDF wizard
+preview endpoint and routed through normal import when saved with a
+`PDF_TEXT_TABLE_CONFIG` parser revision.
 
 ## Supported Banks
 
@@ -55,10 +58,10 @@ CREATE TABLE parser_revision (
     id BIGSERIAL PRIMARY KEY,
     statement_format_id BIGINT NOT NULL REFERENCES statement_format(id),
     revision_number INTEGER NOT NULL,
-    parser_type VARCHAR(30) NOT NULL,        -- STATIC_HANDLER, CSV_COLUMN_CONFIG
-    handler_key VARCHAR(100),                -- internal static extractor key
+    parser_type VARCHAR(30) NOT NULL,        -- STATIC_HANDLER, CSV_COLUMN_CONFIG, PDF_TEXT_TABLE_CONFIG
+    handler_key VARCHAR(100),                -- internal static extractor key; null for config parsers
     config_schema_version INTEGER NOT NULL,
-    parser_config TEXT,                      -- CSV column mapping JSON
+    parser_config TEXT,                      -- opaque parser config JSON for config parsers
     priority INTEGER NOT NULL DEFAULT 0,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -78,6 +81,12 @@ CREATE TABLE parser_revision (
   mapping and return read-only parser preview rows
 - `POST /v1/statement-formats/csv-wizard/save` - Save a user-scoped CSV format
   with one enabled parser revision
+- `POST /v1/statement-formats/pdf-wizard/analyze` - Analyze a text-PDF sample
+  and return ranked transaction-table candidates
+- `POST /v1/statement-formats/pdf-wizard/preview` - Validate a confirmed
+  text-PDF table mapping and return read-only parser preview rows
+- `POST /v1/statement-formats/pdf-wizard/save` - Save a user-scoped PDF format
+  with one enabled `PDF_TEXT_TABLE_CONFIG` parser revision
 
 Disable a format through `PUT /v1/statement-formats/{id}` with
 `{"enabled": false}`.
@@ -253,6 +262,224 @@ curl -X POST http://localhost:8082/v1/statement-formats \
 - Omit `typeHeader` if using separate credit/debit columns
 - The JSON create endpoint only creates CSV formats. Built-in PDF formats need
   parser revisions with internal handler keys and are seeded by migrations.
+
+### Generic Text-PDF Parser Foundation
+
+`PDF_TEXT_TABLE_CONFIG` powers deterministic user-created PDF table formats. Its
+parser configuration is stored as opaque text in
+`parser_revision.parser_config`, with queryable metadata kept in normal
+`parser_revision` columns. Schema version 1 supports text-based PDFs with
+transaction-like tables, a date column, a description column, and either a
+signed amount column or separate debit and credit columns. Multi-page
+statements are supported when continuation tables repeat the configured
+headers; matching table candidates are parsed in page and line order. A
+PDFBox-based text
+extraction component rejects scanned or OCR-dependent PDFs when embedded text
+is unavailable. The PDF wizard analysis endpoint scores text table candidates
+by header detection, repeated headers, row continuity, row count, date-like
+columns, description-like columns, signed amount columns, debit/credit column
+pairs, and optional type columns.
+
+The same deterministic extractor is used by the PDF wizard preview endpoint
+and by normal import revision selection for saved `PDF_TEXT_TABLE_CONFIG`
+parser revisions. A matched normal import records the winning parser revision
+ID in the preview token and later on `file_import`. Static PDF handlers
+continue to use `parser_type = STATIC_HANDLER` and internal `handler_key`
+values.
+
+PDF wizard mappings default to `minimumRows = 1` when the client omits the
+field, because valid statements can contain a single transaction row. Yearless
+numeric dates such as `05/18` are supported when `yearSource` is
+`STATEMENT_PERIOD` and the statement text contains a four-digit year.
+
+PDF wizard uploads are setup samples only. The service does not persist the
+sample file or extracted text during analysis, mapping preview, or save. The
+preview endpoint returns short parser diagnostics in the response; failed
+normal import revision attempts remain transient and are not stored.
+
+### PDF Wizard Analysis
+
+The PDF wizard analysis endpoint is a setup helper only. It extracts text from
+a sample PDF, returns ranked transaction-table candidates and inferred mappings,
+and never persists the uploaded file or creates import state.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/analyze \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf"
+```
+
+**Response:** `200 OK`
+```json
+{
+  "candidates": [
+    {
+      "candidateId": "p1-l12-42",
+      "pageNumber": 1,
+      "startLineNumber": 12,
+      "endLineNumber": 42,
+      "rowCount": 30,
+      "repeatedHeaderCount": 1,
+      "headers": ["Date", "Description", "Amount"],
+      "sampleRows": [
+        ["Jan 1", "Coffee Shop", "$4.50"],
+        ["Jan 2", "Payment", "-$100.00"]
+      ],
+      "inferredMapping": {
+        "dateHeader": "Date",
+        "dateFormat": "MMM d",
+        "descriptionHeader": "Description",
+        "amountMode": "SIGNED_AMOUNT",
+        "amountHeader": "Amount",
+        "debitHeader": null,
+        "creditHeader": null,
+        "typeHeader": null,
+        "negativeMeans": "CREDIT"
+      },
+      "confidence": 0.91,
+      "columnConfidences": {
+        "dateHeader": 0.95,
+        "descriptionHeader": 0.95,
+        "amountHeader": 0.95
+      },
+      "rejectionReasons": []
+    }
+  ],
+  "confidence": 0.91,
+  "rejectionReasons": []
+}
+```
+
+Unsupported or low-confidence PDFs return `200 OK` with empty or low-confidence
+candidates plus user-facing `rejectionReasons`, for example scanned-PDF
+rejection when the file has too little extractable text. Malformed PDF bytes or
+other text extraction failures are also represented as analysis rejection
+reasons. The client should show these reasons in the wizard instead of treating
+the response as an import preview.
+
+### PDF Wizard Preview
+
+This preview is a parser validation view only. It does not create a normal
+import preview token, `file_import`, statement format, or transaction rows. It
+also does not perform duplicate detection or expose batch import actions.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/preview \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf" \
+  -F 'request={
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "accountId": "checking-001",
+    "headerMustContain": ["Date", "Description", "Amount"],
+    "minimumRows": 1,
+    "yearSource": "EXPLICIT_DATE",
+    "mapping": {
+      "dateHeader": "Date",
+      "dateFormat": "MM/dd/uuuu",
+      "descriptionHeader": "Description",
+      "amountMode": "SIGNED_AMOUNT",
+      "amountHeader": "Amount",
+      "negativeMeans": "CREDIT"
+    }
+  };type=application/json'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "transactions": [
+    {
+      "date": "2025-01-02",
+      "description": "Coffee Shop",
+      "amount": 4.50,
+      "type": "DEBIT",
+      "category": null,
+      "bankName": "Example Bank",
+      "currencyIsoCode": "USD",
+      "accountId": "checking-001",
+      "duplicate": false,
+      "duplicateReason": null
+    }
+  ],
+  "diagnostics": [
+    "Matched a text-PDF table using 3 configured header token(s)."
+  ]
+}
+```
+
+Preview uploads must include a `.pdf` filename. For signed amount columns,
+`negativeMeans` defines the transaction direction for negative values; positive
+values are imported as the opposite direction. As an alternative, a configured
+`typeHeader` can provide row direction values such as `Debit`, `Credit`, `Dr`,
+or `Cr`, in which case `negativeMeans` is only used as a fallback when present.
+For separate debit and credit columns, exactly one of those columns must be
+populated per row. Supported month-name date formats include abbreviated and
+full month names, with or without a comma before a four-digit year, for example
+`MMM d`, `MMM d, uuuu`, `MMMM d`, and `MMMM d, uuuu`. Yearless date formats
+require `yearSource: STATEMENT_PERIOD` and a four-digit year elsewhere in the
+extracted PDF text. Mapping validation errors return `422 Unprocessable
+Entity` with `code: PDF_WIZARD_VALIDATION_FAILED` and field-addressable
+`fieldErrors`.
+
+### PDF Wizard Save
+
+The save endpoint validates the confirmed mapping against the uploaded sample
+PDF before persisting anything. On success it creates a user-scoped
+`statement_format` with `formatType = PDF` and exactly one enabled
+`PDF_TEXT_TABLE_CONFIG` parser revision. The saved `id` can immediately be used
+as `statementFormatId` in `POST /v1/transactions/preview`.
+
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/save \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write" \
+  -F "file=@sample.pdf" \
+  -F 'request={
+    "displayName": "Example Bank PDF",
+    "bankName": "Example Bank",
+    "defaultCurrencyIsoCode": "USD",
+    "headerMustContain": ["Date", "Description", "Amount"],
+    "minimumRows": 1,
+    "yearSource": "EXPLICIT_DATE",
+    "mapping": {
+      "dateHeader": "Date",
+      "dateFormat": "MM/dd/uuuu",
+      "descriptionHeader": "Description",
+      "amountMode": "SIGNED_AMOUNT",
+      "amountHeader": "Amount",
+      "negativeMeans": "CREDIT"
+    }
+  };type=application/json'
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": 124,
+  "displayName": "Example Bank PDF",
+  "formatType": "PDF",
+  "bankName": "Example Bank",
+  "defaultCurrencyIsoCode": "USD",
+  "scope": "USER",
+  "ownerId": "usr_test123",
+  "enabled": true
+}
+```
+
+Save uses the same validation rules as PDF wizard preview: bank name and ISO
+currency are required, the uploaded sample must have a `.pdf` filename, the
+date format must be supported, signed amount columns must declare either
+`negativeMeans` or a usable `typeHeader`, separate debit and credit columns
+must be unambiguous, and the sample must parse at least `minimumRows`
+transactions. Validation errors return `422 Unprocessable Entity` with `code:
+PDF_WIZARD_VALIDATION_FAILED`.
+
+The saved format participates in the same revision-selection behavior as
+seeded PDF formats. Clients do not select parser revisions directly; they keep
+using the returned top-level statement format `id`.
 
 ### CSV Wizard Flow
 

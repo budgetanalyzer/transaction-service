@@ -28,8 +28,12 @@ import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.service.servlet.api.ServletApiExceptionHandler;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.service.CsvStatementFormatWizardService;
+import org.budgetanalyzer.transaction.service.PdfStatementFormatWizardService;
 import org.budgetanalyzer.transaction.service.StatementFormatService;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAnalysisResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
+import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
@@ -41,6 +45,7 @@ class StatementFormatControllerAuthorizationTest {
 
   @MockitoBean private StatementFormatService statementFormatService;
   @MockitoBean private CsvStatementFormatWizardService csvStatementFormatWizardService;
+  @MockitoBean private PdfStatementFormatWizardService pdfStatementFormatWizardService;
 
   @BeforeEach
   void setupServiceMocks() {
@@ -57,6 +62,13 @@ class StatementFormatControllerAuthorizationTest {
         .thenReturn(
             new CsvWizardAnalysisResult(
                 List.of(), List.of(), null, 0.0, java.util.Map.of(), List.of()));
+    when(pdfStatementFormatWizardService.analyze(any(byte[].class), anyString()))
+        .thenReturn(new PdfWizardAnalysisResult(List.of(), 0.0, List.of()));
+    when(pdfStatementFormatWizardService.preview(any(byte[].class), anyString(), any()))
+        .thenReturn(new PdfWizardPreviewResult(List.of(), List.of()));
+    when(pdfStatementFormatWizardService.save(
+            any(byte[].class), anyString(), any(PdfWizardSaveCommand.class), anyString()))
+        .thenReturn(createPdfStubFormat());
   }
 
   // ==================== No authentication ====================
@@ -190,6 +202,82 @@ class StatementFormatControllerAuthorizationTest {
         .andExpect(status().isForbidden());
   }
 
+  @Test
+  void pdfWizardAnalyze_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/analyze")
+                .file(pdfFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void pdfWizardAnalyze_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/analyze")
+                .file(pdfFile())
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void pdfWizardPreview_withWritePermission_returns200() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/preview")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfPreviewRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void pdfWizardPreview_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/preview")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfPreviewRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void pdfWizardSave_withWritePermission_returns201() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/save")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfSaveRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
+  void pdfWizardSave_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            multipart("/v1/statement-formats/pdf-wizard/save")
+                .file(pdfFile())
+                .file(jsonPart("request", pdfSaveRequestJson()))
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
   // ==================== Admin with full permissions ====================
 
   @Test
@@ -217,6 +305,10 @@ class StatementFormatControllerAuthorizationTest {
         "Capital One - Export", "Capital One", "USD", "usr_test123");
   }
 
+  private StatementFormat createPdfStubFormat() {
+    return StatementFormat.createUserPdfFormat("Example PDF", "Example Bank", "USD", "usr_test123");
+  }
+
   private String createValidFormatJson() {
     return """
         {
@@ -236,5 +328,55 @@ class StatementFormatControllerAuthorizationTest {
   private MockMultipartFile csvFile() {
     return new MockMultipartFile(
         "file", "sample.csv", "text/csv", "Date,Description\n04/12/24,Coffee".getBytes());
+  }
+
+  private MockMultipartFile pdfFile() {
+    return new MockMultipartFile(
+        "file", "sample.pdf", "application/pdf", "%PDF-1.4 sample".getBytes());
+  }
+
+  private MockMultipartFile jsonPart(String name, String content) {
+    return new MockMultipartFile(name, "", MediaType.APPLICATION_JSON_VALUE, content.getBytes());
+  }
+
+  private String pdfPreviewRequestJson() {
+    return """
+        {
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
+          }
+        }
+        """;
+  }
+
+  private String pdfSaveRequestJson() {
+    return """
+        {
+          "displayName": "Example PDF",
+          "bankName": "Example Bank",
+          "defaultCurrencyIsoCode": "USD",
+          "headerMustContain": ["Date", "Description", "Amount"],
+          "minimumRows": 1,
+          "yearSource": "EXPLICIT_DATE",
+          "mapping": {
+            "dateHeader": "Date",
+            "dateFormat": "MM/dd/uuuu",
+            "descriptionHeader": "Description",
+            "amountMode": "SIGNED_AMOUNT",
+            "amountHeader": "Amount",
+            "negativeMeans": "CREDIT"
+          }
+        }
+        """;
   }
 }
