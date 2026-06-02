@@ -593,31 +593,38 @@ catalog level.
    Add a unique constraint on `(statement_format_id, user_id)` and an index for
    listing hidden formats by `user_id`. Keep this table scoped to user
    preference only; it must not replace `statement_format.enabled`.
+   **Implemented.**
 2. **Owner: transaction-service** - Add hide and unhide operations for formats
    visible to the current user. Hiding should be idempotent and should create or
    update the preference row with `hidden = true`; unhiding should either set
    `hidden = false` or remove the preference row. Use one approach consistently.
+   **Implemented.**
 3. **Owner: transaction-service** - Change the normal
    `GET /v1/statement-formats` list to exclude formats hidden by the current
    user. Add an `includeHidden=true` option for management screens and include a
    `hidden` field in the response when hidden formats may be returned.
+   **Implemented.**
 4. **Owner: transaction-service** - Keep hidden separate from disabled:
    hidden formats are excluded from dropdown-style lists, but still remain
    operationally available if the user has access and the format is globally
    enabled. Disabled formats are handled in phase 6 and must not be accepted for
    new previews.
+   **Implemented.**
 5. **Owner: transaction-service** - Apply current permission boundaries:
    `statementformats:read` can list visible and optionally hidden formats for
    the current user, and `statementformats:write` can hide or unhide formats for
    the current user. Cross-user preference inspection or support actions, if
    added later, require the `:any` permissions.
+   **Implemented.**
 6. **Owner: transaction-service** - Add tests for hiding system formats, hiding
    user-owned custom formats, default list exclusion, `includeHidden=true`,
    unhide recovery, idempotent repeat calls, and isolation between users.
+   **Implemented.**
 7. **Owner: transaction-service** - Update `docs/statement-import.md`,
    `docs/database-schema.md`, and API documentation examples with the
    preference table, hide/unhide endpoints or patch shape, default list
    behavior, and hidden-versus-disabled semantics.
+   **Implemented.**
 8. **Owner: budget-analyzer-web** - Add a statement-format management UI where
    users can hide and unhide formats. The import dropdown should use the default
    list and therefore omit hidden formats without carrying separate client-side

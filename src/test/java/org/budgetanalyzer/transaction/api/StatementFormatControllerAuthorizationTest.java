@@ -35,6 +35,7 @@ import org.budgetanalyzer.transaction.service.dto.PdfWizardAnalysisResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
+import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
 
 @WebMvcTest(StatementFormatController.class)
@@ -49,7 +50,8 @@ class StatementFormatControllerAuthorizationTest {
 
   @BeforeEach
   void setupServiceMocks() {
-    when(statementFormatService.getVisibleFormats(anyString(), anyBoolean())).thenReturn(List.of());
+    when(statementFormatService.listFormats(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(List.of(new StatementFormatListItem(createStubFormat(), false)));
     when(statementFormatService.getById(anyLong(), anyString(), anyBoolean()))
         .thenReturn(createStubFormat());
     when(statementFormatService.createFormat(
@@ -175,6 +177,50 @@ class StatementFormatControllerAuthorizationTest {
                         .withPermissions("statementformats:read"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"bankName\": \"Updated Bank\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void hideEndpoint_withWritePermission_returns204() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/hide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void hideEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/hide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void unhideEndpoint_withWritePermission_returns204() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/unhide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:write")))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void unhideEndpoint_withoutWritePermission_returns403() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats/1/unhide")
+                .with(
+                    ClaimsHeaderTestBuilder.user("usr_test123")
+                        .withPermissions("statementformats:read")))
         .andExpect(status().isForbidden());
   }
 

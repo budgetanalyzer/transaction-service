@@ -259,6 +259,8 @@ Permission: views:write
 **List Statement Formats**
 ```
 GET /v1/statement-formats
+Query params:
+  includeHidden=false  # true includes formats hidden by the current user
 Response: List<StatementFormatResponse>
 Permission: statementformats:read or statementformats:read:any
 ```
@@ -271,7 +273,9 @@ Seeded import formats include:
 - Capital One bank monthly statement
 
 The response includes each format's `id`. Use that ID for preview, get, and
-update requests.
+update requests. The default list excludes formats hidden by the current user.
+When `includeHidden=true`, response items include a `hidden` boolean for
+management screens.
 
 **Get Statement Format**
 ```
@@ -296,6 +300,38 @@ PUT /v1/statement-formats/{id}
 Body: UpdateStatementFormatRequest
 Response: StatementFormatResponse
 Permission: statementformats:write or statementformats:write:any
+```
+
+**Hide Statement Format**
+```
+POST /v1/statement-formats/{id}/hide
+Response: 204 No Content
+Permission: statementformats:write or statementformats:write:any
+```
+Hides the format from the current user's default statement-format list. The
+format remains usable by ID when the caller has access and the format is
+enabled.
+
+Example:
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/123/hide \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write"
+```
+
+**Unhide Statement Format**
+```
+POST /v1/statement-formats/{id}/unhide
+Response: 204 No Content
+Permission: statementformats:write or statementformats:write:any
+```
+Restores the format to the current user's default statement-format list.
+
+Example:
+```bash
+curl -X POST http://localhost:8082/v1/statement-formats/123/unhide \
+  -H "X-User-Id: usr_test123" \
+  -H "X-Permissions: statementformats:write"
 ```
 
 **Analyze CSV Statement Format Sample**
@@ -693,7 +729,9 @@ This service uses trusted claims-header-based security from `service-common`.
   `statementformats:read:any` for reads, and `statementformats:write` or
   `statementformats:write:any` for writes. Users can manage their own
   user-scoped formats. Creating or updating system formats requires the `:any`
-  write variant.
+  write variant. Hidden preferences are scoped to the current user; cross-user
+  preference inspection or support actions would require future `:any`
+  endpoints.
 - Disable a statement format through `PUT /v1/statement-formats/{id}` with
   `{"enabled": false}`.
 - OpenAPI docs and health endpoints remain public.

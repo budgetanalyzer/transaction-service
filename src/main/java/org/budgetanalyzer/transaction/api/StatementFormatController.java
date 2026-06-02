@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -76,7 +77,9 @@ public class StatementFormatController {
   @PreAuthorize("hasAnyAuthority('statementformats:read', 'statementformats:read:any')")
   @Operation(
       summary = "List all statement formats",
-      description = "Returns all configured statement formats (both enabled and disabled).")
+      description =
+          "Returns statement formats visible to the caller. Formats hidden by the current user are "
+              + "excluded by default; pass includeHidden=true for management screens.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -89,13 +92,16 @@ public class StatementFormatController {
                             schema = @Schema(implementation = StatementFormatResponse.class))))
       })
   @GetMapping(produces = "application/json")
-  public List<StatementFormatResponse> listFormats() {
+  public List<StatementFormatResponse> listFormats(
+      @Parameter(description = "Include formats hidden by the current user", example = "true")
+          @RequestParam(name = "includeHidden", defaultValue = "false")
+          boolean includeHidden) {
     log.info("Received list statement formats request");
 
     var userId = getCurrentUserId();
     var canReadAny = SecurityContextUtil.hasAuthority("statementformats:read:any");
 
-    return statementFormatService.getVisibleFormats(userId, canReadAny).stream()
+    return statementFormatService.listFormats(userId, canReadAny, includeHidden).stream()
         .map(StatementFormatResponse::from)
         .toList();
   }
@@ -485,6 +491,60 @@ public class StatementFormatController {
             request.enabled());
     return StatementFormatResponse.from(
         statementFormatService.updateFormat(id, patch, userId, canWriteAny));
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Hide a statement format",
+      description =
+          "Hides a statement format from the current user's normal import selection lists. The "
+              + "operation is idempotent and does not disable the format for other users.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "204", description = "Statement format hidden"),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Statement format not found or not visible to the caller",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/hide")
+  public ResponseEntity<Void> hideFormat(
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id")
+          Long id) {
+    log.info("Received hide statement format request: {}", id);
+
+    statementFormatService.hideFormat(id, getCurrentUserId());
+    return ResponseEntity.noContent().build();
+  }
+
+  @PreAuthorize("hasAnyAuthority('statementformats:write', 'statementformats:write:any')")
+  @Operation(
+      summary = "Unhide a statement format",
+      description =
+          "Restores a statement format to the current user's normal import selection lists. The "
+              + "operation is idempotent.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(responseCode = "204", description = "Statement format unhidden"),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Statement format not found or not visible to the caller",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(path = "/{id}/unhide")
+  public ResponseEntity<Void> unhideFormat(
+      @Parameter(description = "Statement format ID", example = "123") @PathVariable("id")
+          Long id) {
+    log.info("Received unhide statement format request: {}", id);
+
+    statementFormatService.unhideFormat(id, getCurrentUserId());
+    return ResponseEntity.noContent().build();
   }
 
   private String getCurrentUserId() {
