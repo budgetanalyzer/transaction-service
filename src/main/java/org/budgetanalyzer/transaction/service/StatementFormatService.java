@@ -1,5 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
+import java.time.format.DateTimeFormatter;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
@@ -317,6 +319,9 @@ public class StatementFormatService {
     validateCurrencyIsoCode(command.defaultCurrencyIsoCode(), fieldErrors);
     validateRequired("dateHeader", command.dateHeader(), fieldErrors);
     validateRequired("dateFormat", command.dateFormat(), fieldErrors);
+    if (!isBlank(command.dateFormat())) {
+      validateDateFormat(command.dateFormat(), fieldErrors);
+    }
     validateRequired("descriptionHeader", command.descriptionHeader(), fieldErrors);
     validateRequired("creditHeader", command.creditHeader(), fieldErrors);
     validateRequired("debitHeader", command.debitHeader(), fieldErrors);
@@ -360,6 +365,15 @@ public class StatementFormatService {
   private void validateRequired(String field, String value, List<FieldError> fieldErrors) {
     if (isBlank(value)) {
       fieldErrors.add(FieldError.forField(field, "Field is required.", value));
+    }
+  }
+
+  private void validateDateFormat(String dateFormat, List<FieldError> fieldErrors) {
+    try {
+      DateTimeFormatter.ofPattern(dateFormat, Locale.ROOT).withResolverStyle(ResolverStyle.SMART);
+    } catch (IllegalArgumentException illegalArgumentException) {
+      fieldErrors.add(
+          FieldError.forField("dateFormat", "Date format pattern is invalid.", dateFormat));
     }
   }
 

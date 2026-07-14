@@ -297,6 +297,12 @@ Permission: statementformats:write or statementformats:write:any
 Creates CSV formats only. Built-in PDF formats are seeded by migrations because
 they require internal parser handler keys.
 
+For direct CSV creation, `dateFormat` must be syntactically valid Java
+date-time pattern syntax and must match the CSV values that will be imported.
+Invalid pattern syntax is rejected with
+`STATEMENT_FORMAT_VALIDATION_FAILED` on the `dateFormat` field before either
+the statement format or its initial parser revision is created.
+
 **Update Statement Format**
 ```
 PUT /v1/statement-formats/{id}

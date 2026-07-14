@@ -305,11 +305,15 @@ curl -X POST http://localhost:8082/v1/statement-formats \
   `statementformats:write:any`.
 - The response `id` is the value to use for preview and update requests.
 - All headers must match CSV exactly (case-sensitive)
-- Date format must match CSV date representation
+- Date format must use syntactically valid Java date-time pattern syntax and
+  match the CSV date representation
 - Use same column for both credit/debit headers if bank uses single amount column
 - Omit `typeHeader` if using separate credit/debit columns
 - The JSON create endpoint only creates CSV formats. Built-in PDF formats need
   parser revisions with internal handler keys and are seeded by migrations.
+- Invalid `dateFormat` pattern syntax is rejected with a `dateFormat` field
+  error before creating either the statement format or its initial parser
+  revision.
 
 ### Generic Text-PDF Parser Foundation
 
@@ -978,6 +982,15 @@ selected format is enabled and has a parser revision.
 1. Check actual date format in CSV
 2. Create a corrected format or parser revision. Metadata updates use
    `PUT /v1/statement-formats/{id}`.
+
+### "`dateFormat` field error when creating a statement format"
+
+**Cause:** The submitted `dateFormat` is not valid Java date-time pattern
+syntax.
+
+**Solution:** Use a syntactically valid Java date-time pattern that matches the
+CSV values, such as `MM/dd/uu` or `uuuu-MM-dd`. The create request is rejected
+without creating a statement format or parser revision.
 
 ### "Missing required header: Amount"
 

@@ -386,6 +386,42 @@ class StatementFormatServiceTest {
     }
 
     @Test
+    void rejectsCsvFormatsWithInvalidDatePatternBeforePersistence() {
+      var command =
+          new StatementFormatCommand(
+              "Test Bank - CSV",
+              FormatType.CSV,
+              "Test Bank",
+              "USD",
+              null,
+              "Date",
+              "not-a-pattern",
+              "Description",
+              "Amount",
+              "Amount",
+              null,
+              null);
+
+      assertThatThrownBy(() -> statementFormatService.createFormat(command, "usr_owner", false))
+          .isInstanceOf(BusinessException.class)
+          .satisfies(
+              exception -> {
+                var businessException = (BusinessException) exception;
+                assertThat(businessException.getCode())
+                    .isEqualTo(BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name());
+                assertThat(businessException.getFieldErrors())
+                    .anySatisfy(
+                        fieldError -> {
+                          assertThat(fieldError.getField()).isEqualTo("dateFormat");
+                          assertThat(fieldError.getRejectedValue()).isEqualTo("not-a-pattern");
+                        });
+              });
+
+      verify(statementFormatRepository, never()).save(any());
+      verify(parserRevisionRepository, never()).save(any());
+    }
+
+    @Test
     void rejectsSystemFormatWithoutWriteAny() {
       var command =
           new StatementFormatCommand(
