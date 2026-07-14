@@ -1,7 +1,9 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,11 +17,11 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
@@ -35,7 +37,7 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   private static final float CREDIT_X = 430F;
 
   @Test
-  void canHandleRequiresPdfFilenameAndMatchingTable() throws IOException {
+  void attemptRequiresPdfFilenameAndMatchingTable() throws IOException {
     var extractor = extractor(signedAmountConfig(PdfTextTableYearSource.EXPLICIT_DATE));
     var pdfContent =
         pdfWithRows(
@@ -43,14 +45,18 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("Date", "Description", "Amount"),
                 List.of("01/02/2025", "Coffee Shop", "$4.50")));
 
-    assertThat(extractor.canHandle(pdfContent, "statement.pdf")).isTrue();
-    assertThat(extractor.canHandle(pdfContent, "statement.csv")).isFalse();
-    assertThat(extractor.canHandle(pdfContent, null)).isFalse();
+    assertThat(attempt(extractor, pdfContent, "statement.pdf", null).status())
+        .isEqualTo(ParserAttemptStatus.MATCHED);
+    assertThat(attempt(extractor, pdfContent, "statement.csv", null).status())
+        .isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+    assertThat(attempt(extractor, pdfContent, null, null).status())
+        .isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void extractParsesDebitCreditColumnsAndEntities() throws IOException {
-    var extractor = extractor(debitCreditConfig());
+  void attemptParsesDebitCreditColumnsWithOnePdfTextExtraction() throws IOException {
+    var pdfTextExtractionService = spy(new PdfTextExtractionService());
+    var extractor = extractor(debitCreditConfig(), pdfTextExtractionService);
     var pdfContent =
         pdfWithRows(
             List.of(
@@ -58,17 +64,13 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("01/02/2025", "Coffee Shop", "4.50", ""),
                 List.of("01/03/2025", "Payroll", "", "100.00")));
 
-    var transactions = extractor.extract(pdfContent, "checking");
-    var fileImport =
-        FileImport.create("hash", "statement.pdf", 42L, 101L, "checking", 100L, 2, "usr_test123");
-    var entities = extractor.extractEntities(pdfContent, "checking", fileImport);
+    var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions).hasSize(2);
     assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
     assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
-    assertThat(entities).hasSize(2);
-    assertThat(entities.getFirst().getDescription()).isEqualTo("Coffee Shop");
     assertThat(extractor.getHandlerKey()).contains("pdf-text-table");
+    verify(pdfTextExtractionService, times(1)).extract(pdfContent, "statement.pdf");
   }
 
   @Test
@@ -85,12 +87,43 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("01/04/2025", "Payment", "-$100.00"),
                 List.of("01/05/2025", "Refund", "$2.00")));
 
-    var transactions = extractor.extract(pdfContent, "checking");
+    var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions).hasSize(4);
     assertThat(transactions)
         .extracting("description")
         .containsExactly("Coffee Shop", "Grocery", "Payment", "Refund");
+  }
+
+  @Test
+  void attemptReturnsNotApplicableWhenCandidateRowCountIsBelowMinimumBeforeParsing()
+      throws IOException {
+    var extractor = extractor(signedAmountConfig(PdfTextTableYearSource.EXPLICIT_DATE, 3));
+    var pdfContent =
+        pdfWithRows(
+            List.of(
+                List.of("Date", "Description", "Amount"),
+                List.of("01/02/2025", "Coffee Shop", "$4.50"),
+                List.of("01/03/2025", "Grocery", "$25.20")));
+
+    var parserAttempt = attempt(extractor, pdfContent, "statement.pdf", "checking");
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+  }
+
+  @Test
+  void attemptReturnsNotApplicableWhenMappedHeaderFilterRejectsCandidateBeforeValueLookup()
+      throws IOException {
+    var extractor = extractor(signedAmountConfigWithDateHeader("Posted Date"));
+    var pdfContent =
+        pdfWithRows(
+            List.of(
+                List.of("Date", "Description", "Amount"),
+                List.of("01/02/2025", "Coffee Shop", "$4.50")));
+
+    var parserAttempt = attempt(extractor, pdfContent, "statement.pdf", "checking");
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
@@ -103,7 +136,7 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("Date", "Description", "Amount"),
                 List.of("Jan 2", "Coffee Shop", "$4.50")));
 
-    var transactions = extractor.extract(pdfContent, "checking");
+    var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions.getFirst().date()).hasYear(2025);
   }
@@ -118,7 +151,7 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("01/02/2025", "Coffee Shop", "4.50", "Debit"),
                 List.of("01/03/2025", "Refund", "2.00", "Credit")));
 
-    var transactions = extractor.extract(pdfContent, "checking");
+    var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
     assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
@@ -134,7 +167,7 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("01/02/2025", "Coffee Shop", "4.50", "Debit"),
                 List.of("01/03/2025", "Refund", "2.00", "Credit")));
 
-    var transactions = extractor.extract(pdfContent, "checking");
+    var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
     assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
@@ -149,9 +182,10 @@ class ConfigurablePdfTextTableStatementExtractorTest {
                 List.of("Date", "Description", "Debit", "Credit"),
                 List.of("01/02/2025", "Coffee Shop", "4.50", "1.00")));
 
-    assertThatThrownBy(() -> extractor.extract(pdfContent, "checking"))
-        .isInstanceOf(BusinessException.class)
-        .hasMessageContaining("exactly one debit or credit amount");
+    var parserAttempt = attempt(extractor, pdfContent, "statement.pdf", "checking");
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.FAILED);
+    assertThat(parserAttempt.failure().getMessage()).contains("exactly one debit or credit amount");
   }
 
   private ConfigurablePdfTextTableStatementExtractor extractor(
@@ -163,6 +197,45 @@ class ConfigurablePdfTextTableStatementExtractorTest {
     ReflectionTestUtils.setField(parserRevision, "id", 101L);
     return new ConfigurablePdfTextTableStatementExtractor(
         statementFormat, parserRevision, pdfTextTableParserConfig, new PdfTextExtractionService());
+  }
+
+  private ConfigurablePdfTextTableStatementExtractor extractor(
+      PdfTextTableParserConfig pdfTextTableParserConfig,
+      PdfTextExtractionService pdfTextExtractionService) {
+    var statementFormat =
+        StatementFormat.createSystemPdfFormat("Example PDF", "Example Bank", "USD");
+    ReflectionTestUtils.setField(statementFormat, "id", 42L);
+    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
+    ReflectionTestUtils.setField(parserRevision, "id", 101L);
+    return new ConfigurablePdfTextTableStatementExtractor(
+        statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
+  }
+
+  private ParserAttempt attempt(
+      ConfigurablePdfTextTableStatementExtractor configurablePdfTextTableStatementExtractor,
+      byte[] pdfContent,
+      String filename,
+      String accountId) {
+    return configurablePdfTextTableStatementExtractor.attempt(
+        parserRevision(), pdfContent, filename, accountId);
+  }
+
+  private List<org.budgetanalyzer.transaction.service.dto.PreviewTransaction> matchedTransactions(
+      ConfigurablePdfTextTableStatementExtractor configurablePdfTextTableStatementExtractor,
+      byte[] pdfContent,
+      String accountId) {
+    var parserAttempt =
+        attempt(configurablePdfTextTableStatementExtractor, pdfContent, "statement.pdf", accountId);
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
+    return parserAttempt.transactions();
+  }
+
+  private ParserRevision parserRevision() {
+    var statementFormat =
+        StatementFormat.createSystemPdfFormat("Example PDF", "Example Bank", "USD");
+    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
+    ReflectionTestUtils.setField(parserRevision, "id", 101L);
+    return parserRevision;
   }
 
   private PdfTextTableParserConfig signedAmountConfig(PdfTextTableYearSource yearSource) {
@@ -185,6 +258,22 @@ class ConfigurablePdfTextTableStatementExtractorTest {
         null,
         PdfTextTableNegativeMeans.CREDIT,
         yearSource);
+  }
+
+  private PdfTextTableParserConfig signedAmountConfigWithDateHeader(String dateHeader) {
+    return new PdfTextTableParserConfig(
+        PdfTextTableFileType.TEXT_PDF,
+        List.of("Date", "Description", "Amount"),
+        1,
+        dateHeader,
+        "MM/dd/uuuu",
+        "Description",
+        "Amount",
+        null,
+        null,
+        null,
+        PdfTextTableNegativeMeans.CREDIT,
+        PdfTextTableYearSource.EXPLICIT_DATE);
   }
 
   private PdfTextTableParserConfig signedAmountWithTypeConfig() {

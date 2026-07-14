@@ -11,7 +11,6 @@ import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.data.jpa.domain.Specification;
 
-import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
@@ -39,34 +38,35 @@ public class TransactionSpecifications {
    * <p>For date, timestamp, and numeric range fields, appropriate greater-than / less-than
    * comparisons are applied.
    *
-   * @param criteria The transaction criteria with user-specified criteria
+   * @param criteria The non-null transaction criteria with user-specified criteria. Use {@link
+   *     TransactionCriteria#empty()} for an intentionally broad query.
    * @return a {@link Specification} to be used with Spring Data repositories
    */
   public static Specification<Transaction> withCriteria(TransactionCriteria criteria) {
+    Objects.requireNonNull(criteria, "criteria");
     return (root, query, cb) -> {
-      var effectiveCriteria = criteria == null ? TransactionCriteria.empty() : criteria;
       List<Predicate> predicates = new ArrayList<>();
 
       // ID
-      if (effectiveCriteria.id() != null) {
-        predicates.add(cb.equal(root.get("id"), effectiveCriteria.id()));
+      if (criteria.id() != null) {
+        predicates.add(cb.equal(root.get("id"), criteria.id()));
       }
 
       // Owner ID (exact match)
-      if (effectiveCriteria.ownerId() != null && !effectiveCriteria.ownerId().isBlank()) {
-        predicates.add(cb.equal(root.get("ownerId"), effectiveCriteria.ownerId()));
+      if (criteria.ownerId() != null && !criteria.ownerId().isBlank()) {
+        predicates.add(cb.equal(root.get("ownerId"), criteria.ownerId()));
       }
 
       // Account IDs (case-insensitive LIKE with multi-word OR support)
       Predicate accountIdPredicate =
-          createAnyTextFilterPredicate(cb, root.get("accountId"), effectiveCriteria.accountIds());
+          createAnyTextFilterPredicate(cb, root.get("accountId"), criteria.accountIds());
       if (accountIdPredicate != null) {
         predicates.add(accountIdPredicate);
       }
 
       // Bank names (case-insensitive LIKE with multi-word OR support)
       Predicate bankNamePredicate =
-          createAnyTextFilterPredicate(cb, root.get("bankName"), effectiveCriteria.bankNames());
+          createAnyTextFilterPredicate(cb, root.get("bankName"), criteria.bankNames());
       if (bankNamePredicate != null) {
         predicates.add(bankNamePredicate);
       }
@@ -74,81 +74,64 @@ public class TransactionSpecifications {
       // Currency codes (case-insensitive exact match)
       Predicate currencyIsoCodePredicate =
           createAnyCaseInsensitiveExactPredicate(
-              cb, root.get("currencyIsoCode"), effectiveCriteria.currencyIsoCodes());
+              cb, root.get("currencyIsoCode"), criteria.currencyIsoCodes());
       if (currencyIsoCodePredicate != null) {
         predicates.add(currencyIsoCodePredicate);
       }
 
       // Description (case-insensitive LIKE with multi-word OR support)
       Predicate descriptionPredicate =
-          createTextFilterPredicate(cb, root.get("description"), effectiveCriteria.description());
+          createTextFilterPredicate(cb, root.get("description"), criteria.description());
       if (descriptionPredicate != null) {
         predicates.add(descriptionPredicate);
       }
 
       // Saved-view search text (case-insensitive LIKE against description)
       Predicate searchTextPredicate =
-          createTextFilterPredicate(cb, root.get("description"), effectiveCriteria.searchText());
+          createTextFilterPredicate(cb, root.get("description"), criteria.searchText());
       if (searchTextPredicate != null) {
         predicates.add(searchTextPredicate);
       }
 
       // Transaction type (enum)
-      if (effectiveCriteria.type() != null) {
-        predicates.add(cb.equal(root.get("type"), effectiveCriteria.type()));
+      if (criteria.type() != null) {
+        predicates.add(cb.equal(root.get("type"), criteria.type()));
       }
 
       // ===== Date range (Transaction.date) =====
-      if (effectiveCriteria.dateFrom() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("date"), effectiveCriteria.dateFrom()));
+      if (criteria.dateFrom() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("date"), criteria.dateFrom()));
       }
-      if (effectiveCriteria.dateTo() != null) {
-        predicates.add(cb.lessThanOrEqualTo(root.get("date"), effectiveCriteria.dateTo()));
+      if (criteria.dateTo() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("date"), criteria.dateTo()));
       }
 
       // ===== Amount range =====
-      if (effectiveCriteria.minAmount() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("amount"), effectiveCriteria.minAmount()));
+      if (criteria.minAmount() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("amount"), criteria.minAmount()));
       }
-      if (effectiveCriteria.maxAmount() != null) {
-        predicates.add(cb.lessThanOrEqualTo(root.get("amount"), effectiveCriteria.maxAmount()));
+      if (criteria.maxAmount() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("amount"), criteria.maxAmount()));
       }
 
       // ===== CreatedAt range =====
-      if (effectiveCriteria.createdAfter() != null) {
-        predicates.add(
-            cb.greaterThanOrEqualTo(root.get("createdAt"), effectiveCriteria.createdAfter()));
+      if (criteria.createdAfter() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), criteria.createdAfter()));
       }
-      if (effectiveCriteria.createdBefore() != null) {
-        predicates.add(
-            cb.lessThanOrEqualTo(root.get("createdAt"), effectiveCriteria.createdBefore()));
+      if (criteria.createdBefore() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), criteria.createdBefore()));
       }
 
       // ===== UpdatedAt range =====
-      if (effectiveCriteria.updatedAfter() != null) {
-        predicates.add(
-            cb.greaterThanOrEqualTo(root.get("updatedAt"), effectiveCriteria.updatedAfter()));
+      if (criteria.updatedAfter() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("updatedAt"), criteria.updatedAfter()));
       }
-      if (effectiveCriteria.updatedBefore() != null) {
-        predicates.add(
-            cb.lessThanOrEqualTo(root.get("updatedAt"), effectiveCriteria.updatedBefore()));
+      if (criteria.updatedBefore() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("updatedAt"), criteria.updatedBefore()));
       }
 
       return cb.and(predicates.toArray(new Predicate[0]));
     };
-  }
-
-  /**
-   * Builds a JPA {@link Specification} from HTTP transaction search filters.
-   *
-   * <p>This compatibility overload delegates to {@link #withCriteria(TransactionCriteria)} so all
-   * transaction query predicates are built from the shared internal model.
-   *
-   * @param filter The transaction filter with user-specified criteria
-   * @return a {@link Specification} to be used with Spring Data repositories
-   */
-  public static Specification<Transaction> withFilter(TransactionFilter filter) {
-    return withCriteria(TransactionCriteria.fromFilter(filter));
   }
 
   /**
@@ -175,16 +158,13 @@ public class TransactionSpecifications {
 
   private static Predicate createAnyTextFilterPredicate(
       CriteriaBuilder cb, Expression<String> fieldPath, Set<String> filterValues) {
-    if (filterValues == null || filterValues.isEmpty()) {
+    if (filterValues == null) {
       return null;
     }
 
-    List<Predicate> valuePredicates = new ArrayList<>();
+    var valuePredicates = new ArrayList<Predicate>();
     for (var filterValue : filterValues) {
-      var valuePredicate = createTextFilterPredicate(cb, fieldPath, filterValue);
-      if (valuePredicate != null) {
-        valuePredicates.add(valuePredicate);
-      }
+      valuePredicates.add(createTextFilterPredicate(cb, fieldPath, filterValue));
     }
 
     return combineWithOr(cb, valuePredicates);
@@ -192,28 +172,15 @@ public class TransactionSpecifications {
 
   private static Predicate createAnyCaseInsensitiveExactPredicate(
       CriteriaBuilder cb, Expression<String> fieldPath, Set<String> filterValues) {
-    if (filterValues == null || filterValues.isEmpty()) {
+    if (filterValues == null) {
       return null;
     }
 
-    var normalizedValues =
-        filterValues.stream()
-            .filter(Objects::nonNull)
-            .filter(value -> !value.isBlank())
-            .map(String::toLowerCase)
-            .toList();
-    if (normalizedValues.isEmpty()) {
-      return null;
-    }
-
+    var normalizedValues = filterValues.stream().map(String::toLowerCase).toList();
     return cb.lower(fieldPath).in(normalizedValues);
   }
 
   private static Predicate combineWithOr(CriteriaBuilder cb, List<Predicate> predicates) {
-    if (predicates == null || predicates.isEmpty()) {
-      return null;
-    }
-
     return predicates.size() == 1 ? predicates.get(0) : cb.or(predicates.toArray(new Predicate[0]));
   }
 
@@ -235,18 +202,12 @@ public class TransactionSpecifications {
       return null;
     }
 
-    String[] words = filterValue.trim().split("\\s+");
-    List<Predicate> wordPredicates = new ArrayList<>();
+    var words = filterValue.trim().split("\\s+");
+    var wordPredicates = new ArrayList<Predicate>();
 
-    for (String word : words) {
-      if (!word.isBlank()) {
-        String escapedWord = escapeLikePattern(word.toLowerCase());
-        wordPredicates.add(cb.like(cb.lower(fieldPath), "%" + escapedWord + "%", ESCAPE_CHAR));
-      }
-    }
-
-    if (wordPredicates.isEmpty()) {
-      return null;
+    for (var word : words) {
+      var escapedWord = escapeLikePattern(word.toLowerCase());
+      wordPredicates.add(cb.like(cb.lower(fieldPath), "%" + escapedWord + "%", ESCAPE_CHAR));
     }
 
     return combineWithOr(cb, wordPredicates);

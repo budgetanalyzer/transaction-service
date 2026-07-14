@@ -93,7 +93,10 @@ POST /v1/transactions/bulk-delete
 Body: { "ids": [1, 2, 3] }
 Response: BulkDeleteResponse
 Permission: transactions:delete
-Notes: Soft-deletes multiple transactions. Returns deletedCount and notFoundIds.
+Notes: Soft-deletes active transactions in one bulk operation. Returns
+deletedCount and notFoundIds. Callers without transactions:delete:any see
+missing, already-deleted, and foreign-owner IDs in notFoundIds. Duplicate valid
+IDs are deleted once; later duplicate occurrences are reported as notFoundIds.
 ```
 
 **Preview Transactions (File Import)**
@@ -213,9 +216,9 @@ Response: BulkViewTransactionResponse
 Permission: views:write
 Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
 IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
-includes IDs that are missing, soft-deleted, or owned by another user. Returns
-200 for full and partial success, 400 for null/empty ids, and 404 only when the
-saved view is missing.
+includes IDs that are missing, soft-deleted, or owned by another user and keeps
+request order for invalid entries. Returns 200 for full and partial success, 400
+for null/empty ids, and 404 only when the saved view is missing.
 Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 
@@ -241,9 +244,9 @@ Response: BulkViewTransactionResponse
 Permission: views:write
 Notes: Returns updatedCount and notFoundIds. updatedCount counts unique valid
 IDs, so duplicate valid IDs are applied once and counted once. notFoundIds
-includes IDs that are missing, soft-deleted, or owned by another user. Returns
-200 for full and partial success, 400 for null/empty ids, and 404 only when the
-saved view is missing.
+includes IDs that are missing, soft-deleted, or owned by another user and keeps
+request order for invalid entries. Returns 200 for full and partial success, 400
+for null/empty ids, and 404 only when the saved view is missing.
 Response shape: { "updatedCount": 2, "notFoundIds": [99] }
 ```
 

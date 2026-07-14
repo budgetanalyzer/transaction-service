@@ -36,6 +36,19 @@ the preview rows, and the preview token records both the selected
 `statementFormatId` and the winning `parserRevisionId`. Batch import then
 persists the same provenance on `file_import`.
 
+Parser attempts are single-pass. A configurable CSV revision parses the CSV
+once with the shared CSV parser, validates mapped headers from that parsed
+result, and maps those same rows. Date-time CSV patterns can accept date-only
+rows only when the configured pattern contains a removable `HH`, `HH:mm`, or
+`HH:mm:ss` time component. A configurable text-PDF revision extracts one
+`PdfTextDocument`, selects matching table candidates from that document,
+enforces the configured minimum row count during candidate selection, and
+parses those candidates. Dedicated PDF handlers load their parsing
+representation once, perform bank and statement signature checks on it, and
+then parse it. Dynamic configurable extractors are constructed directly from
+the parser revision being attempted; the registry keeps only an immutable map
+of static handler keys.
+
 ### Database Schema
 
 ```sql
@@ -308,10 +321,12 @@ transaction-like tables, a date column, a description column, and either a
 signed amount column or separate debit and credit columns. Multi-page
 statements are supported when continuation tables repeat the configured
 headers; matching table candidates are parsed in page and line order. A
-PDFBox-based text
-extraction component rejects scanned or OCR-dependent PDFs when embedded text
-is unavailable. The PDF wizard analysis endpoint scores text table candidates
-by header detection, repeated headers, row continuity, row count, date-like
+PDFBox-based text extraction component rejects scanned or OCR-dependent PDFs
+when embedded text is unavailable. The extractor applies `minimumRows` to the
+selected candidate row count before row parsing; row-width and blank-value
+checks still run while parsing because extracted PDF rows are external,
+layout-derived input. The PDF wizard analysis endpoint scores text table
+candidates by header detection, repeated headers, row continuity, row count, date-like
 columns, description-like columns, signed amount columns, debit/credit column
 pairs, and optional type columns.
 
@@ -888,9 +903,12 @@ authoritative matching rules, `duplicateReason` values, file reupload tracking,
 
 1. **File Validation** - Check file format, size limits
 2. **Configuration Lookup** - Retrieve the visible statement format by ID and
-   choose its enabled parser revision
-3. **Header Parsing** - Read and validate CSV headers match config
-4. **Row Parsing** - For each row:
+   load enabled parser revisions in priority and revision order
+3. **Single-Pass Parser Attempts** - Try each revision against the same upload:
+   extension or signature mismatches are not applicable; a matched parser with
+   malformed content or invalid persisted config is failed; a parser with
+   nonempty valid rows is matched
+4. **Selected Row Parsing** - For the winning matched attempt:
    - Parse date using configured format
    - Extract amount (from single column or credit/debit columns)
    - Determine transaction type
@@ -915,9 +933,12 @@ Error messages include:
 - `StatementFormat` - Entity representing a statement format configuration
 - `ParserRevision` - Hidden parser configuration or static extractor routing
 - `StatementFormatService` - CRUD operations for statement formats
-- `StatementExtractorRegistry` - Registry of extractors by statement format ID
-  and parser revision
-- `ConfigurableCsvStatementExtractor` - Extracts transactions from CSV files
+- `StatementExtractorRegistry` - Attempts enabled parser revisions in
+  deterministic order and constructs configurable extractors per attempt
+- `ConfigurableCsvStatementExtractor` - Attempts CSV parser revisions with one
+  shared-parser pass
+- `ConfigurablePdfTextTableStatementExtractor` - Attempts saved text-PDF table
+  parser revisions with one PDF text extraction
 - `TransactionController.previewTransactions()` - Preview API endpoint
 - `TransactionController.batchImportTransactions()` - Batch import API endpoint
 - `TransactionImportService` - Business logic for imports

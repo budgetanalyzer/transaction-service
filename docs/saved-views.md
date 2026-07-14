@@ -66,7 +66,9 @@ row:
 - Deleting a saved view removes its pinned and excluded IDs with the same row.
 
 Pinned and excluded IDs are filtered to active transactions owned by the view
-owner before membership is returned.
+owner before membership is returned. Membership resolution fetches the union of
+stored pinned and excluded IDs with one owner-scoped active-ID lookup, then
+partitions the IDs into the response groups in memory.
 
 Bulk endpoints are also owner-scoped:
 
@@ -78,7 +80,7 @@ Both operations process every requested ID and return:
 - `updatedCount` for unique successfully processed IDs. Duplicate valid IDs are
   applied once and counted once.
 - `notFoundIds` for IDs that are missing, soft-deleted, or owned by another
-  user.
+  user. These IDs keep request order, including duplicate invalid IDs.
 
 Both endpoints return `200 OK` for full or partial success, return `400 Bad
 Request` for null or empty ID lists, and return `404 Not Found` only when the
@@ -94,7 +96,8 @@ type:
 - `pinned` - Active pinned transaction IDs not already included in `matched`.
 - `excluded` - Active excluded transaction IDs.
 
-The saved-view transaction count follows the same effective set:
+The saved-view transaction count is derived from the same effective membership
+set:
 
 ```text
 (matching IDs - active excluded IDs) + active pinned IDs
@@ -111,6 +114,11 @@ The `saved_view` table stores:
 - `open_ended` as a boolean.
 - `pinned_ids` as JSON text.
 - `excluded_ids` as JSON text.
+
+`criteria`, `pinned_ids`, and `excluded_ids` are required persistence values.
+An empty criteria object (`{}`) and empty ID arrays (`[]`) are valid explicit
+states. Null, blank, or JSON-null stored values are treated as persistence
+corruption and fail instead of being converted to broad empty filters.
 
 See [Database Schema](database-schema.md#saved_view) for table and index
 details.

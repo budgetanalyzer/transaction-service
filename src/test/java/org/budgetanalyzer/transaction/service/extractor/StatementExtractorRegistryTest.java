@@ -25,13 +25,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.core.csv.CsvParser;
-import org.budgetanalyzer.transaction.domain.FileImport;
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
-import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
+import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
@@ -57,8 +58,6 @@ class StatementExtractorRegistryTest {
   @BeforeEach
   void setUp() {
     when(staticPdfExtractor.getHandlerKey()).thenReturn("capital-one-yearly");
-    when(parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG))
-        .thenReturn(List.of());
 
     registry =
         new StatementExtractorRegistry(
@@ -67,7 +66,6 @@ class StatementExtractorRegistryTest {
             csvParser,
             new ObjectMapper().findAndRegisterModules(),
             new PdfTextExtractionService());
-    registry.initialize();
   }
 
   @Nested
@@ -97,7 +95,6 @@ class StatementExtractorRegistryTest {
       when(parserRevisionRepository
               .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
           .thenReturn(List.of(firstParserRevision, secondParserRevision));
-      parserRegistry.initialize();
 
       var parserAttempts =
           parserRegistry.attemptParse(
@@ -124,6 +121,45 @@ class StatementExtractorRegistryTest {
 
       assertThat(parserAttempts).hasSize(1);
       assertThat(parserAttempts.getFirst().status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+    }
+
+    @Test
+    void distinguishesNotApplicableRevisionFromApplicableParserFailure() {
+      var statementFormat =
+          StatementFormat.createSystemPdfFormat("Test Bank PDF", "Test Bank", "USD");
+      ReflectionTestUtils.setField(statementFormat, "id", 42L);
+      var notApplicableParserRevision =
+          ParserRevision.createStaticHandler(statementFormat, 1, "not-applicable-handler");
+      var failedParserRevision =
+          ParserRevision.createStaticHandler(statementFormat, 2, "failed-handler");
+      var notApplicableExtractor =
+          new TestStatementExtractor("not-applicable-handler", false, List.of());
+      var failedExtractor =
+          new FailingStatementExtractor(
+              "failed-handler",
+              new BusinessException(
+                  "Parser matched the file but row parsing failed.",
+                  BudgetAnalyzerError.PDF_PARSING_ERROR.name()));
+      var parserRegistry =
+          new StatementExtractorRegistry(
+              List.of(notApplicableExtractor, failedExtractor),
+              parserRevisionRepository,
+              csvParser,
+              new ObjectMapper().findAndRegisterModules(),
+              new PdfTextExtractionService());
+
+      when(parserRevisionRepository
+              .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
+          .thenReturn(List.of(notApplicableParserRevision, failedParserRevision));
+
+      var parserAttempts =
+          parserRegistry.attemptParse(
+              statementFormat, "pdf".getBytes(), "statement.pdf", "account-123");
+
+      assertThat(parserAttempts)
+          .extracting("status")
+          .containsExactly(ParserAttemptStatus.NOT_APPLICABLE, ParserAttemptStatus.FAILED);
+      assertThat(parserAttempts.get(1).failure().getCode()).isEqualTo("PDF_PARSING_ERROR");
     }
 
     @Test
@@ -211,7 +247,6 @@ class StatementExtractorRegistryTest {
       when(parserRevisionRepository
               .findByStatementFormatIdAndEnabledTrueOrderByPriorityDescRevisionNumberDesc(42L))
           .thenReturn(List.of(staticParserRevision, pdfTextTableParserRevision));
-      parserRegistry.initialize();
 
       var parserAttempts =
           parserRegistry.attemptParse(
@@ -229,48 +264,6 @@ class StatementExtractorRegistryTest {
       assertThat(parserAttempts.get(1).parserRevision()).isEqualTo(pdfTextTableParserRevision);
       assertThat(parserAttempts.get(1).transactions().getFirst().description())
           .isEqualTo("Coffee Shop");
-    }
-  }
-
-  @Nested
-  class GetAllExtractors {
-
-    @Test
-    void includesStaticExtractors() {
-      var allStatementExtractors = registry.getAllExtractors();
-
-      assertThat(allStatementExtractors).containsExactly(staticPdfExtractor);
-    }
-
-    @Test
-    void includesCsvExtractorsCreatedFromParserRevisions() {
-      var statementFormat =
-          StatementFormat.createSystemCsvFormat("Test Bank CSV", "Test Bank", "USD");
-      ReflectionTestUtils.setField(statementFormat, "id", 42L);
-      var parserRevision =
-          ParserRevision.createCsvColumnConfig(
-              statementFormat,
-              1,
-              """
-              {
-                "dateHeader": "Date",
-                "dateFormat": "MM/dd/uu",
-                "descriptionHeader": "Description",
-                "creditHeader": "Amount",
-                "debitHeader": "Amount",
-                "typeHeader": "Type",
-                "categoryHeader": null
-              }
-              """);
-      ReflectionTestUtils.setField(parserRevision, "id", 101L);
-      when(parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG))
-          .thenReturn(List.of(parserRevision));
-
-      registry.refreshCsvExtractors();
-
-      assertThat(registry.getAllExtractors()).hasSize(2);
-      assertThat(registry.getAllExtractors().stream().map(StatementExtractor::getHandlerKey))
-          .contains("capital-one-yearly", "statement-format-42-revision-101");
     }
   }
 
@@ -319,30 +312,45 @@ class StatementExtractorRegistryTest {
   private static class TestStatementExtractor implements StatementExtractor {
 
     private final String handlerKey;
-    private final boolean canHandle;
+    private final boolean applicable;
     private final List<PreviewTransaction> transactions;
 
     TestStatementExtractor(
-        String handlerKey, boolean canHandle, List<PreviewTransaction> transactions) {
+        String handlerKey, boolean applicable, List<PreviewTransaction> transactions) {
       this.handlerKey = handlerKey;
-      this.canHandle = canHandle;
+      this.applicable = applicable;
       this.transactions = transactions;
     }
 
     @Override
-    public boolean canHandle(byte[] fileContent, String filename) {
-      return canHandle;
+    public ParserAttempt attempt(
+        ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
+      if (!applicable || transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
     }
 
     @Override
-    public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
-      return transactions;
+    public String getHandlerKey() {
+      return handlerKey;
+    }
+  }
+
+  private static class FailingStatementExtractor implements StatementExtractor {
+
+    private final String handlerKey;
+    private final BusinessException businessException;
+
+    FailingStatementExtractor(String handlerKey, BusinessException businessException) {
+      this.handlerKey = handlerKey;
+      this.businessException = businessException;
     }
 
     @Override
-    public List<Transaction> extractEntities(
-        byte[] fileContent, String accountId, FileImport fileImport) {
-      return List.of();
+    public ParserAttempt attempt(
+        ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
+      return ParserAttempt.failed(parserRevision, businessException);
     }
 
     @Override

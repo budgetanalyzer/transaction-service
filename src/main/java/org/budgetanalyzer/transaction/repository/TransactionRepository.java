@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -11,27 +12,56 @@ import org.springframework.data.repository.query.Param;
 
 import org.budgetanalyzer.core.repository.SoftDeleteOperations;
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 
 public interface TransactionRepository
     extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction, Long> {
 
+  /**
+   * Finds active transactions by ID.
+   *
+   * @param ids transaction IDs to resolve
+   * @return active transactions matching the requested IDs
+   */
+  @Query("SELECT t FROM Transaction t WHERE t.id IN :ids AND t.deleted = false")
+  List<Transaction> findActiveByIdIn(@Param("ids") Collection<Long> ids);
+
+  /**
+   * Finds active transactions by owner and ID.
+   *
+   * @param ownerId the transaction owner ID
+   * @param ids transaction IDs to resolve
+   * @return active transactions owned by the requested owner and matching the requested IDs
+   */
+  @Query(
+      "SELECT t FROM Transaction t "
+          + "WHERE t.ownerId = :ownerId AND t.id IN :ids AND t.deleted = false")
+  List<Transaction> findActiveByOwnerIdAndIdIn(
+      @Param("ownerId") String ownerId, @Param("ids") Collection<Long> ids);
+
+  /**
+   * Finds active owner-scoped transaction IDs.
+   *
+   * @param ownerId the transaction owner ID
+   * @param ids transaction IDs to resolve
+   * @return active transaction IDs owned by the requested owner
+   */
+  @Query(
+      "SELECT t.id FROM Transaction t "
+          + "WHERE t.ownerId = :ownerId AND t.id IN :ids AND t.deleted = false")
+  List<Long> findActiveIdsByOwnerIdAndIdIn(
+      @Param("ownerId") String ownerId, @Param("ids") Collection<Long> ids);
+
   /** Active transaction candidate returned by owner-scoped duplicate candidate lookup. */
   interface TransactionDuplicateCandidate {
 
     /**
-     * Returns the structured description-free duplicate candidate criteria.
+     * Returns the structured description-free duplicate identity.
      *
-     * @return the candidate criteria
+     * @return the candidate identity
      */
-    TransactionDuplicateCandidateCriteria getCandidateCriteria();
-
-    /**
-     * Returns the persisted transaction ID.
-     *
-     * @return the transaction ID
-     */
-    Long getTransactionId();
+    TransactionDuplicateIdentity getDuplicateIdentity();
 
     /**
      * Returns the persisted transaction description.
@@ -79,13 +109,6 @@ public interface TransactionRepository
     String getCurrencyIsoCode();
 
     /**
-     * Returns the persisted transaction ID.
-     *
-     * @return the transaction ID
-     */
-    Long getTransactionId();
-
-    /**
      * Returns the persisted transaction description.
      *
      * @return the transaction description
@@ -94,37 +117,37 @@ public interface TransactionRepository
   }
 
   /**
-   * Finds active duplicate candidates for a specific owner using description-free criteria.
+   * Finds active duplicate candidates for a specific owner using description-free identities.
    *
    * <p>Used by fuzzy duplicate detection to retrieve candidate descriptions after strict financial
    * identity fields have matched.
    *
-   * @param candidateCriteria set of structured description-free duplicate candidate criteria
+   * @param duplicateIdentities set of structured description-free duplicate identities
    * @param ownerId the ID of the transaction owner
    * @return active matching duplicate candidates for this owner
    */
   default List<TransactionDuplicateCandidate> findDuplicateCandidates(
-      Set<TransactionDuplicateCandidateCriteria> candidateCriteria, String ownerId) {
-    if (candidateCriteria.isEmpty()) {
+      Set<TransactionDuplicateIdentity> duplicateIdentities, String ownerId) {
+    if (duplicateIdentities.isEmpty()) {
       return List.of();
     }
 
-    var candidateCriteriaList = List.copyOf(candidateCriteria);
+    var duplicateIdentityList = List.copyOf(duplicateIdentities);
     return findDuplicateCandidatesByStructuredCriteria(
-            candidateCriteriaList.stream()
-                .map(TransactionDuplicateCandidateCriteria::bankName)
+            duplicateIdentityList.stream()
+                .map(TransactionDuplicateIdentity::bankName)
                 .toArray(String[]::new),
-            candidateCriteriaList.stream()
-                .map(TransactionDuplicateCandidateCriteria::date)
+            duplicateIdentityList.stream()
+                .map(TransactionDuplicateIdentity::date)
                 .toArray(LocalDate[]::new),
-            candidateCriteriaList.stream()
-                .map(TransactionDuplicateCandidateCriteria::amount)
+            duplicateIdentityList.stream()
+                .map(TransactionDuplicateIdentity::amount)
                 .toArray(BigDecimal[]::new),
-            candidateCriteriaList.stream()
-                .map(criteria -> criteria.type().name())
+            duplicateIdentityList.stream()
+                .map(identity -> identity.type().name())
                 .toArray(String[]::new),
-            candidateCriteriaList.stream()
-                .map(TransactionDuplicateCandidateCriteria::currencyIsoCode)
+            duplicateIdentityList.stream()
+                .map(TransactionDuplicateIdentity::currencyIsoCode)
                 .toArray(String[]::new),
             ownerId)
         .stream()
@@ -162,7 +185,6 @@ public interface TransactionRepository
           candidate_criteria.amount AS "amount",
           candidate_criteria.transaction_type AS "type",
           candidate_criteria.currency_iso_code AS "currencyIsoCode",
-          transaction.id AS "transactionId",
           transaction.description AS "description"
       FROM candidate_criteria
       JOIN transaction
@@ -186,40 +208,30 @@ public interface TransactionRepository
   private static TransactionDuplicateCandidate toCandidate(
       StructuredTransactionDuplicateCandidate structuredCandidate) {
     return new TransactionDuplicateCandidateResult(
-        new TransactionDuplicateCandidateCriteria(
+        new TransactionDuplicateIdentity(
             structuredCandidate.getBankName(),
             structuredCandidate.getDate(),
             structuredCandidate.getAmount(),
             TransactionType.valueOf(structuredCandidate.getType()),
             structuredCandidate.getCurrencyIsoCode()),
-        structuredCandidate.getTransactionId(),
         structuredCandidate.getDescription());
   }
 
-  /** Default-method result that exposes structured candidate criteria to service callers. */
+  /** Default-method result that exposes structured duplicate identity to service callers. */
   final class TransactionDuplicateCandidateResult implements TransactionDuplicateCandidate {
 
-    private final TransactionDuplicateCandidateCriteria candidateCriteria;
-    private final Long transactionId;
+    private final TransactionDuplicateIdentity duplicateIdentity;
     private final String description;
 
     TransactionDuplicateCandidateResult(
-        TransactionDuplicateCandidateCriteria candidateCriteria,
-        Long transactionId,
-        String description) {
-      this.candidateCriteria = candidateCriteria;
-      this.transactionId = transactionId;
+        TransactionDuplicateIdentity duplicateIdentity, String description) {
+      this.duplicateIdentity = duplicateIdentity;
       this.description = description;
     }
 
     @Override
-    public TransactionDuplicateCandidateCriteria getCandidateCriteria() {
-      return candidateCriteria;
-    }
-
-    @Override
-    public Long getTransactionId() {
-      return transactionId;
+    public TransactionDuplicateIdentity getDuplicateIdentity() {
+      return duplicateIdentity;
     }
 
     @Override

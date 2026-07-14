@@ -1,0 +1,138 @@
+AI SESSION HANDLER WORKER PROTOCOL
+
+CONTEXT
+- workspace_path: /workspace/transaction-service
+- plan_path: /workspace/transaction-service/docs/plans/codebase-simplicity-and-defensive-branch-reduction.md
+- state_path: /workspace/transaction-service/.ai-session-handler/codebase-simplicity-and-defensive-branch-reduction.json
+- run_id: 20260714T090448Z-phase-3
+- transcript_path: /workspace/transaction-service/.ai-session-handler/transcripts/20260714T090448Z-phase-3.txt
+- selected_phase_id: phase-3
+- selected_phase_title: Establish Single-Owner Null and Validation Contracts
+
+INSTRUCTIONS
+- Read repository instructions first, including the nearest AGENTS.md.
+- Inspect current repository state before editing.
+- Implement exactly selected phase phase-3: Establish Single-Owner Null and Validation Contracts.
+- Do not proceed to later phases.
+- Follow the selected phase plan unless repository reality contradicts it.
+- Run the validation commands listed in the selected phase.
+- Do not run git commit, push, checkout, reset, clean, stash, branch creation, or automatic worktree operations.
+- Update only files required for the selected phase.
+- Treat state_path as runner-owned and read-only. Do not create, edit, replace, or delete the state file; report the phase outcome only through the terminal marker.
+- Do not make design-changing guesses. If implementation requires an unplanned product, architecture, schema, API, or workflow decision, stop with <phase-needs-clarification>.
+- Treat user clarification as a first-class stop state, not as failure.
+- End with exactly one terminal marker from the grammar below.
+- Do not emit more than one terminal marker.
+
+FAILURE MODES
+- Use <phase-blocked> when the phase cannot be completed without external action.
+- Use <phase-needs-clarification> when a specific user decision is required.
+- Use <phase-complete> only after implementation and validation for this phase are complete.
+
+PREVIOUS STATE SUMMARY START
+schema_version: 1
+plan:
+  path: /workspace/transaction-service/docs/plans/codebase-simplicity-and-defensive-branch-reduction.md
+  sha256: 86a90b0aa39979297b00f46e811598fedca40b6518819b1f2a64d70bbf0dda44
+  accepted_at: 2026-07-14T08:48:51Z
+completed_phase_ids: phase-1, phase-2
+current_phase:
+  id: phase-3
+  title: Establish Single-Owner Null and Validation Contracts
+stop: none
+last_run:
+  run_id: 20260714T085600Z-phase-2
+  phase_id: phase-2
+  status: phase-complete
+  started_at: 2026-07-14T08:56:00Z
+  finished_at: 2026-07-14T09:04:48Z
+  exit_code: 0
+  transcript_path: /workspace/transaction-service/.ai-session-handler/transcripts/20260714T085600Z-phase-2.txt
+  summary: Removed phase-2 dead/test-only production surfaces: transaction create APIs, multipart hash/check APIs, extractor entity API/mappers, registry extractor enumeration, unused statement-format repository finders, ViewTransactionResponse, MembershipType, TransactionSpecifications.withFilter, TransactionFilter.empty, and the persisted-transaction duplicate-key factory. Updated tests to use preview extraction plus the real batch import path, TransactionCriteria.fromFilter with withCriteria, and standard repository fixture setup. Updated docs/domain-model.md to remove the stale MembershipType enum reference. Validation passed: ./gradlew clean spotlessApply, ./gradlew clean build, and exact rg scans confirmed removed symbols are absent outside the execution plan.
+PREVIOUS STATE SUMMARY END
+
+SELECTED PHASE BODY START
+
+### Goal
+
+Remove repeated null/presence branches after enforced boundaries while preserving all business and
+external-boundary validation.
+
+### Scope
+
+- Remove the controller's duplicate `previewImportToken` guard, the service's repeated verified
+  `BatchFileImportSource` null check, and the unreachable null branch around batch date rules.
+- Where `@NotEmpty` and `@NotNull` duplicate collection presence, use one enforced constraint while
+  retaining the documented HTTP error field and status.
+- In statement-format and wizard flows, remove presence checks already enforced by the `@Valid`
+  request and all production callers. Retain:
+  - scope permission and writable-owner rules;
+  - valid ISO 4217 currency checks;
+  - format-type support;
+  - conditional amount/header/date rules;
+  - uploaded sample/header/row validation;
+  - parser configuration validation after database deserialization.
+- Make create flows construct the already-validated CSV format and initial parser revision directly,
+  removing repeated format-type/date-header branches that cannot be reached.
+- Remove the unused `canWriteAny` argument from CSV wizard save if the command remains unconditionally
+  user-scoped.
+- Establish saved-view criteria and ID sets as non-null domain/persistence invariants. Remove null-to-
+  empty fallbacks from `ViewCriteriaApi.from`, `TransactionCriteria.fromViewCriteria`, entity
+  setters, and converters when the API and database already prohibit null.
+- Keep patch-field null checks because null intentionally means "not updated".
+
+### Non-goals
+
+- Do not remove cryptographic token checks, ownership checks, parser config validation, optional
+  patch/filter semantics, or corrupt JSON parse failures.
+- Do not introduce method-validation proxies or annotate every internal parameter.
+- Do not replace straightforward conditional business validation with a custom annotation
+  framework.
+
+### Required context
+
+- Phase 1 validation-ownership tests.
+- `BatchImportRequest`, `BatchImportTransactionRequest`, wizard request records, and statement-format
+  request records.
+- `TransactionController`, `TransactionService`, `StatementFormatService`, CSV/PDF wizard services,
+  `SavedView`, `ViewCriteriaConverter`, and `LongSetConverter`.
+- The Null Handling and Validation Contracts section of
+  `../service-common/docs/code-quality-standards.md`.
+
+### Implementation notes
+
+- Trace every service entry from all production callers before removing a check. A second adapter,
+  scheduler, or message consumer would make service validation necessary; none should be assumed
+  absent without search evidence.
+- Preserve HTTP error codes and field paths. Exact duplicate wording may be consolidated only when
+  it is not a documented contract and characterization tests prove the boundary remains clear.
+- Empty criteria and empty ID sets remain valid explicit values. Only impossible null/blank fallback
+  behavior is removed.
+- A database null/blank that violates a `NOT NULL`/JSON invariant should fail visibly rather than
+  broaden a query by becoming an empty filter.
+- Update affected API/behavior documentation and Javadocs in this phase.
+
+### Validation
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Search the affected call chains for repeated `requireNonNull`, null-to-empty, and required-field
+checks, then verify each remaining check has a boundary or optional-value rationale.
+
+### Completion criteria
+
+- Each listed invariant is enforced in one owning layer.
+- Valid HTTP behavior and all business errors remain unchanged.
+- Saved-view persistence no longer silently converts impossible null/corrupt state to empty state.
+- No speculative validation framework or new cross-layer DTO translation is introduced.
+
+SELECTED PHASE BODY END
+
+TERMINAL MARKER GRAMMAR START
+<phase-complete>summary</phase-complete>
+<phase-blocked>reason</phase-blocked>
+<phase-needs-clarification>specific question for user</phase-needs-clarification>
+TERMINAL MARKER GRAMMAR END

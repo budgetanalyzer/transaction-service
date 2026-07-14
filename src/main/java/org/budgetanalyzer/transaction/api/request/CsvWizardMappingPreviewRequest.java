@@ -9,7 +9,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.service.dto.CsvWizardMappingPreviewCommand;
 
-/** Request DTO for a read-only CSV wizard parser preview. */
+/**
+ * Request DTO for a read-only CSV wizard parser preview.
+ *
+ * <p>API Bean Validation owns request-shape checks. CSV wizard services own mapping semantics,
+ * sample compatibility, and parser-content validation.
+ */
 @Schema(description = "CSV wizard parser preview request")
 public record CsvWizardMappingPreviewRequest(
     @Schema(description = "Bank name to place on preview rows", example = "Example Bank")

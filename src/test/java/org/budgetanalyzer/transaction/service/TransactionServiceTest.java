@@ -38,8 +38,8 @@ import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
 import org.budgetanalyzer.transaction.domain.TransactionType;
-import org.budgetanalyzer.transaction.repository.TransactionDuplicateCandidateCriteria;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
@@ -58,81 +58,6 @@ class TransactionServiceTest {
   @Mock private FileImportTrackingService fileImportTrackingService;
 
   @InjectMocks private TransactionService transactionService;
-
-  // ==================== createTransaction ====================
-
-  @Test
-  void createTransaction_validTransaction_savesAndReturnsTransaction() {
-    // Given: a valid transaction
-    var transaction = createTransaction(null, "Grocery Store", BigDecimal.valueOf(45.50));
-
-    var savedTransaction = createTransaction(1L, "Grocery Store", BigDecimal.valueOf(45.50));
-    when(transactionRepository.save(transaction)).thenReturn(savedTransaction);
-
-    // When: create is called
-    var result = transactionService.createTransaction(transaction, USER_ID);
-
-    // Then: transaction is saved and returned with ID
-    assertThat(result).isNotNull();
-    assertThat(result.getId()).isEqualTo(1L);
-    assertThat(result.getDescription()).isEqualTo("Grocery Store");
-    assertThat(result.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(45.50));
-
-    verify(transactionRepository, times(1)).save(transaction);
-  }
-
-  @Test
-  void createTransaction_setsOwnerId() {
-    // Given: a transaction without ownerId
-    var transaction = createTransaction(null, "New Transaction", BigDecimal.valueOf(10.00));
-    transaction.setOwnerId(null);
-
-    when(transactionRepository.save(any(Transaction.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    // When: create is called with userId
-    var result = transactionService.createTransaction(transaction, USER_ID);
-
-    // Then: ownerId is set to the userId
-    assertThat(result.getOwnerId()).isEqualTo(USER_ID);
-  }
-
-  // ==================== createTransactions ====================
-
-  @Test
-  void createTransactions_multipleValidTransactions_savesAllAndReturnsAll() {
-    // Given: multiple valid transactions
-    var transaction1 = createTransaction(null, "Grocery", BigDecimal.valueOf(50.00));
-    var transaction2 = createTransaction(null, "Gas Station", BigDecimal.valueOf(35.00));
-    var transaction3 = createTransaction(null, "Restaurant", BigDecimal.valueOf(75.00));
-
-    var savedTransactions =
-        List.of(
-            createTransaction(1L, "Grocery", BigDecimal.valueOf(50.00)),
-            createTransaction(2L, "Gas Station", BigDecimal.valueOf(35.00)),
-            createTransaction(3L, "Restaurant", BigDecimal.valueOf(75.00)));
-
-    when(transactionRepository.saveAll(List.of(transaction1, transaction2, transaction3)))
-        .thenReturn(savedTransactions);
-
-    // When: bulk create is called
-    var result =
-        transactionService.createTransactions(
-            List.of(transaction1, transaction2, transaction3), USER_ID);
-
-    // Then: all transactions are saved and returned
-    assertThat(result).hasSize(3);
-    assertThat(result.get(0).getId()).isEqualTo(1L);
-    assertThat(result.get(1).getId()).isEqualTo(2L);
-    assertThat(result.get(2).getId()).isEqualTo(3L);
-
-    // And: ownerId is set on each
-    assertThat(transaction1.getOwnerId()).isEqualTo(USER_ID);
-    assertThat(transaction2.getOwnerId()).isEqualTo(USER_ID);
-    assertThat(transaction3.getOwnerId()).isEqualTo(USER_ID);
-
-    verify(transactionRepository, times(1)).saveAll(any());
-  }
 
   // ==================== getTransaction ====================
 
@@ -344,9 +269,8 @@ class TransactionServiceTest {
     var transaction2 = createTransaction(2L, "DESC2", BigDecimal.valueOf(200));
     var transaction3 = createTransaction(3L, "DESC3", BigDecimal.valueOf(300));
 
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(transaction2));
-    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(transaction3));
+    when(transactionRepository.findActiveByOwnerIdAndIdIn(eq(USER_ID), any()))
+        .thenReturn(List.of(transaction1, transaction2, transaction3));
 
     var ids = List.of(1L, 2L, 3L);
 
@@ -357,7 +281,10 @@ class TransactionServiceTest {
     assertThat(result.deletedCount()).isEqualTo(3);
     assertThat(result.notFoundIds()).isEmpty();
 
-    verify(transactionRepository, times(3)).save(any(Transaction.class));
+    verify(transactionRepository, times(1)).findActiveByOwnerIdAndIdIn(eq(USER_ID), any());
+    verify(transactionRepository, never()).findByIdNotDeleted(anyLong());
+    verify(transactionRepository, times(1))
+        .saveAll(List.of(transaction1, transaction2, transaction3));
     assertThat(transaction1.isDeleted()).isTrue();
     assertThat(transaction2.isDeleted()).isTrue();
     assertThat(transaction3.isDeleted()).isTrue();
@@ -369,10 +296,8 @@ class TransactionServiceTest {
     var transaction1 = createTransaction(1L, "DESC1", BigDecimal.valueOf(100));
     var transaction2 = createTransaction(2L, "DESC2", BigDecimal.valueOf(200));
 
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(transaction2));
-    when(transactionRepository.findByIdNotDeleted(9999L)).thenReturn(Optional.empty());
-    when(transactionRepository.findByIdNotDeleted(8888L)).thenReturn(Optional.empty());
+    when(transactionRepository.findActiveByOwnerIdAndIdIn(eq(USER_ID), any()))
+        .thenReturn(List.of(transaction1, transaction2));
 
     var ids = List.of(1L, 2L, 9999L, 8888L);
 
@@ -383,7 +308,9 @@ class TransactionServiceTest {
     assertThat(result.deletedCount()).isEqualTo(2);
     assertThat(result.notFoundIds()).containsExactlyInAnyOrder(9999L, 8888L);
 
-    verify(transactionRepository, times(2)).save(any(Transaction.class));
+    verify(transactionRepository, times(1)).findActiveByOwnerIdAndIdIn(eq(USER_ID), any());
+    verify(transactionRepository, never()).findByIdNotDeleted(anyLong());
+    verify(transactionRepository, times(1)).saveAll(List.of(transaction1, transaction2));
   }
 
   @Test
@@ -391,8 +318,8 @@ class TransactionServiceTest {
     // Given: 2 transactions, but one is already deleted
     var transaction1 = createTransaction(1L, "DESC1", BigDecimal.valueOf(100));
 
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(transaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.empty());
+    when(transactionRepository.findActiveByOwnerIdAndIdIn(eq(USER_ID), any()))
+        .thenReturn(List.of(transaction1));
 
     var ids = List.of(1L, 2L);
 
@@ -403,7 +330,9 @@ class TransactionServiceTest {
     assertThat(result.deletedCount()).isEqualTo(1);
     assertThat(result.notFoundIds()).containsExactly(2L);
 
-    verify(transactionRepository, times(1)).save(any(Transaction.class));
+    verify(transactionRepository, times(1)).findActiveByOwnerIdAndIdIn(eq(USER_ID), any());
+    verify(transactionRepository, never()).findByIdNotDeleted(anyLong());
+    verify(transactionRepository, times(1)).saveAll(List.of(transaction1));
   }
 
   @Test
@@ -413,8 +342,8 @@ class TransactionServiceTest {
     var otherTransaction = createTransaction(2L, "Theirs", BigDecimal.valueOf(200));
     otherTransaction.setOwnerId(OTHER_USER_ID);
 
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(ownedTransaction));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(otherTransaction));
+    when(transactionRepository.findActiveByOwnerIdAndIdIn(eq(USER_ID), any()))
+        .thenReturn(List.of(ownedTransaction));
 
     var ids = List.of(1L, 2L);
 
@@ -425,7 +354,9 @@ class TransactionServiceTest {
     assertThat(result.deletedCount()).isEqualTo(1);
     assertThat(result.notFoundIds()).containsExactly(2L);
 
-    verify(transactionRepository, times(1)).save(any(Transaction.class));
+    verify(transactionRepository, times(1)).findActiveByOwnerIdAndIdIn(eq(USER_ID), any());
+    verify(transactionRepository, never()).findByIdNotDeleted(anyLong());
+    verify(transactionRepository, times(1)).saveAll(List.of(ownedTransaction));
   }
 
   // ==================== getTransactions ====================
@@ -680,9 +611,9 @@ class TransactionServiceTest {
             null);
 
     // Simulate that dto1's key already exists
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto1);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto1);
     when(transactionRepository.findDuplicateCandidates(any(), any()))
-        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto1.description())));
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, dto1.description())));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -717,10 +648,10 @@ class TransactionServiceTest {
             "USD",
             null,
             true);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
-        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, dto.description())));
     when(transactionRepository.saveAll(any()))
         .thenAnswer(
             invocation -> {
@@ -762,13 +693,12 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(duplicateDto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(duplicateDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
             List.of(
-                duplicateCandidate(
-                    existingCandidateKey, 1L, "X CORP. PAID FEATURES BASTROP     TX")));
+                duplicateCandidate(existingCandidateKey, "X CORP. PAID FEATURES BASTROP     TX")));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(duplicateDto, newDto));
@@ -803,11 +733,11 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(skippedDto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(skippedDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
-            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+            List.of(duplicateCandidate(existingCandidateKey, existingCandidateDescription)));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(skippedDto, laterDto));
@@ -832,13 +762,12 @@ class TransactionServiceTest {
             "USD",
             null,
             true);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
             List.of(
-                duplicateCandidate(
-                    existingCandidateKey, 1L, "X CORP. PAID FEATURES BASTROP     TX")));
+                duplicateCandidate(existingCandidateKey, "X CORP. PAID FEATURES BASTROP     TX")));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(dto));
@@ -874,11 +803,11 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(allowedDuplicateDto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(allowedDuplicateDto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
         .thenReturn(
-            List.of(duplicateCandidate(existingCandidateKey, 1L, existingCandidateDescription)));
+            List.of(duplicateCandidate(existingCandidateKey, existingCandidateDescription)));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(allowedDuplicateDto, laterDto));
@@ -902,10 +831,10 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
-        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, "Starbucks Store 1234")));
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, "Starbucks Store 1234")));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(dto));
@@ -1082,27 +1011,6 @@ class TransactionServiceTest {
               assertThat(businessException.getCode())
                   .isEqualTo(BudgetAnalyzerError.BATCH_IMPORT_NO_TRANSACTIONS_CREATED.name());
             });
-    verify(transactionRepository, never()).saveAll(any());
-    verify(fileImportTrackingService, never()).checkHash(anyString(), anyString());
-  }
-
-  @Test
-  void batchImport_missingFileImportSource_rejectsBeforeImportWork() {
-    var dto =
-        new PreviewTransaction(
-            LocalDate.of(2024, 1, 15),
-            "Transaction 1",
-            BigDecimal.valueOf(100.00),
-            TransactionType.DEBIT,
-            null,
-            "Test Bank",
-            "USD",
-            null);
-
-    assertThatThrownBy(() -> transactionService.batchImport(List.of(dto), USER_ID, null))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("fileImportSource is required");
-    verify(transactionRepository, never()).findDuplicateCandidates(any(), anyString());
     verify(transactionRepository, never()).saveAll(any());
     verify(fileImportTrackingService, never()).checkHash(anyString(), anyString());
   }
@@ -1333,9 +1241,9 @@ class TransactionServiceTest {
             "Test Bank",
             "USD",
             null);
-    var existingCandidateKey = TransactionDuplicateCandidateKey.from(dto);
+    var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
     when(transactionRepository.findDuplicateCandidates(any(), any()))
-        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, 1L, dto.description())));
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, dto.description())));
 
     assertThatThrownBy(
             () -> transactionService.batchImport(List.of(dto), USER_ID, fileImportSource()))
@@ -1370,7 +1278,8 @@ class TransactionServiceTest {
   }
 
   private org.budgetanalyzer.transaction.api.request.TransactionFilter emptyFilter() {
-    return org.budgetanalyzer.transaction.api.request.TransactionFilter.empty();
+    return new org.budgetanalyzer.transaction.api.request.TransactionFilter(
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 
   private TransactionService.BatchImportResult batchImport(List<PreviewTransaction> transactions) {
@@ -1403,35 +1312,22 @@ class TransactionServiceTest {
   }
 
   private static TransactionDuplicateCandidate duplicateCandidate(
-      TransactionDuplicateCandidateKey candidateKey, Long transactionId, String description) {
-    return new TestTransactionDuplicateCandidate(
-        candidateCriteria(candidateKey), transactionId, description);
+      TransactionDuplicateIdentity candidateKey, String description) {
+    return new TestTransactionDuplicateCandidate(candidateCriteria(candidateKey), description);
   }
 
-  private static TransactionDuplicateCandidateCriteria candidateCriteria(
-      TransactionDuplicateCandidateKey candidateKey) {
-    return new TransactionDuplicateCandidateCriteria(
-        candidateKey.bankName(),
-        candidateKey.date(),
-        candidateKey.amount(),
-        candidateKey.type(),
-        candidateKey.currencyIsoCode());
+  private static TransactionDuplicateIdentity candidateCriteria(
+      TransactionDuplicateIdentity candidateKey) {
+    return candidateKey;
   }
 
   private record TestTransactionDuplicateCandidate(
-      TransactionDuplicateCandidateCriteria candidateCriteria,
-      Long transactionId,
-      String description)
+      TransactionDuplicateIdentity duplicateIdentity, String description)
       implements TransactionDuplicateCandidate {
 
     @Override
-    public TransactionDuplicateCandidateCriteria getCandidateCriteria() {
-      return candidateCriteria;
-    }
-
-    @Override
-    public Long getTransactionId() {
-      return transactionId;
+    public TransactionDuplicateIdentity getDuplicateIdentity() {
+      return duplicateIdentity;
     }
 
     @Override

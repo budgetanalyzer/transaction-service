@@ -37,6 +37,11 @@ Field rules:
 - Only active persisted transactions are candidates. Soft-deleted rows are
   ignored.
 
+Preview rows and repository lookups use the same normalized financial identity
+value for these fields. That identity is created once per row or database
+candidate and is reused for service grouping and structured repository
+parameters.
+
 After the strict financial identity match, descriptions are compared in the
 service layer:
 
@@ -134,8 +139,9 @@ duplicate file import record.
 
 The `transaction` table has
 `idx_transaction_owner_deleted_duplicate_candidates` for owner-scoped candidate
-lookup across strict financial identity fields. Description comparison stays in
-the service layer.
+lookup across the normalized strict financial identity fields. The repository
+query receives those identity values as structured parameter arrays; description
+comparison stays in the service layer.
 
 The `file_import` table has a unique index on `(content_hash, imported_by)` for
 exact-file reupload tracking. `transaction.file_import_id` links created

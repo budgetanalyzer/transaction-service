@@ -1,10 +1,11 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,28 +158,8 @@ public class SavedViewService {
    * @return the count
    */
   public long countViewTransactions(SavedView view) {
-    var matchingTransactions = findMatchingTransactions(view);
-
-    // Get IDs of matching transactions
-    var matchingIds =
-        matchingTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Filter pinned IDs to active transactions only
-    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds(), view.getUserId());
-    var pinnedActiveIds =
-        pinnedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Filter excluded IDs to active transactions only
-    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds(), view.getUserId());
-    var excludedActiveIds =
-        excludedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Count = (matching - excluded) + pinned
-    var finalIds = new java.util.HashSet<>(matchingIds);
-    finalIds.removeAll(excludedActiveIds);
-    finalIds.addAll(pinnedActiveIds);
-
-    return finalIds.size();
+    var membership = resolveViewMembership(view);
+    return membership.matched().size() + membership.pinned().size();
   }
 
   /**
@@ -250,21 +231,12 @@ public class SavedViewService {
   @Transactional
   public BulkViewUpdateResult bulkPinTransactions(UUID viewId, String userId, List<Long> ids) {
     var view = getView(viewId, userId);
-    var notFoundIds = new java.util.ArrayList<Long>();
-    var validIds = new LinkedHashSet<Long>();
+    var resolvedIds = resolveRequestedActiveOwnerIds(ids, userId);
 
-    for (var id : ids) {
-      if (isTransactionActiveAndOwnedByUser(id, userId)) {
-        validIds.add(id);
-      } else {
-        notFoundIds.add(id);
-      }
-    }
-
-    view.pinTransactions(validIds);
+    view.pinTransactions(resolvedIds.validIds());
     savedViewRepository.save(view);
 
-    return new BulkViewUpdateResult(validIds.size(), notFoundIds);
+    return new BulkViewUpdateResult(resolvedIds.validIds().size(), resolvedIds.notFoundIds());
   }
 
   /**
@@ -278,21 +250,12 @@ public class SavedViewService {
   @Transactional
   public BulkViewUpdateResult bulkExcludeTransactions(UUID viewId, String userId, List<Long> ids) {
     var view = getView(viewId, userId);
-    var notFoundIds = new java.util.ArrayList<Long>();
-    var validIds = new LinkedHashSet<Long>();
+    var resolvedIds = resolveRequestedActiveOwnerIds(ids, userId);
 
-    for (var id : ids) {
-      if (isTransactionActiveAndOwnedByUser(id, userId)) {
-        validIds.add(id);
-      } else {
-        notFoundIds.add(id);
-      }
-    }
-
-    view.excludeTransactions(validIds);
+    view.excludeTransactions(resolvedIds.validIds());
     savedViewRepository.save(view);
 
-    return new BulkViewUpdateResult(validIds.size(), notFoundIds);
+    return new BulkViewUpdateResult(resolvedIds.validIds().size(), resolvedIds.notFoundIds());
   }
 
   /**
@@ -316,33 +279,24 @@ public class SavedViewService {
   }
 
   private ViewMembership resolveViewMembership(SavedView view) {
-    // Get transactions matching criteria (already filters soft-deleted)
     var matchingTransactions = findMatchingTransactions(view);
+    var matchingIds = new HashSet<Long>();
+    for (var transaction : matchingTransactions) {
+      matchingIds.add(transaction.getId());
+    }
+    var storedMembershipIds = resolveStoredMembershipIds(view);
 
-    // Extract matching IDs
-    var matchingIds =
-        matchingTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Filter pinned IDs to active transactions only
-    var pinnedActiveTransactions = findTransactionsByIds(view.getPinnedIds(), view.getUserId());
-    var pinnedActiveIds =
-        pinnedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Filter excluded IDs to active transactions only
-    var excludedActiveTransactions = findTransactionsByIds(view.getExcludedIds(), view.getUserId());
-    var excludedActiveIds =
-        excludedActiveTransactions.stream().map(Transaction::getId).collect(Collectors.toSet());
-
-    // Build final lists (sorted)
-    // matched = matchingIds - excludedIds
     var matched =
-        matchingIds.stream().filter(id -> !excludedActiveIds.contains(id)).sorted().toList();
-
-    // pinned = pinnedActiveIds - matchingIds
-    var pinned = pinnedActiveIds.stream().filter(id -> !matchingIds.contains(id)).sorted().toList();
-
-    // excluded = excludedActiveIds
-    var excluded = excludedActiveIds.stream().sorted().toList();
+        matchingIds.stream()
+            .filter(id -> !storedMembershipIds.excludedIds().contains(id))
+            .sorted()
+            .toList();
+    var pinned =
+        storedMembershipIds.pinnedIds().stream()
+            .filter(id -> !matchingIds.contains(id))
+            .sorted()
+            .toList();
+    var excluded = storedMembershipIds.excludedIds().stream().sorted().toList();
 
     return new ViewMembership(matched, pinned, excluded);
   }
@@ -355,13 +309,51 @@ public class SavedViewService {
         TransactionSpecifications.withCriteria(criteria));
   }
 
-  private List<Transaction> findTransactionsByIds(Collection<Long> ids, String ownerId) {
-    return ids.stream()
-        .map(transactionRepository::findByIdNotDeleted)
-        .filter(java.util.Optional::isPresent)
-        .map(java.util.Optional::get)
-        .filter(transaction -> ownerId.equals(transaction.getOwnerId()))
-        .toList();
+  private StoredMembershipIds resolveStoredMembershipIds(SavedView view) {
+    var requestedIds = new HashSet<Long>();
+    requestedIds.addAll(view.getPinnedIds());
+    requestedIds.addAll(view.getExcludedIds());
+
+    if (requestedIds.isEmpty()) {
+      return new StoredMembershipIds(Set.of(), Set.of());
+    }
+
+    var activeOwnerIds =
+        Set.copyOf(
+            transactionRepository.findActiveIdsByOwnerIdAndIdIn(view.getUserId(), requestedIds));
+    var pinnedIds = new HashSet<Long>();
+    for (var pinnedId : view.getPinnedIds()) {
+      if (activeOwnerIds.contains(pinnedId)) {
+        pinnedIds.add(pinnedId);
+      }
+    }
+    var excludedIds = new HashSet<Long>();
+    for (var excludedId : view.getExcludedIds()) {
+      if (activeOwnerIds.contains(excludedId)) {
+        excludedIds.add(excludedId);
+      }
+    }
+
+    return new StoredMembershipIds(pinnedIds, excludedIds);
+  }
+
+  private ResolvedRequestedIds resolveRequestedActiveOwnerIds(List<Long> ids, String ownerId) {
+    var requestedUniqueIds = new LinkedHashSet<>(ids);
+    var activeOwnerIds =
+        Set.copyOf(
+            transactionRepository.findActiveIdsByOwnerIdAndIdIn(ownerId, requestedUniqueIds));
+    var validIds = new LinkedHashSet<Long>();
+    var notFoundIds = new ArrayList<Long>();
+
+    for (var id : ids) {
+      if (activeOwnerIds.contains(id)) {
+        validIds.add(id);
+      } else {
+        notFoundIds.add(id);
+      }
+    }
+
+    return new ResolvedRequestedIds(validIds, notFoundIds);
   }
 
   private boolean isTransactionActiveAndOwnedByUser(Long transactionId, String userId) {
@@ -378,4 +370,8 @@ public class SavedViewService {
    * @param notFoundIds transaction IDs that were missing, deleted, or owned by another user
    */
   public record BulkViewUpdateResult(int updatedCount, List<Long> notFoundIds) {}
+
+  private record StoredMembershipIds(Set<Long> pinnedIds, Set<Long> excludedIds) {}
+
+  private record ResolvedRequestedIds(LinkedHashSet<Long> validIds, List<Long> notFoundIds) {}
 }

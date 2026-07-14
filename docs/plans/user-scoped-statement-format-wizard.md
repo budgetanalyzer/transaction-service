@@ -203,13 +203,16 @@ ParserAttempt
   parserRevisionId
   status: NOT_APPLICABLE | MATCHED | FAILED
   parsedRows
-  diagnostics
+  failure
 ```
 
 The selection rule should be deterministic:
 
 - Try enabled revisions for the selected statement format.
 - Prefer newer or higher-priority revisions.
+- Run each revision as a single-pass attempt: file type, signature, or mapped
+  table mismatches are not applicable; parsing failures after a parser matches
+  remain failed attempts.
 - Treat "parsed some rows" as insufficient by itself; a match must satisfy the
   parser engine's required fields, minimum-row, date, amount, and direction
   checks.
@@ -511,9 +514,9 @@ lower-risk file type.
 ### Phase 4: Generic PDF Table Wizard
 
 Start phase 4 only after the CSV wizard API, validation error shape, and web
-flow are stable. The PDF wizard should reuse the same product flow and endpoint
-style, but its parser engine is new and should stay limited to text-based PDFs
-with transaction-like tables.
+flow are stable. The PDF wizard reuses the same product flow and endpoint
+style, and its parser engine stays limited to text-based PDFs with
+transaction-like tables.
 
 1. **Owner: transaction-service** - Add the `PDF_TEXT_TABLE_CONFIG` parser type,
    typed parser config record, config schema version, validation rules, and

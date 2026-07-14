@@ -19,10 +19,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
-import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
@@ -107,27 +107,26 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
           Pattern.CASE_INSENSITIVE);
 
   @Override
-  public boolean canHandle(byte[] fileContent, String filename) {
-    if (filename == null || !filename.toLowerCase().endsWith(".pdf")) {
-      return false;
+  public ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
+    if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+      return ParserAttempt.notApplicable(parserRevision);
     }
 
+    String fullText;
     try {
-      String text = extractTextFromPdf(fileContent, 1, 2);
-      return CREDIT_CARD_STATEMENT_PATTERN.matcher(text).find()
-          && text.toLowerCase().contains("capital one");
+      fullText = extractTextFromPdf(fileContent);
     } catch (Exception e) {
       log.debug(
           "Failed to check if file is Capital One Credit Monthly Statement: {}", e.getMessage());
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
-  }
+    if (!CREDIT_CARD_STATEMENT_PATTERN.matcher(fullText).find()
+        || !fullText.toLowerCase(Locale.ROOT).contains("capital one")) {
+      return ParserAttempt.notApplicable(parserRevision);
+    }
 
-  @Override
-  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
-      String fullText = extractTextFromPdf(fileContent, 1, Integer.MAX_VALUE);
-
       StatementPeriod period = extractStatementPeriod(fullText);
       log.info(
           "Extracting Capital One Credit Monthly Statement for {} {} - {} {}",
@@ -141,14 +140,14 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
           "Extracted {} transactions from Capital One Credit Monthly Statement",
           transactions.size());
 
-      return transactions;
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
     } catch (BusinessException e) {
-      throw e;
+      return ParserAttempt.failed(parserRevision, e);
     } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to extract transactions from PDF: " + e.getMessage(),
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
-          e);
+      return ParserAttempt.failed(parserRevision, pdfParsingError(e));
     }
   }
 
@@ -157,35 +156,18 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
     return HANDLER_KEY;
   }
 
-  @Override
-  public List<Transaction> extractEntities(
-      byte[] fileContent, String accountId, FileImport fileImport) {
-    return extract(fileContent, accountId).stream()
-        .map(preview -> toTransaction(preview, fileImport))
-        .toList();
-  }
-
-  private Transaction toTransaction(PreviewTransaction preview, FileImport fileImport) {
-    var transaction = new Transaction();
-    transaction.setDate(preview.date());
-    transaction.setDescription(preview.description());
-    transaction.setAmount(preview.amount());
-    transaction.setType(preview.type());
-    transaction.setBankName(preview.bankName());
-    transaction.setCurrencyIsoCode(preview.currencyIsoCode());
-    transaction.setAccountId(preview.accountId());
-    transaction.setFileImport(fileImport);
-    return transaction;
-  }
-
-  private String extractTextFromPdf(byte[] fileContent, int startPage, int endPage)
-      throws IOException {
+  private String extractTextFromPdf(byte[] fileContent) throws IOException {
     try (PDDocument document = Loader.loadPDF(fileContent)) {
       PDFTextStripper stripper = new PDFTextStripper();
-      stripper.setStartPage(startPage);
-      stripper.setEndPage(Math.min(endPage, document.getNumberOfPages()));
       return stripper.getText(document);
     }
+  }
+
+  private BusinessException pdfParsingError(Exception exception) {
+    return new BusinessException(
+        "Failed to extract transactions from PDF: " + exception.getMessage(),
+        BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
+        exception);
   }
 
   private StatementPeriod extractStatementPeriod(String text) {
@@ -425,7 +407,7 @@ public class CapitalOneCreditMonthlyStatementExtractor implements StatementExtra
       String line, StatementPeriod period, String accountId, boolean isCredit) {
     Matcher matcher = TRANSACTION_PATTERN.matcher(line);
     if (!matcher.find()) {
-      log.trace("Line did not match transaction pattern: {}", line);
+      log.trace("Line did not match transaction pattern");
       return null;
     }
 

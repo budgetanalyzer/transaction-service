@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -61,14 +62,14 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Description Filter Tests ====================
 
   @Test
-  void withFilter_descriptionSingleWord_matchesContainingWord() {
+  void withCriteria_descriptionSingleWord_matchesContainingWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Amazon Web Services", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Netflix Subscription", BigDecimal.TEN));
 
     // When: filter by single word "amazon"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("amazon"));
+    var spec = specificationFromFilter(filterByDescription("amazon"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only Amazon transactions are returned
@@ -79,11 +80,11 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionDoesNotMatchBankName() {
+  void withCriteria_descriptionDoesNotMatchBankName() {
     transactionRepository.save(createTransactionWithBank("Coffee Shop", "Capital One"));
     transactionRepository.save(createTransactionWithBank("Grocery Store", "Bangkok Bank"));
 
-    var spec = TransactionSpecifications.withFilter(filterByDescription("capital"));
+    var spec = specificationFromFilter(filterByDescription("capital"));
     var results = transactionRepository.findAll(spec);
 
     assertThat(results).isEmpty();
@@ -102,14 +103,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionMultipleWords_matchesAnyWord() {
+  void withCriteria_descriptionMultipleWords_matchesAnyWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Whole Foods Market", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Target Store", BigDecimal.TEN));
 
     // When: filter by multiple words "amazon target"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("amazon target"));
+    var spec = specificationFromFilter(filterByDescription("amazon target"));
     var results = transactionRepository.findAll(spec);
 
     // Then: transactions containing "amazon" OR "target" are returned
@@ -120,14 +121,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionWithPercent_escapesWildcard() {
+  void withCriteria_descriptionWithPercent_escapesWildcard() {
     // Given: transactions with percent signs
     transactionRepository.save(createTransaction("100% Bonus", BigDecimal.TEN));
     transactionRepository.save(createTransaction("1000 Points", BigDecimal.TEN));
     transactionRepository.save(createTransaction("10000 Reward", BigDecimal.TEN));
 
     // When: filter by "100%"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("100%"));
+    var spec = specificationFromFilter(filterByDescription("100%"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only literal "100%" matches (% is escaped, doesn't act as wildcard)
@@ -136,14 +137,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionWithUnderscore_escapesWildcard() {
+  void withCriteria_descriptionWithUnderscore_escapesWildcard() {
     // Given: transactions with underscores
     transactionRepository.save(createTransaction("test_case payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("testAcase payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("test-case payment", BigDecimal.TEN));
 
     // When: filter by "test_case"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("test_case"));
+    var spec = specificationFromFilter(filterByDescription("test_case"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only literal "test_case" matches (_ is escaped, doesn't act as single-char wildcard)
@@ -152,14 +153,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionCaseInsensitive_matchesRegardlessOfCase() {
+  void withCriteria_descriptionCaseInsensitive_matchesRegardlessOfCase() {
     // Given: transactions with mixed case
     transactionRepository.save(createTransaction("STARBUCKS COFFEE", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Starbucks Coffee", BigDecimal.TEN));
     transactionRepository.save(createTransaction("starbucks coffee", BigDecimal.TEN));
 
     // When: filter by lowercase "starbucks"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("starbucks"));
+    var spec = specificationFromFilter(filterByDescription("starbucks"));
     var results = transactionRepository.findAll(spec);
 
     // Then: all variations are matched (case-insensitive)
@@ -167,14 +168,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionMultipleSpaces_treatsAsMultipleWords() {
+  void withCriteria_descriptionMultipleSpaces_treatsAsMultipleWords() {
     // Given: transactions
     transactionRepository.save(createTransaction("Amazon Prime", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Target Store", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Walmart", BigDecimal.TEN));
 
     // When: filter with multiple spaces "amazon    target"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("amazon    target"));
+    var spec = specificationFromFilter(filterByDescription("amazon    target"));
     var results = transactionRepository.findAll(spec);
 
     // Then: matches "amazon" OR "target"
@@ -185,13 +186,13 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionBlank_returnsAllTransactions() {
+  void withCriteria_descriptionBlank_returnsAllTransactions() {
     // Given: transactions exist
     transactionRepository.save(createTransaction("Transaction 1", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Transaction 2", BigDecimal.TEN));
 
     // When: filter with blank description
-    var spec = TransactionSpecifications.withFilter(filterByDescription("   "));
+    var spec = specificationFromFilter(filterByDescription("   "));
     var results = transactionRepository.findAll(spec);
 
     // Then: all transactions are returned (blank filter ignored)
@@ -201,7 +202,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Account ID Filter Tests ====================
 
   @Test
-  void withFilter_accountIdSingleWord_matchesContainingWord() {
+  void withCriteria_accountIdSingleWord_matchesContainingWord() {
     // Given: transactions with different account IDs
     transactionRepository.save(
         createTransactionWithAccount("Transaction 1", "acc_123456", BigDecimal.TEN));
@@ -211,7 +212,7 @@ class TransactionSpecificationsIntegrationTest {
         createTransactionWithAccount("Transaction 3", "xyz_111111", BigDecimal.TEN));
 
     // When: filter by "acc"
-    var spec = TransactionSpecifications.withFilter(filterByAccountId("acc"));
+    var spec = specificationFromFilter(filterByAccountId("acc"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only accounts containing "acc" are returned
@@ -222,7 +223,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_accountIdMultipleWords_matchesAnyWord() {
+  void withCriteria_accountIdMultipleWords_matchesAnyWord() {
     // Given: transactions with different account IDs
     transactionRepository.save(
         createTransactionWithAccount("Transaction 1", "checking_account", BigDecimal.TEN));
@@ -232,7 +233,7 @@ class TransactionSpecificationsIntegrationTest {
         createTransactionWithAccount("Transaction 3", "credit_card", BigDecimal.TEN));
 
     // When: filter by "checking credit"
-    var spec = TransactionSpecifications.withFilter(filterByAccountId("checking credit"));
+    var spec = specificationFromFilter(filterByAccountId("checking credit"));
     var results = transactionRepository.findAll(spec);
 
     // Then: matches "checking" OR "credit"
@@ -263,14 +264,14 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Bank Name Filter Tests ====================
 
   @Test
-  void withFilter_bankNameSingleWord_matchesContainingWord() {
+  void withCriteria_bankNameSingleWord_matchesContainingWord() {
     // Given: transactions from different banks
     transactionRepository.save(createTransactionWithBank("Transaction 1", "Chase Bank"));
     transactionRepository.save(createTransactionWithBank("Transaction 2", "Chase Credit Union"));
     transactionRepository.save(createTransactionWithBank("Transaction 3", "Wells Fargo"));
 
     // When: filter by "chase"
-    var spec = TransactionSpecifications.withFilter(filterByBankName("chase"));
+    var spec = specificationFromFilter(filterByBankName("chase"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only Chase banks are returned
@@ -281,14 +282,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_bankNameMultipleWords_matchesAnyWord() {
+  void withCriteria_bankNameMultipleWords_matchesAnyWord() {
     // Given: transactions from different banks
     transactionRepository.save(createTransactionWithBank("Transaction 1", "Wells Fargo"));
     transactionRepository.save(createTransactionWithBank("Transaction 2", "Bank of America"));
     transactionRepository.save(createTransactionWithBank("Transaction 3", "Chase Bank"));
 
     // When: filter by "wells chase"
-    var spec = TransactionSpecifications.withFilter(filterByBankName("wells chase"));
+    var spec = specificationFromFilter(filterByBankName("wells chase"));
     var results = transactionRepository.findAll(spec);
 
     // Then: matches "wells" OR "chase"
@@ -316,14 +317,14 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Currency Code Filter Tests ====================
 
   @Test
-  void withFilter_currencyIsoCode_exactMatchCaseInsensitive() {
+  void withCriteria_currencyIsoCode_exactMatchCaseInsensitive() {
     // Given: transactions with different currencies
     transactionRepository.save(createTransactionWithCurrency("Transaction 1", "USD"));
     transactionRepository.save(createTransactionWithCurrency("Transaction 2", "EUR"));
     transactionRepository.save(createTransactionWithCurrency("Transaction 3", "GBP"));
 
     // When: filter by "usd" (lowercase)
-    var spec = TransactionSpecifications.withFilter(filterByCurrency("usd"));
+    var spec = specificationFromFilter(filterByCurrency("usd"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only USD transactions are returned
@@ -367,14 +368,14 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Transaction Type Filter Tests ====================
 
   @Test
-  void withFilter_type_matchesExactType() {
+  void withCriteria_type_matchesExactType() {
     // Given: transactions with different types
     transactionRepository.save(createTransactionWithType("Debit 1", TransactionType.DEBIT));
     transactionRepository.save(createTransactionWithType("Debit 2", TransactionType.DEBIT));
     transactionRepository.save(createTransactionWithType("Credit 1", TransactionType.CREDIT));
 
     // When: filter by DEBIT type
-    var spec = TransactionSpecifications.withFilter(filterByType(TransactionType.DEBIT));
+    var spec = specificationFromFilter(filterByType(TransactionType.DEBIT));
     var results = transactionRepository.findAll(spec);
 
     // Then: only DEBIT transactions are returned
@@ -385,7 +386,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Date Range Filter Tests ====================
 
   @Test
-  void withFilter_dateRange_matchesWithinRange() {
+  void withCriteria_dateRange_matchesWithinRange() {
     // Given: transactions on different dates
     var jan1 = LocalDate.of(2025, 1, 1);
     var jan15 = LocalDate.of(2025, 1, 15);
@@ -399,7 +400,7 @@ class TransactionSpecificationsIntegrationTest {
 
     // When: filter by date range (Jan 10 - Jan 25)
     var spec =
-        TransactionSpecifications.withFilter(
+        specificationFromFilter(
             filterByDateRange(LocalDate.of(2025, 1, 10), LocalDate.of(2025, 1, 25)));
     var results = transactionRepository.findAll(spec);
 
@@ -411,7 +412,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Amount Range Filter Tests ====================
 
   @Test
-  void withFilter_amountRange_matchesWithinRange() {
+  void withCriteria_amountRange_matchesWithinRange() {
     // Given: transactions with different amounts
     transactionRepository.save(createTransaction("Transaction 1", BigDecimal.valueOf(10.00)));
     transactionRepository.save(createTransaction("Transaction 2", BigDecimal.valueOf(50.00)));
@@ -420,7 +421,7 @@ class TransactionSpecificationsIntegrationTest {
 
     // When: filter by amount range (25.00 - 150.00)
     var spec =
-        TransactionSpecifications.withFilter(
+        specificationFromFilter(
             filterByAmountRange(BigDecimal.valueOf(25.00), BigDecimal.valueOf(150.00)));
     var results = transactionRepository.findAll(spec);
 
@@ -434,7 +435,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Combined Filter Tests ====================
 
   @Test
-  void withFilter_multipleFilters_appliesAllWithAnd() {
+  void withCriteria_multipleFilters_appliesAllWithAnd() {
     // Given: various transactions
     transactionRepository.save(
         createComplexTransaction("Amazon Prime", "acc_123", "Chase", BigDecimal.valueOf(15.99)));
@@ -446,8 +447,7 @@ class TransactionSpecificationsIntegrationTest {
         createComplexTransaction("Walmart", "acc_789", "Wells Fargo", BigDecimal.valueOf(30.00)));
 
     // When: filter by description="amazon" AND accountId="acc_123" AND bankName="chase"
-    var spec =
-        TransactionSpecifications.withFilter(filterByMultipleFields("amazon", "acc_123", "chase"));
+    var spec = specificationFromFilter(filterByMultipleFields("amazon", "acc_123", "chase"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only transaction matching ALL criteria is returned
@@ -526,14 +526,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_emptyFilter_returnsAllTransactions() {
+  void withCriteria_emptyFilter_returnsAllTransactions() {
     // Given: transactions exist
     transactionRepository.save(createTransaction("Transaction 1", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Transaction 2", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Transaction 3", BigDecimal.TEN));
 
     // When: filter with no criteria
-    var spec = TransactionSpecifications.withFilter(emptyFilter());
+    var spec = specificationFromFilter(emptyFilter());
     var results = transactionRepository.findAll(spec);
 
     // Then: all transactions are returned
@@ -568,10 +568,10 @@ class TransactionSpecificationsIntegrationTest {
         .containsExactlyInAnyOrder("Owned 1", "Owned 2");
   }
 
-  // ==================== Owner ID Filter (via withFilter) Tests ====================
+  // ==================== Owner ID Filter (via withCriteria) Tests ====================
 
   @Test
-  void withFilter_ownerId_matchesExactOwnerId() {
+  void withCriteria_ownerId_matchesExactOwnerId() {
     // Given: transactions owned by different users
     var ownedByA = createTransaction("Transaction A", BigDecimal.TEN);
     ownedByA.setOwnerId("user-A");
@@ -581,8 +581,8 @@ class TransactionSpecificationsIntegrationTest {
     ownedByB.setOwnerId("user-B");
     transactionRepository.save(ownedByB);
 
-    // When: filter by ownerId via withFilter
-    var spec = TransactionSpecifications.withFilter(filterByOwnerId("user-A"));
+    // When: filter by ownerId via withCriteria
+    var spec = specificationFromFilter(filterByOwnerId("user-A"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only user-A's transaction is returned
@@ -592,7 +592,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_ownerId_isCaseSensitive() {
+  void withCriteria_ownerId_isCaseSensitive() {
     // Given: transactions whose ownerIds differ only in case
     var upperCase = createTransaction("Upper Case Owner", BigDecimal.TEN);
     upperCase.setOwnerId("User-A");
@@ -603,7 +603,7 @@ class TransactionSpecificationsIntegrationTest {
     transactionRepository.save(lowerCase);
 
     // When: filter by exact case "User-A"
-    var spec = TransactionSpecifications.withFilter(filterByOwnerId("User-A"));
+    var spec = specificationFromFilter(filterByOwnerId("User-A"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only the exact-case match is returned (not case-insensitive)
@@ -613,7 +613,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_ownerIdCombinedWithOtherFilters_appliesBothFilters() {
+  void withCriteria_ownerIdCombinedWithOtherFilters_appliesBothFilters() {
     // Given: transactions across owners and banks
     var chaseTransactionForUserA = createTransaction("Chase Payment", BigDecimal.TEN);
     chaseTransactionForUserA.setOwnerId("user-A");
@@ -635,7 +635,7 @@ class TransactionSpecificationsIntegrationTest {
         new TransactionFilter(
             null, "user-A", null, "chase", null, null, null, null, null, null, null, null, null,
             null, null);
-    var spec = TransactionSpecifications.withFilter(filter);
+    var spec = specificationFromFilter(filter);
     var results = transactionRepository.findAll(spec);
 
     // Then: only user-A's Chase transaction is returned
@@ -647,13 +647,13 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Edge Cases ====================
 
   @Test
-  void withFilter_descriptionWithBackslash_escapesCorrectly() {
+  void withCriteria_descriptionWithBackslash_escapesCorrectly() {
     // Given: transaction with backslash in description
     transactionRepository.save(createTransaction("Payment\\Receipt", BigDecimal.TEN));
     transactionRepository.save(createTransaction("PaymentAReceipt", BigDecimal.TEN));
 
     // When: filter by "payment\\receipt"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("payment\\receipt"));
+    var spec = specificationFromFilter(filterByDescription("payment\\receipt"));
     var results = transactionRepository.findAll(spec);
 
     // Then: only literal backslash matches
@@ -662,14 +662,14 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withFilter_descriptionSingleCharacter_matchesCorrectly() {
+  void withCriteria_descriptionSingleCharacter_matchesCorrectly() {
     // Given: transactions
     transactionRepository.save(createTransaction("A Payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("B Payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Payment C", BigDecimal.TEN));
 
     // When: filter by single character "a"
-    var spec = TransactionSpecifications.withFilter(filterByDescription("a"));
+    var spec = specificationFromFilter(filterByDescription("a"));
     var results = transactionRepository.findAll(spec);
 
     // Then: matches containing "a" (case-insensitive)
@@ -680,6 +680,11 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   // ==================== Helper Methods ====================
+
+  private Specification<Transaction> specificationFromFilter(TransactionFilter transactionFilter) {
+    return TransactionSpecifications.withCriteria(
+        TransactionCriteria.fromFilter(transactionFilter));
+  }
 
   // Filter factory methods
   private TransactionFilter filterByDescription(String description) {

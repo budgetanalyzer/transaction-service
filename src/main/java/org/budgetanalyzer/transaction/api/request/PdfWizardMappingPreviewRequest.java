@@ -12,7 +12,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardMappingPreviewCommand;
 
-/** Request DTO for a read-only PDF wizard parser preview. */
+/**
+ * Request DTO for a read-only PDF wizard parser preview.
+ *
+ * <p>API Bean Validation owns request-shape checks. PDF wizard services own table-mapping
+ * semantics, sample compatibility, and parser-content validation.
+ */
 @Schema(description = "PDF wizard parser preview request")
 public record PdfWizardMappingPreviewRequest(
     @Schema(description = "Bank name to place on preview rows", example = "Example Bank")

@@ -47,9 +47,6 @@ public record ViewCriteriaApi(
 
   /** Creates an API ViewCriteriaApi from a domain ViewCriteria. */
   public static ViewCriteriaApi from(ViewCriteria criteria) {
-    if (criteria == null) {
-      return new ViewCriteriaApi(null, null, null, null, null, null, null, null, null);
-    }
     return new ViewCriteriaApi(
         criteria.dateFrom(),
         criteria.dateTo(),

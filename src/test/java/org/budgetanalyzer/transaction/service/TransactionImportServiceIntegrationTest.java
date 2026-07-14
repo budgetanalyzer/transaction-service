@@ -31,6 +31,7 @@ import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
@@ -57,6 +58,8 @@ class TransactionImportServiceIntegrationTest {
           .withPassword("test");
 
   @Autowired private TransactionImportService transactionImportService;
+
+  @Autowired private TransactionService transactionService;
 
   @Autowired private PreviewImportTokenService previewImportTokenService;
 
@@ -88,7 +91,8 @@ class TransactionImportServiceIntegrationTest {
   void previewFile_capitalOneMonthlyCreditPdfRecordsWinningParserRevisionInToken()
       throws IOException {
     var statementFormat =
-        statementFormatRepository.findByEnabledTrue().stream()
+        statementFormatRepository.findAll().stream()
+            .filter(statementFormatCandidate -> statementFormatCandidate.isEnabled())
             .filter(
                 format -> format.getDisplayName().equals("Capital One Credit - Monthly Statement"))
             .findFirst()
@@ -147,6 +151,17 @@ class TransactionImportServiceIntegrationTest {
     assertThat(previewResult.transactions()).hasSize(2);
     assertThat(previewResult.transactions().getFirst().description()).isEqualTo("Coffee Shop");
     assertThat(previewImportToken.parserRevisionId()).isEqualTo(parserRevision.getId());
+
+    var batchImportResult =
+        transactionService.batchImport(
+            previewResult.transactions(), USER_ID, BatchFileImportSource.from(previewImportToken));
+
+    assertThat(batchImportResult.createdTransactions()).hasSize(2);
+    assertThat(transactionRepository.findAll())
+        .extracting("description")
+        .containsExactlyInAnyOrder("Coffee Shop", "Payment");
+    assertThat(transactionRepository.findAll())
+        .allSatisfy(transaction -> assertThat(transaction.getFileImport()).isNotNull());
   }
 
   private PdfWizardSaveCommand pdfSaveCommand() {

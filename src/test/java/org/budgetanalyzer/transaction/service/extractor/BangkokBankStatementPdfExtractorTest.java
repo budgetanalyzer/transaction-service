@@ -1,7 +1,6 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.io.ByteArrayOutputStream;
@@ -20,10 +19,12 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 class BangkokBankStatementPdfExtractorTest {
 
@@ -50,55 +51,62 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void canHandle_withBangkokBankStatementPdf_returnsTrue() throws IOException {
+  void attempt_withBangkokBankStatementPdf_matches() throws IOException {
     var pdfContent =
-        pdfWithLines(
-            "Bangkok Bank",
-            "Statement of Account",
-            "Account No. 123-4-56789-0",
-            "Date Particulars Chq.No. Withdrawal Deposit Balance Via",
-            "01/01/26 Coffee Shop 150.00");
+        bangkokBankPdfWithPages(List.of(List.of(withdrawal("01/01/26", "COFFEE SHOP", "150.00"))));
 
-    assertThat(extractor.canHandle(pdfContent, "bkk-bank-statement.pdf")).isTrue();
+    var parserAttempt = attempt(pdfContent, "bkk-bank-statement.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
   }
 
   @Test
-  void canHandle_withBangkokBankStatementPdfFixture_returnsTrue() throws IOException {
+  void attempt_withBangkokBankStatementPdfFixture_matches() throws IOException {
     var pdfContent = Files.readAllBytes(SAMPLE_PDF_PATH);
 
-    assertThat(extractor.canHandle(pdfContent, "bkk-bank-statement-pdf-sample.pdf")).isTrue();
+    var parserAttempt = attempt(pdfContent, "bkk-bank-statement-pdf-sample.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
   }
 
   @Test
-  void canHandle_withCsvFile_returnsFalse() throws IOException {
+  void attempt_withCsvFile_returnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Date Particulars Withdrawal Deposit");
 
-    assertThat(extractor.canHandle(pdfContent, "bkk-bank-statement.csv")).isFalse();
+    var parserAttempt = attempt(pdfContent, "bkk-bank-statement.csv", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void canHandle_withNullFilename_returnsFalse() throws IOException {
+  void attempt_withNullFilename_returnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Date Particulars Withdrawal Deposit");
 
-    assertThat(extractor.canHandle(pdfContent, null)).isFalse();
+    var parserAttempt = attempt(pdfContent, null, null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void canHandle_withBangkokBankNonStatementPdf_returnsFalse() throws IOException {
+  void attempt_withBangkokBankNonStatementPdf_returnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Product Terms", "Date Particulars Withdrawal Deposit");
 
-    assertThat(extractor.canHandle(pdfContent, "bangkok-bank-terms.pdf")).isFalse();
+    var parserAttempt = attempt(pdfContent, "bangkok-bank-terms.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void canHandle_withBangkokBankStatementMissingTable_returnsFalse() throws IOException {
+  void attempt_withBangkokBankStatementMissingTable_returnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Opening Balance 1,000.00");
 
-    assertThat(extractor.canHandle(pdfContent, "bkk-bank-statement.pdf")).isFalse();
+    var parserAttempt = attempt(pdfContent, "bkk-bank-statement.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
@@ -120,7 +128,7 @@ class BangkokBankStatementPdfExtractorTest {
                 List.of(
                     text("Page 2 of 2"), withdrawal("03/01/26", "ATM WITHDRAWAL", "1,200.00"))));
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions).hasSize(3);
 
@@ -155,7 +163,7 @@ class BangkokBankStatementPdfExtractorTest {
                     balanceForward("01/01/26", "1,000.00"),
                     withdrawalWithBalance("01/01/26", "COFFEE SHOP", "150.00", "850.00"))));
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions)
         .singleElement()
@@ -178,7 +186,7 @@ class BangkokBankStatementPdfExtractorTest {
                     depositWithBalance(
                         "02/01/26", "CASH DEPOSIT", "1,000,000.00", "1,001,000.00"))));
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions)
         .singleElement()
@@ -199,7 +207,7 @@ class BangkokBankStatementPdfExtractorTest {
                     withdrawalWithBalance("01/01/26", "COFFEE SHOP", "150.00", "850.00"),
                     depositWithBalance("02/01/26", "SALARY TRANSFER", "5,000.25", "5,850.25"))));
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions)
         .extracting("date", "description", "amount", "type")
@@ -221,7 +229,7 @@ class BangkokBankStatementPdfExtractorTest {
       throws IOException {
     var pdfContent = Files.readAllBytes(SAMPLE_PDF_PATH);
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions)
         .extracting("date", "description", "amount", "type", "bankName", "currencyIsoCode")
@@ -259,7 +267,7 @@ class BangkokBankStatementPdfExtractorTest {
                     preTableText("01/01/26 This line is before the table 999.00"),
                     withdrawal("02/01/26", "VALID TABLE ROW", "150.00"))));
 
-    var transactions = extractor.extract(pdfContent, "checking-001");
+    var transactions = transactions(pdfContent, "checking-001");
 
     assertThat(transactions)
         .singleElement()
@@ -272,9 +280,7 @@ class BangkokBankStatementPdfExtractorTest {
         bangkokBankPdfWithPages(
             List.of(List.of(bothAmounts("01/01/26", "AMBIGUOUS TRANSFER", "150.00", "25.00"))));
 
-    assertThatThrownBy(() -> extractor.extract(pdfContent, "checking-001"))
-        .isInstanceOf(BusinessException.class)
-        .extracting("code")
+    assertThat(failedAttempt(pdfContent).getCode())
         .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name());
   }
 
@@ -283,9 +289,7 @@ class BangkokBankStatementPdfExtractorTest {
     var pdfContent =
         bangkokBankPdfWithPages(List.of(List.of(noAmount("01/01/26", "MISSING AMOUNT"))));
 
-    assertThatThrownBy(() -> extractor.extract(pdfContent, "checking-001"))
-        .isInstanceOf(BusinessException.class)
-        .extracting("code")
+    assertThat(failedAttempt(pdfContent).getCode())
         .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name());
   }
 
@@ -294,36 +298,31 @@ class BangkokBankStatementPdfExtractorTest {
     var pdfContent =
         bangkokBankPdfWithPages(List.of(List.of(withdrawal("32/01/26", "BAD DATE", "150.00"))));
 
-    assertThatThrownBy(() -> extractor.extract(pdfContent, "checking-001"))
-        .isInstanceOf(BusinessException.class)
-        .extracting("code")
+    assertThat(failedAttempt(pdfContent).getCode())
         .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name());
   }
 
-  @Test
-  void extractEntities_mapsPreviewTransactionsAndLinksFileImport() throws IOException {
-    var pdfContent =
-        bangkokBankPdfWithPages(
-            List.of(List.of(deposit("02/01/26", "SALARY TRANSFER", "5,000.25"))));
-    var fileImport =
-        FileImport.create(
-            "abc123", "bkk-bank-statement.pdf", 1L, 1L, "checking-001", 100L, 1, "user-001");
+  private org.budgetanalyzer.transaction.service.dto.ParserAttempt attempt(
+      byte[] content, String filename, String accountId) {
+    return extractor.attempt(parserRevision(), content, filename, accountId);
+  }
 
-    var transactions = extractor.extractEntities(pdfContent, "checking-001", fileImport);
+  private List<PreviewTransaction> transactions(byte[] content, String accountId) {
+    var parserAttempt = attempt(content, "bkk-bank-statement.pdf", accountId);
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
+    return parserAttempt.transactions();
+  }
 
-    assertThat(transactions)
-        .singleElement()
-        .satisfies(
-            transaction -> {
-              assertThat(transaction.getDate()).isEqualTo(LocalDate.of(2026, 1, 2));
-              assertThat(transaction.getDescription()).isEqualTo("SALARY TRANSFER");
-              assertThat(transaction.getAmount()).isEqualByComparingTo(new BigDecimal("5000.25"));
-              assertThat(transaction.getType()).isEqualTo(TransactionType.CREDIT);
-              assertThat(transaction.getBankName()).isEqualTo("Bangkok Bank");
-              assertThat(transaction.getCurrencyIsoCode()).isEqualTo("THB");
-              assertThat(transaction.getAccountId()).isEqualTo("checking-001");
-              assertThat(transaction.getFileImport()).isSameAs(fileImport);
-            });
+  private org.budgetanalyzer.service.exception.BusinessException failedAttempt(byte[] content) {
+    var parserAttempt = attempt(content, "bkk-bank-statement.pdf", "checking-001");
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.FAILED);
+    return parserAttempt.failure();
+  }
+
+  private ParserRevision parserRevision() {
+    var statementFormat =
+        StatementFormat.createSystemPdfFormat("Bangkok Bank PDF", "Bangkok Bank", "THB");
+    return ParserRevision.createStaticHandler(statementFormat, 1, "bkk-bank-statement-pdf");
   }
 
   private byte[] pdfWithLines(String... lines) throws IOException {

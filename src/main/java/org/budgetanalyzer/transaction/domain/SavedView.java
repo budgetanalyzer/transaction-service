@@ -112,7 +112,7 @@ public class SavedView {
   }
 
   public void setPinnedIds(Set<Long> pinnedIds) {
-    this.pinnedIds = pinnedIds != null ? pinnedIds : new HashSet<>();
+    this.pinnedIds = pinnedIds;
   }
 
   public Set<Long> getExcludedIds() {
@@ -120,7 +120,7 @@ public class SavedView {
   }
 
   public void setExcludedIds(Set<Long> excludedIds) {
-    this.excludedIds = excludedIds != null ? excludedIds : new HashSet<>();
+    this.excludedIds = excludedIds;
   }
 
   public Instant getCreatedAt() {

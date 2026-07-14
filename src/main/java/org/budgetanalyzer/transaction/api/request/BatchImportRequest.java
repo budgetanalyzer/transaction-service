@@ -12,7 +12,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * Request payload for batch importing transactions.
  *
  * <p>Accepts a list of transaction DTOs (typically from the preview endpoint after user edits) and
- * persists them atomically.
+ * persists them atomically. API Bean Validation owns request shape, including transaction list
+ * presence and preview token presence; the service owns business rules after the preview token is
+ * verified.
  */
 @Schema(description = "Request for batch importing transactions")
 public record BatchImportRequest(

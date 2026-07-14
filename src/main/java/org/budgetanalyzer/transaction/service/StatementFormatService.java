@@ -30,7 +30,6 @@ import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatListItem;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
-import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
 /** Service for managing statement format configurations. */
 @Service
@@ -41,7 +40,6 @@ public class StatementFormatService {
   private final StatementFormatRepository statementFormatRepository;
   private final StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
   private final ParserRevisionRepository parserRevisionRepository;
-  private final StatementExtractorRegistry statementExtractorRegistry;
   private final ObjectMapper objectMapper;
 
   /**
@@ -50,19 +48,16 @@ public class StatementFormatService {
    * @param statementFormatRepository repository for format persistence
    * @param statementFormatUserPreferenceRepository repository for user format preferences
    * @param parserRevisionRepository repository for parser revision persistence
-   * @param statementExtractorRegistry registry to notify of format changes
    * @param objectMapper JSON mapper for parser configuration
    */
   public StatementFormatService(
       StatementFormatRepository statementFormatRepository,
       StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository,
       ParserRevisionRepository parserRevisionRepository,
-      StatementExtractorRegistry statementExtractorRegistry,
       ObjectMapper objectMapper) {
     this.statementFormatRepository = statementFormatRepository;
     this.statementFormatUserPreferenceRepository = statementFormatUserPreferenceRepository;
     this.parserRevisionRepository = parserRevisionRepository;
-    this.statementExtractorRegistry = statementExtractorRegistry;
     this.objectMapper = objectMapper;
   }
 
@@ -154,10 +149,6 @@ public class StatementFormatService {
 
     log.info("Created statement format: {} ({})", saved.getId(), saved.getFormatType());
 
-    if (saved.getFormatType() == FormatType.CSV) {
-      statementExtractorRegistry.refreshCsvExtractors();
-    }
-
     return saved;
   }
 
@@ -181,10 +172,6 @@ public class StatementFormatService {
     var saved = statementFormatRepository.save(format);
 
     log.info("Updated statement format: {}", id);
-
-    if (saved.getFormatType() == FormatType.CSV) {
-      statementExtractorRegistry.refreshCsvExtractors();
-    }
 
     return saved;
   }
@@ -238,30 +225,21 @@ public class StatementFormatService {
   private StatementFormat mapToEntity(
       StatementFormatCommand command, StatementFormatScope scope, String userId) {
     var ownerId = scope == StatementFormatScope.USER ? userId : null;
-    if (command.formatType() == FormatType.CSV) {
-      if (scope == StatementFormatScope.SYSTEM) {
-        return StatementFormat.createSystemCsvFormat(
-            command.displayName(),
-            command.bankName(),
-            normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()));
-      }
-      return StatementFormat.createCsvFormat(
+    if (scope == StatementFormatScope.SYSTEM) {
+      return StatementFormat.createSystemCsvFormat(
           command.displayName(),
           command.bankName(),
-          normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()),
-          ownerId);
+          normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()));
     }
-    throw new BusinessException(
-        "Only CSV statement formats can be created through this endpoint.",
-        BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
+    return StatementFormat.createCsvFormat(
+        command.displayName(),
+        command.bankName(),
+        normalizeCurrencyIsoCode(command.defaultCurrencyIsoCode()),
+        ownerId);
   }
 
   private void createInitialParserRevision(
       StatementFormat statementFormat, StatementFormatCommand command) {
-    if (statementFormat.getFormatType() != FormatType.CSV || command.dateHeader() == null) {
-      return;
-    }
-
     var parserConfig = serializeCsvConfig(command);
     var parserRevision = ParserRevision.createCsvColumnConfig(statementFormat, 1, parserConfig);
     parserRevisionRepository.save(parserRevision);
@@ -329,28 +307,19 @@ public class StatementFormatService {
 
   private void validateCreateCommand(StatementFormatCommand command) {
     var fieldErrors = new ArrayList<FieldError>();
-    validateRequired("displayName", command.displayName(), fieldErrors);
-    validateRequired("bankName", command.bankName(), fieldErrors);
-    validateRequired("defaultCurrencyIsoCode", command.defaultCurrencyIsoCode(), fieldErrors);
-    if (command.formatType() == null) {
-      fieldErrors.add(FieldError.forField("formatType", "Format type is required.", null));
-    } else if (command.formatType() != FormatType.CSV) {
+    if (command.formatType() != FormatType.CSV) {
       fieldErrors.add(
           FieldError.forField(
               "formatType",
               "Only CSV statement formats can be created through this endpoint.",
               command.formatType().name()));
     }
-    if (!isBlank(command.defaultCurrencyIsoCode())) {
-      validateCurrencyIsoCode(command.defaultCurrencyIsoCode(), fieldErrors);
-    }
-    if (command.formatType() == FormatType.CSV) {
-      validateRequired("dateHeader", command.dateHeader(), fieldErrors);
-      validateRequired("dateFormat", command.dateFormat(), fieldErrors);
-      validateRequired("descriptionHeader", command.descriptionHeader(), fieldErrors);
-      validateRequired("creditHeader", command.creditHeader(), fieldErrors);
-      validateRequired("debitHeader", command.debitHeader(), fieldErrors);
-    }
+    validateCurrencyIsoCode(command.defaultCurrencyIsoCode(), fieldErrors);
+    validateRequired("dateHeader", command.dateHeader(), fieldErrors);
+    validateRequired("dateFormat", command.dateFormat(), fieldErrors);
+    validateRequired("descriptionHeader", command.descriptionHeader(), fieldErrors);
+    validateRequired("creditHeader", command.creditHeader(), fieldErrors);
+    validateRequired("debitHeader", command.debitHeader(), fieldErrors);
     if (!fieldErrors.isEmpty()) {
       throw new BusinessException(
           "Statement format validation failed.",

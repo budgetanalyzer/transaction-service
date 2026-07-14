@@ -11,11 +11,11 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * Entity tracking imported CSV files to prevent duplicate imports.
+ * Entity tracking uploaded source files for exact-file reupload status.
  *
- * <p>Each successful file import creates a record with the SHA-256 hash of the file content.
- * Duplicate detection is per-user: the same file content can be imported by different users, but
- * the same user cannot import the same file twice.
+ * <p>Each successful token-backed batch import records the SHA-256 hash of the file content.
+ * Reupload tracking is per-user: the same file content can be imported by different users, and a
+ * same-user reupload is reported as advisory metadata rather than rejected.
  */
 @Entity
 @Table(name = "file_import")

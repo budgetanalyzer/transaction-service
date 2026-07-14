@@ -14,6 +14,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.transaction.domain.FormatType;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.ParserType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.StatementFormatScope;
@@ -180,7 +181,8 @@ class StatementFormatRepositoryIntegrationTest {
 
     @Test
     void seededFormatsAreSystemScopedAndVisible() {
-      var formats = statementFormatRepository.findByEnabledTrue();
+      var formats =
+          statementFormatRepository.findAll().stream().filter(StatementFormat::isEnabled).toList();
 
       assertThat(formats)
           .extracting(StatementFormat::getDisplayName)
@@ -198,13 +200,21 @@ class StatementFormatRepositoryIntegrationTest {
 
     @Test
     void seededCsvFormatHasParserRevisionConfiguration() {
-      var csvFormats = statementFormatRepository.findByFormatTypeAndEnabledTrue(FormatType.CSV);
+      var csvFormats =
+          statementFormatRepository.findAll().stream()
+              .filter(statementFormat -> statementFormat.getFormatType() == FormatType.CSV)
+              .filter(StatementFormat::isEnabled)
+              .toList();
 
       assertThat(csvFormats)
           .extracting(StatementFormat::getDisplayName)
           .contains("Bangkok Bank - Statement");
       var parserRevisions =
-          parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG);
+          parserRevisionRepository.findAll().stream()
+              .filter(
+                  parserRevision -> parserRevision.getParserType() == ParserType.CSV_COLUMN_CONFIG)
+              .filter(ParserRevision::isEnabled)
+              .toList();
 
       assertThat(parserRevisions).hasSize(1);
       assertThat(parserRevisions.getFirst().getParserConfig()).contains("\"dateHeader\":\"Date\"");
@@ -215,7 +225,10 @@ class StatementFormatRepositoryIntegrationTest {
     @Test
     void seededPdfFormatsHaveStaticHandlerParserRevisions() {
       var parserRevisions =
-          parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.STATIC_HANDLER);
+          parserRevisionRepository.findAll().stream()
+              .filter(parserRevision -> parserRevision.getParserType() == ParserType.STATIC_HANDLER)
+              .filter(ParserRevision::isEnabled)
+              .toList();
 
       assertThat(parserRevisions).hasSize(4);
       assertThat(parserRevisions)

@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 
 @DataJpaTest
@@ -215,8 +216,7 @@ class TransactionRepositoryIntegrationTest {
 
     // Then: the active candidate is returned with its persisted description
     assertThat(duplicateCandidates).hasSize(1);
-    assertThat(duplicateCandidates.getFirst().getCandidateCriteria()).isEqualTo(candidateKey);
-    assertThat(duplicateCandidates.getFirst().getTransactionId()).isEqualTo(transaction.getId());
+    assertThat(duplicateCandidates.getFirst().getDuplicateIdentity()).isEqualTo(candidateKey);
     assertThat(duplicateCandidates.getFirst().getDescription())
         .isEqualTo("X CORP. PAID FEATURES BASTROP     TX");
   }
@@ -296,7 +296,7 @@ class TransactionRepositoryIntegrationTest {
 
     // Then: the transaction is returned as a candidate
     assertThat(duplicateCandidates).hasSize(1);
-    assertThat(duplicateCandidates.getFirst().getCandidateCriteria()).isEqualTo(candidateKey);
+    assertThat(duplicateCandidates.getFirst().getDuplicateIdentity()).isEqualTo(candidateKey);
   }
 
   @Test
@@ -353,9 +353,8 @@ class TransactionRepositoryIntegrationTest {
 
     // Then: the candidate is matched by fields, not encoded-string parsing
     assertThat(duplicateCandidates).hasSize(1);
-    assertThat(duplicateCandidates.getFirst().getCandidateCriteria())
+    assertThat(duplicateCandidates.getFirst().getDuplicateIdentity())
         .isEqualTo(candidateKey(transaction));
-    assertThat(duplicateCandidates.getFirst().getTransactionId()).isEqualTo(transaction.getId());
   }
 
   // ==================== Helper Methods ====================
@@ -387,7 +386,7 @@ class TransactionRepositoryIntegrationTest {
     return transaction;
   }
 
-  private static TransactionDuplicateCandidateCriteria candidateKey(Transaction transaction) {
+  private static TransactionDuplicateIdentity candidateKey(Transaction transaction) {
     return candidateKey(
         transaction.getAccountId(),
         transaction.getBankName(),
@@ -397,13 +396,13 @@ class TransactionRepositoryIntegrationTest {
         transaction.getCurrencyIsoCode());
   }
 
-  private static TransactionDuplicateCandidateCriteria candidateKey(
+  private static TransactionDuplicateIdentity candidateKey(
       String accountId,
       String bankName,
       LocalDate date,
       BigDecimal amount,
       TransactionType type,
       String currencyIsoCode) {
-    return new TransactionDuplicateCandidateCriteria(bankName, date, amount, type, currencyIsoCode);
+    return new TransactionDuplicateIdentity(bankName, date, amount, type, currencyIsoCode);
   }
 }

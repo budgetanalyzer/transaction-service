@@ -12,7 +12,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
 
-/** Request DTO for saving a PDF wizard statement format. */
+/**
+ * Request DTO for saving a PDF wizard statement format.
+ *
+ * <p>API Bean Validation owns request-shape checks. PDF wizard services own table-mapping
+ * semantics, sample compatibility, persistence scope, and parser-content validation.
+ */
 @Schema(description = "PDF wizard save request")
 public record PdfWizardSaveRequest(
     @Schema(description = "Display name for the saved statement format", example = "Example PDF")

@@ -1,17 +1,16 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-
-import jakarta.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.core.csv.CsvParser;
@@ -29,17 +28,17 @@ import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
 import org.budgetanalyzer.transaction.service.extractor.pdf.PdfTextExtractionService;
 
 /**
- * Registry for statement extractors, managing static handlers and dynamic CSV parser revisions.
+ * Registry for statement extractors, managing static handlers and dynamic parser revisions.
  *
- * <p>Static extractors are Spring components that implement StatementExtractor. Dynamic CSV
- * extractors are created from hidden ParserRevision rows.
+ * <p>Static extractors are Spring components keyed by handler ID. Dynamic extractors are created
+ * directly from the parser revision being attempted, so revision changes do not require a registry
+ * cache refresh.
  */
 @Service
 public class StatementExtractorRegistry {
 
   private static final Logger log = LoggerFactory.getLogger(StatementExtractorRegistry.class);
 
-  private final List<StatementExtractor> staticExtractors;
   private final ParserRevisionRepository parserRevisionRepository;
   private final CsvParser csvParser;
   private final ObjectMapper objectMapper;
@@ -47,11 +46,7 @@ public class StatementExtractorRegistry {
   private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
       new PdfTextTableParserConfigValidator();
 
-  private final Map<Long, StatementExtractor> csvExtractorCache = new ConcurrentHashMap<>();
-  private final Map<Long, StatementExtractor> pdfTextTableExtractorCache =
-      new ConcurrentHashMap<>();
-  private final Map<String, StatementExtractor> staticExtractorsByHandlerKey =
-      new ConcurrentHashMap<>();
+  private final Map<String, StatementExtractor> staticExtractorsByHandlerKey;
 
   /**
    * Constructs a new StatementExtractorRegistry.
@@ -68,26 +63,32 @@ public class StatementExtractorRegistry {
       CsvParser csvParser,
       ObjectMapper objectMapper,
       PdfTextExtractionService pdfTextExtractionService) {
-    this.staticExtractors = staticExtractors;
     this.parserRevisionRepository = parserRevisionRepository;
     this.csvParser = csvParser;
     this.objectMapper = objectMapper;
     this.pdfTextExtractionService = pdfTextExtractionService;
-  }
-
-  @PostConstruct
-  void initialize() {
+    this.staticExtractorsByHandlerKey = buildStaticExtractorMap(staticExtractors);
     log.info(
         "StatementExtractorRegistry initialized with {} static extractors",
-        staticExtractors.size());
+        staticExtractorsByHandlerKey.size());
+  }
+
+  private Map<String, StatementExtractor> buildStaticExtractorMap(
+      List<StatementExtractor> staticExtractors) {
+    var extractorMap = new HashMap<String, StatementExtractor>();
     for (var statementExtractor : staticExtractors) {
       log.info(
           "  - {} ({})",
           statementExtractor.getHandlerKey(),
           statementExtractor.getClass().getSimpleName());
-      staticExtractorsByHandlerKey.put(statementExtractor.getHandlerKey(), statementExtractor);
+      var previousExtractor =
+          extractorMap.put(statementExtractor.getHandlerKey(), statementExtractor);
+      if (previousExtractor != null) {
+        throw new IllegalStateException(
+            "Duplicate statement extractor handler key: " + statementExtractor.getHandlerKey());
+      }
     }
-    refreshCsvExtractors();
+    return Map.copyOf(extractorMap);
   }
 
   /**
@@ -123,57 +124,12 @@ public class StatementExtractorRegistry {
     try {
       var statementExtractor = createExtractor(statementFormat, parserRevision);
       if (statementExtractor.isEmpty()) {
-        return ParserAttempt.notApplicable(
-            parserRevision, "No extractor is registered for parser revision.");
+        return ParserAttempt.notApplicable(parserRevision);
       }
-      if (!statementExtractor.get().canHandle(fileContent, filename)) {
-        return ParserAttempt.notApplicable(
-            parserRevision, "Extractor cannot handle the uploaded file.");
-      }
-
-      var transactions = statementExtractor.get().extract(fileContent, accountId);
-      if (transactions.isEmpty()) {
-        return ParserAttempt.notApplicable(parserRevision, "Extractor parsed no transaction rows.");
-      }
-
-      return ParserAttempt.matched(parserRevision, statementExtractor.get(), transactions);
+      return statementExtractor.get().attempt(parserRevision, fileContent, filename, accountId);
     } catch (BusinessException businessException) {
-      return ParserAttempt.failed(
-          parserRevision, businessException.getMessage(), businessException);
+      return ParserAttempt.failed(parserRevision, businessException);
     }
-  }
-
-  /**
-   * Returns all available extractors (static + cached dynamic).
-   *
-   * @return list of all extractors
-   */
-  public List<StatementExtractor> getAllExtractors() {
-    var allStatementExtractors = new ArrayList<>(staticExtractors);
-    allStatementExtractors.addAll(csvExtractorCache.values());
-    allStatementExtractors.addAll(pdfTextTableExtractorCache.values());
-    return allStatementExtractors;
-  }
-
-  /**
-   * Refreshes the CSV extractor cache from enabled CSV parser revisions.
-   *
-   * <p>Call this after adding or modifying CSV parser revisions.
-   */
-  public void refreshCsvExtractors() {
-    csvExtractorCache.clear();
-
-    var csvParserRevisions =
-        parserRevisionRepository.findByParserTypeAndEnabledTrue(ParserType.CSV_COLUMN_CONFIG);
-    for (var parserRevision : csvParserRevisions) {
-      var statementFormat = parserRevision.getStatementFormat();
-      if (statementFormat.getFormatType() == FormatType.CSV && statementFormat.isEnabled()) {
-        var statementExtractor = createCsvExtractor(statementFormat, parserRevision);
-        csvExtractorCache.put(parserRevision.getId(), statementExtractor);
-      }
-    }
-
-    log.info("Refreshed CSV extractors: {} revisions loaded", csvExtractorCache.size());
   }
 
   private Optional<StatementExtractor> createExtractor(
@@ -183,25 +139,11 @@ public class StatementExtractorRegistry {
     }
     if (parserRevision.getParserType() == ParserType.CSV_COLUMN_CONFIG
         && statementFormat.getFormatType() == FormatType.CSV) {
-      var statementExtractor = csvExtractorCache.get(parserRevision.getId());
-      if (statementExtractor != null) {
-        return Optional.of(statementExtractor);
-      }
-
-      statementExtractor = createCsvExtractor(statementFormat, parserRevision);
-      csvExtractorCache.put(parserRevision.getId(), statementExtractor);
-      return Optional.of(statementExtractor);
+      return Optional.of(createCsvExtractor(statementFormat, parserRevision));
     }
     if (parserRevision.getParserType() == ParserType.PDF_TEXT_TABLE_CONFIG
         && statementFormat.getFormatType() == FormatType.PDF) {
-      var statementExtractor = pdfTextTableExtractorCache.get(parserRevision.getId());
-      if (statementExtractor != null) {
-        return Optional.of(statementExtractor);
-      }
-
-      statementExtractor = createPdfTextTableExtractor(statementFormat, parserRevision);
-      pdfTextTableExtractorCache.put(parserRevision.getId(), statementExtractor);
-      return Optional.of(statementExtractor);
+      return Optional.of(createPdfTextTableExtractor(statementFormat, parserRevision));
     }
     return Optional.empty();
   }
@@ -223,20 +165,19 @@ public class StatementExtractorRegistry {
 
   private ConfigurablePdfTextTableStatementExtractor createPdfTextTableExtractor(
       StatementFormat statementFormat, ParserRevision parserRevision) {
+    PdfTextTableParserConfig pdfTextTableParserConfig;
     try {
-      var pdfTextTableParserConfig =
+      pdfTextTableParserConfig =
           objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
-      pdfTextTableParserConfigValidator.validateOrThrow(pdfTextTableParserConfig);
-      return new ConfigurablePdfTextTableStatementExtractor(
-          statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
-    } catch (BusinessException businessException) {
-      throw businessException;
-    } catch (Exception exception) {
+    } catch (JsonProcessingException jsonProcessingException) {
       throw new BusinessException(
           "Invalid PDF text-table parser configuration for parser revision "
               + parserRevision.getId(),
           BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name(),
-          exception);
+          jsonProcessingException);
     }
+    pdfTextTableParserConfigValidator.validateOrThrow(pdfTextTableParserConfig);
+    return new ConfigurablePdfTextTableStatementExtractor(
+        statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
   }
 }

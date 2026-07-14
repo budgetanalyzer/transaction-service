@@ -1,0 +1,126 @@
+AI SESSION HANDLER WORKER PROTOCOL
+
+CONTEXT
+- workspace_path: /workspace/transaction-service
+- plan_path: /workspace/transaction-service/docs/plans/codebase-simplicity-and-defensive-branch-reduction.md
+- state_path: /workspace/transaction-service/.ai-session-handler/codebase-simplicity-and-defensive-branch-reduction.json
+- run_id: 20260714T094651Z-phase-7
+- transcript_path: /workspace/transaction-service/.ai-session-handler/transcripts/20260714T094651Z-phase-7.txt
+- selected_phase_id: phase-7
+- selected_phase_title: Remove Redundant Extractor and Wizard Branches
+
+INSTRUCTIONS
+- Read repository instructions first, including the nearest AGENTS.md.
+- Inspect current repository state before editing.
+- Implement exactly selected phase phase-7: Remove Redundant Extractor and Wizard Branches.
+- Do not proceed to later phases.
+- Follow the selected phase plan unless repository reality contradicts it.
+- Run the validation commands listed in the selected phase.
+- Do not run git commit, push, checkout, reset, clean, stash, branch creation, or automatic worktree operations.
+- Update only files required for the selected phase.
+- Treat state_path as runner-owned and read-only. Do not create, edit, replace, or delete the state file; report the phase outcome only through the terminal marker.
+- Do not make design-changing guesses. If implementation requires an unplanned product, architecture, schema, API, or workflow decision, stop with <phase-needs-clarification>.
+- Treat user clarification as a first-class stop state, not as failure.
+- End with exactly one terminal marker from the grammar below.
+- Do not emit more than one terminal marker.
+
+FAILURE MODES
+- Use <phase-blocked> when the phase cannot be completed without external action.
+- Use <phase-needs-clarification> when a specific user decision is required.
+- Use <phase-complete> only after implementation and validation for this phase are complete.
+
+PREVIOUS STATE SUMMARY START
+schema_version: 1
+plan:
+  path: /workspace/transaction-service/docs/plans/codebase-simplicity-and-defensive-branch-reduction.md
+  sha256: 86a90b0aa39979297b00f46e811598fedca40b6518819b1f2a64d70bbf0dda44
+  accepted_at: 2026-07-14T08:48:51Z
+completed_phase_ids: phase-1, phase-2, phase-3, phase-4, phase-5, phase-6
+current_phase:
+  id: phase-7
+  title: Remove Redundant Extractor and Wizard Branches
+stop: none
+last_run:
+  run_id: 20260714T093156Z-phase-6
+  phase_id: phase-6
+  status: phase-complete
+  started_at: 2026-07-14T09:31:56Z
+  finished_at: 2026-07-14T09:46:51Z
+  exit_code: 0
+  transcript_path: /workspace/transaction-service/.ai-session-handler/transcripts/20260714T093156Z-phase-6.txt
+  summary: Implemented phase 6 only. Parser attempts now use a single `StatementExtractor.attempt(...)` contract with simplified `ParserAttempt` state. Configurable CSV parses once with the shared CSV parser; configurable PDF extracts one `PdfTextDocument`; static PDF handlers load one parsing representation per attempt. Removed dynamic extractor caches, startup parser-revision scanning, cache refresh APIs, and StatementFormatService refresh coupling. Updated wizard callers, parser tests, statement import docs, and parser-attempt rationale. Added one-parse/load instrumentation for CSV and configurable PDF. Validation passed: `./gradlew clean spotlessApply` and `./gradlew clean build`.
+PREVIOUS STATE SUMMARY END
+
+SELECTED PHASE BODY START
+
+### Goal
+
+Simplify active parser internals after the single-pass contract makes their invariants explicit,
+without reducing supported statement variants.
+
+### Scope
+
+- Replace the CSV date formatter map with a primary formatter and an optional distinct simplified
+  formatter. Retry only when the configured pattern actually contains a removable time component.
+- Remove catch/rethrow blocks that add no context; keep exception translation at the external parser
+  boundary.
+- In configurable PDF, enforce minimum row count once when candidate rows are selected. Retain row
+  width/null checks for malformed external rows, but remove missing-header branches after mapped
+  headers have been proven.
+- In PDF config validation, choose one date-format validity mechanism. Because the supported list is
+  fixed, either trust its tested constants or validate arbitrary patterns, but do not whitelist and
+  reconstruct defensively.
+- Remove unused parser constants/captures and duplicated locals revealed by the refactor.
+- Consolidate identical small mapping/config construction helpers only where there are at least two
+  active production callers.
+- Retain CSV/PDF business rules and field-addressable wizard errors exactly as characterized; the
+  message-sniffing and diagnostics API reductions remain requirement decisions.
+
+### Non-goals
+
+- Do not remove `headerMustContain`, confidence, warnings, diagnostics, category, fuzzy matching, or
+  layout fallbacks in this behavior-preserving phase.
+- Do not apply batch date validation to parser types that did not previously apply it.
+- Do not merge all bank-specific extractors into the generic PDF table engine.
+
+### Required context
+
+- Phase 6 single-pass implementations and parser instrumentation.
+- `ConfigurableCsvStatementExtractor`, `ConfigurablePdfTextTableStatementExtractor`,
+  `PdfTextTableParserConfigValidator`, both wizard services, and static extractor tests.
+- `docs/statement-import.md` and real bank fixtures.
+
+### Implementation notes
+
+- Before deleting a branch, identify the enforced predecessor that makes it unreachable and name it
+  in a test or concise comment where non-obvious.
+- Do not centralize preview and batch date checks merely because they have the same thresholds; they
+  execute at different trust points and both are useful.
+- If two PDFBox extraction implementations produce materially different fixture text, keep them
+  separate and document why instead of forcing a leaky common abstraction.
+- Update affected import documentation and Javadocs in this phase.
+
+### Validation
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Run all CSV/PDF fixtures through both wizard preview and normal transaction preview. Compare dates,
+amounts, types, descriptions, category preview values, account IDs, selected revision, and error
+codes with the Phase 1 baseline.
+
+### Completion criteria
+
+- Formatter, header, and minimum-row invariants are each enforced once.
+- No supported parser layout or wizard response behavior changes.
+- Remaining external-data branches have a concrete malformed-input or fixture rationale.
+
+SELECTED PHASE BODY END
+
+TERMINAL MARKER GRAMMAR START
+<phase-complete>summary</phase-complete>
+<phase-blocked>reason</phase-blocked>
+<phase-needs-clarification>specific question for user</phase-needs-clarification>
+TERMINAL MARKER GRAMMAR END

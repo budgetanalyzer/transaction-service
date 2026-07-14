@@ -102,8 +102,11 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
   The current index shape is maintained by migration
   `V20__remove_account_id_from_duplicate_candidate_index.sql`.
 
-The database returns only structured duplicate candidates. Description matching
-and batch skip/import semantics are service-layer behavior documented in
+Duplicate candidate lookups use the same normalized financial identity value
+that the service uses for grouping preview and batch rows. The native repository
+query expands those identities through structured parameter arrays rather than
+building SQL values into strings. Description matching and batch skip/import
+semantics are service-layer behavior documented in
 [Transaction Duplicate Detection](duplicate-detection.md).
 
 ### file_import
@@ -299,9 +302,11 @@ CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
   memberships
 
 Saved-view criteria, open-ended date behavior, and pinned/excluded membership
-rules are documented in [Saved Views](saved-views.md). Migration
-`V16__delete_legacy_saved_views.sql` removes rows written with the old
-`startDate` and `endDate` criteria JSON shape.
+rules are documented in [Saved Views](saved-views.md). At read time, the
+service resolves the union of `pinned_ids` and `excluded_ids` with one
+owner-scoped active transaction ID lookup before partitioning the result into
+membership groups. Migration `V16__delete_legacy_saved_views.sql` removes rows
+written with the old `startDate` and `endDate` criteria JSON shape.
 
 ## Migration Strategy
 
@@ -387,7 +392,9 @@ CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english
 2. Search transactions by bank, currency, amount, type, and description
 3. Count or page cross-user transaction search results
 4. Resolve owner-scoped duplicate candidates during import
-5. List saved views by user
+5. Resolve active owner-scoped transaction IDs for saved-view membership and
+   bulk operations
+6. List saved views by user
 
 **Index strategy:**
 - Index foreign keys and ownership columns (`file_import_id`, `owner_id`,
@@ -395,8 +402,8 @@ CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english
 - Index date columns for range queries
 - Index frequently filtered transaction columns (`account_id`, `bank_name`,
   `currency_iso_code`, `type`, `deleted`)
-- Keep duplicate candidate lookup aligned with the strict financial identity
-  fields in [Transaction Duplicate Detection](duplicate-detection.md)
+- Keep duplicate candidate lookup aligned with the normalized strict financial
+  identity fields in [Transaction Duplicate Detection](duplicate-detection.md)
 
 ### Performance Monitoring
 

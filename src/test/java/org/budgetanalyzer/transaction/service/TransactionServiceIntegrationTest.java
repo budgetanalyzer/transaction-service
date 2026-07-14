@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
+import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
@@ -118,6 +119,28 @@ class TransactionServiceIntegrationTest {
     assertThat(transactionRepository.findAll()).hasSize(2);
   }
 
+  @Test
+  void bulkDeleteTransactions_duplicateInputIdsDeletesOnceAndReportsSecondAsNotFound() {
+    var transaction = new Transaction();
+    transaction.setAccountId("checking");
+    transaction.setBankName("Capital One");
+    transaction.setDate(LocalDate.of(2025, 11, 18));
+    transaction.setCurrencyIsoCode("USD");
+    transaction.setAmount(new BigDecimal("9.97"));
+    transaction.setType(TransactionType.DEBIT);
+    transaction.setDescription("COFFEE SHOP");
+    transaction.setOwnerId(USER_ID);
+    var savedTransaction = transactionRepository.save(transaction);
+
+    var result =
+        transactionService.bulkDeleteTransactions(
+            List.of(savedTransaction.getId(), savedTransaction.getId()), USER_ID, false);
+
+    assertThat(result.deletedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(savedTransaction.getId());
+    assertThat(transactionRepository.findByIdNotDeleted(savedTransaction.getId())).isEmpty();
+  }
+
   private PreviewTransaction previewTransaction(LocalDate date, String description, String amount) {
     return new PreviewTransaction(
         date,
@@ -134,7 +157,11 @@ class TransactionServiceIntegrationTest {
     return new BatchFileImportSource(
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         originalFilename,
-        statementFormatRepository.findByEnabledTrue().getFirst().getId(),
+        statementFormatRepository.findAll().stream()
+            .filter(statementFormat -> statementFormat.isEnabled())
+            .findFirst()
+            .orElseThrow()
+            .getId(),
         parserRevisionRepository.findAll().getFirst().getId(),
         "account-123",
         1024L);

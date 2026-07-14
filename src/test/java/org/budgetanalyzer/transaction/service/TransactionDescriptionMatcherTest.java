@@ -12,135 +12,98 @@ class TransactionDescriptionMatcherTest {
 
   @Test
   void match_matchesObservedMerchantYearlyAndMonthlyDescriptions() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "X CORP. PAID FEATURESBASTROPTX", 42L, "X CORP. PAID FEATURES BASTROP     TX");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
-    assertThat(transactionDescriptionMatchResult.candidateId()).isEqualTo(42L);
-    assertThat(transactionDescriptionMatchResult.candidateDescription())
-        .isEqualTo("X CORP. PAID FEATURES BASTROP     TX");
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "X CORP. PAID FEATURESBASTROPTX", "X CORP. PAID FEATURES BASTROP     TX"))
+        .isTrue();
   }
 
   @Test
   void match_matchesPunctuationAndWhitespaceOnlyVariants() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "Whole-Foods Market #123", 10L, "Whole Foods Market 123");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "Whole-Foods Market #123", "Whole Foods Market 123"))
+        .isTrue();
   }
 
   @Test
   void match_matchesCaseOnlyVariants() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match("monthly subscription", 11L, "MONTHLY SUBSCRIPTION");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
+    assertThat(transactionDescriptionMatcher.match("monthly subscription", "MONTHLY SUBSCRIPTION"))
+        .isTrue();
   }
 
   @Test
   void match_matchesHighSimilarityLongDescriptions() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "PAYPAL DIGITAL SERVICES", 12L, "PAYPAL DIGITAL SERVICE");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isGreaterThanOrEqualTo(0.90);
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "PAYPAL DIGITAL SERVICES", "PAYPAL DIGITAL SERVICE"))
+        .isTrue();
   }
 
   @Test
   void match_doesNotFuzzyMatchDifferentNumericReferences() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match("TRANSFER 1234567890", 16L, "TRANSFER 1234567891");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isZero();
+    assertThat(transactionDescriptionMatcher.match("TRANSFER 1234567890", "TRANSFER 1234567891"))
+        .isFalse();
   }
 
   @Test
   void match_matchesSameNumericReferenceWithPunctuationAndWhitespaceDifferences() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "TRANSFER REF# 1234567890", 17L, "TRANSFER REF 1234567890");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "TRANSFER REF# 1234567890", "TRANSFER REF 1234567890"))
+        .isTrue();
   }
 
   @Test
   void match_allowsFuzzyMatchWhenNumericReferencesMatch() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "PAYPAL DIGITAL SERVICES REF 1234567890 MONTHLY",
-            18L,
-            "PAYPAL DIGITAL SERVICE REF 1234567890 MONTHLY");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isGreaterThanOrEqualTo(0.90);
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "PAYPAL DIGITAL SERVICES REF 1234567890 MONTHLY",
+                "PAYPAL DIGITAL SERVICE REF 1234567890 MONTHLY"))
+        .isTrue();
   }
 
   @Test
   void match_requiresMultipleNumericTokensToMatchInOrder() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "SUBSCRIPTION SERVICE PLAN REF 1 AUTH 2 MONTHLY PAYMENT",
-            19L,
-            "SUBSCRIPTION SERVICE PLAN REF 2 AUTH 1 MONTHLY PAYMENT");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "SUBSCRIPTION SERVICE PLAN REF 1 AUTH 2 MONTHLY PAYMENT",
+                "SUBSCRIPTION SERVICE PLAN REF 2 AUTH 1 MONTHLY PAYMENT"))
+        .isFalse();
   }
 
   @Test
   void match_matchesMultipleNumericTokensInSameOrder() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "BILL PAY REF 100 AUTH 55 MONTHLY PAYMENT",
-            20L,
-            "BILLPAY REF 100 AUTH 55 MONTHLY PAYMENTS");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isGreaterThanOrEqualTo(0.90);
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "BILL PAY REF 100 AUTH 55 MONTHLY PAYMENT",
+                "BILLPAY REF 100 AUTH 55 MONTHLY PAYMENTS"))
+        .isTrue();
   }
 
   @Test
   void match_requiresNumericTokensOnBothDescriptionsForFuzzyMatch() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match(
-            "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE 42",
-            21L,
-            "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+    assertThat(
+            transactionDescriptionMatcher.match(
+                "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE 42",
+                "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE"))
+        .isFalse();
   }
 
   @Test
   void match_doesNotMatchClearlyDifferentDescriptions() {
-    var transactionDescriptionMatchResult =
-        transactionDescriptionMatcher.match("RENT PAYMENT MAY", 13L, "STARBUCKS STORE 1234");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isZero();
-    assertThat(transactionDescriptionMatchResult.candidateId()).isNull();
-    assertThat(transactionDescriptionMatchResult.candidateDescription()).isNull();
+    assertThat(transactionDescriptionMatcher.match("RENT PAYMENT MAY", "STARBUCKS STORE 1234"))
+        .isFalse();
   }
 
   @Test
   void match_doesNotFuzzyMatchVeryShortDescriptions() {
-    var transactionDescriptionMatchResult = transactionDescriptionMatcher.match("ABC", 14L, "ABD");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isFalse();
+    assertThat(transactionDescriptionMatcher.match("ABC", "ABD")).isFalse();
   }
 
   @Test
   void match_matchesVeryShortDescriptionsOnlyAfterNormalizedExactMatch() {
-    var transactionDescriptionMatchResult = transactionDescriptionMatcher.match("A.B.", 15L, "ab");
-
-    assertThat(transactionDescriptionMatchResult.matched()).isTrue();
-    assertThat(transactionDescriptionMatchResult.similarityScore()).isEqualTo(1.0);
+    assertThat(transactionDescriptionMatcher.match("A.B.", "ab")).isTrue();
   }
 
   @Test
@@ -154,11 +117,11 @@ class TransactionDescriptionMatcherTest {
   @Test
   void match_requiresDescriptions() {
     assertThatNullPointerException()
-        .isThrownBy(() -> transactionDescriptionMatcher.match(null, 1L, "Coffee"))
+        .isThrownBy(() -> transactionDescriptionMatcher.match(null, "Coffee"))
         .withMessage("incomingDescription");
 
     assertThatNullPointerException()
-        .isThrownBy(() -> transactionDescriptionMatcher.match("Coffee", 1L, null))
+        .isThrownBy(() -> transactionDescriptionMatcher.match("Coffee", null))
         .withMessage("candidateDescription");
   }
 }

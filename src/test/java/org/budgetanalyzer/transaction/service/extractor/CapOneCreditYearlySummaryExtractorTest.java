@@ -11,7 +11,11 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 class CapOneCreditYearlySummaryExtractorTest {
 
@@ -27,21 +31,27 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void canHandle_withValidCapitalOnePdf_returnsTrue() {
-    assertThat(extractor.canHandle(pdfContent, "cap-one-credit-yearly-summary-sample.pdf"))
-        .isTrue();
+  void attempt_withValidCapitalOnePdf_matches() {
+    var parserAttempt = attempt(pdfContent, "cap-one-credit-yearly-summary-sample.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
   }
 
   @Test
-  void canHandle_withCsvFile_returnsFalse() {
-    assertThat(extractor.canHandle(pdfContent, "transactions.csv")).isFalse();
+  void attempt_withCsvFile_returnsNotApplicable() {
+    var parserAttempt = attempt(pdfContent, "transactions.csv", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void canHandle_withNonMatchingPdf_returnsFalse() {
+  void attempt_withNonMatchingPdf_returnsNotApplicable() {
     // Random bytes won't match
     var randomBytes = new byte[] {0x25, 0x50, 0x44, 0x46}; // PDF magic bytes only
-    assertThat(extractor.canHandle(randomBytes, "random.pdf")).isFalse();
+
+    var parserAttempt = attempt(randomBytes, "random.pdf", null);
+
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
@@ -51,7 +61,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsTransactions() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     // Fixture contains 15 transactions across 7 categories
     assertThat(transactions).hasSizeGreaterThan(10);
@@ -59,7 +69,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_setsCorrectBankAndCurrency() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
       assertThat(previewTransaction.bankName()).isEqualTo("Capital One");
@@ -70,7 +80,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   @Test
   void extract_withAccountId_setsAccountIdOnAllTransactions() {
     var accountId = "test-account-123";
-    var transactions = extractor.extract(pdfContent, accountId);
+    var transactions = transactions(accountId);
 
     for (var previewTransaction : transactions) {
       assertThat(previewTransaction.accountId()).isEqualTo(accountId);
@@ -79,7 +89,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_parsesYear2024Correctly() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
       assertThat(previewTransaction.date().getYear()).isEqualTo(2024);
@@ -88,7 +98,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsKnownTransactions() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     // Find the TAQUERIA DEL SOL transaction from the dining category
     var taqueriaTransaction =
@@ -103,7 +113,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_handlesCreditsCorrectly() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     // Find the REFUND FROM ONLINE SHOP credit (-$37.27)
     var creditTransaction =
@@ -123,7 +133,7 @@ class CapOneCreditYearlySummaryExtractorTest {
 
   @Test
   void extract_withSamplePdf_extractsCategories() {
-    var transactions = extractor.extract(pdfContent, null);
+    var transactions = transactions(null);
 
     // Verify we have multiple categories
     var categoryCount =
@@ -134,5 +144,23 @@ class CapOneCreditYearlySummaryExtractorTest {
             .count();
 
     assertThat(categoryCount).isGreaterThanOrEqualTo(5L);
+  }
+
+  private org.budgetanalyzer.transaction.service.dto.ParserAttempt attempt(
+      byte[] content, String filename, String accountId) {
+    return extractor.attempt(parserRevision(), content, filename, accountId);
+  }
+
+  private java.util.List<PreviewTransaction> transactions(String accountId) {
+    var parserAttempt = attempt(pdfContent, "cap-one-credit-yearly-summary-sample.pdf", accountId);
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
+    return parserAttempt.transactions();
+  }
+
+  private ParserRevision parserRevision() {
+    var statementFormat =
+        StatementFormat.createSystemPdfFormat("Capital One Yearly", "Capital One", "USD");
+    return ParserRevision.createStaticHandler(
+        statementFormat, 1, "capital-one-credit-yearly-statement");
   }
 }

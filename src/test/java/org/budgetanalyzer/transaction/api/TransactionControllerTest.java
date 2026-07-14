@@ -778,6 +778,42 @@ class TransactionControllerTest {
   }
 
   @Test
+  void batchImport_apiRequestShapeBlankPreviewImportToken_returns400BeforeTokenVerification()
+      throws Exception {
+    var requestBody =
+        """
+        {
+          "previewImportToken": "   ",
+          "transactions": [
+            {
+              "date": "2025-11-18",
+              "description": "COFFEE SHOP",
+              "amount": 9.97,
+              "type": "DEBIT",
+              "bankName": "Capital One",
+              "currencyIsoCode": "USD"
+            }
+          ]
+        }
+        """;
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("previewImportToken"));
+
+    verify(previewImportTokenService, never()).verifyToken(any(), anyString());
+    verify(transactionService, never())
+        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+  }
+
+  @Test
   void batchImport_invalidPreviewImportToken_returns422BeforeService() throws Exception {
     when(previewImportTokenService.verifyToken("bad-token", "test-user"))
         .thenThrow(
@@ -979,6 +1015,35 @@ class TransactionControllerTest {
     assertThat(sortOrders.get(0).getDirection()).isEqualTo(Sort.Direction.DESC);
     assertThat(sortOrders.get(1).getProperty()).isEqualTo("id");
     assertThat(sortOrders.get(1).getDirection()).isEqualTo(Sort.Direction.DESC);
+  }
+
+  @Test
+  void searchTransactions_apiRequestShapeNoFilterParamsPassesNonNullEmptyFilter() throws Exception {
+    when(transactionService.search(any(), any(Pageable.class))).thenReturn(Page.empty());
+
+    mockMvc
+        .perform(get("/v1/transactions/search").with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk());
+
+    var filterCaptor = ArgumentCaptor.forClass(TransactionFilter.class);
+    verify(transactionService).search(filterCaptor.capture(), any(Pageable.class));
+    var filter = filterCaptor.getValue();
+    assertThat(filter).isNotNull();
+    assertThat(filter.id()).isNull();
+    assertThat(filter.ownerId()).isNull();
+    assertThat(filter.accountId()).isNull();
+    assertThat(filter.bankName()).isNull();
+    assertThat(filter.type()).isNull();
+    assertThat(filter.currencyIsoCode()).isNull();
+    assertThat(filter.description()).isNull();
+    assertThat(filter.dateFrom()).isNull();
+    assertThat(filter.dateTo()).isNull();
+    assertThat(filter.minAmount()).isNull();
+    assertThat(filter.maxAmount()).isNull();
+    assertThat(filter.createdAfter()).isNull();
+    assertThat(filter.createdBefore()).isNull();
+    assertThat(filter.updatedAfter()).isNull();
+    assertThat(filter.updatedBefore()).isNull();
   }
 
   @Test
