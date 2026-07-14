@@ -54,7 +54,8 @@ public class PdfTextTableParserConfigValidator {
   public List<FieldError> validate(PdfTextTableParserConfig pdfTextTableParserConfig) {
     var fieldErrors = new ArrayList<FieldError>();
     if (pdfTextTableParserConfig == null) {
-      fieldErrors.add(FieldError.of("parserConfig", "PDF text-table config is required.", null));
+      fieldErrors.add(
+          FieldError.forField("parserConfig", "PDF text-table config is required.", null));
       return fieldErrors;
     }
 
@@ -66,7 +67,7 @@ public class PdfTextTableParserConfigValidator {
         "descriptionHeader", pdfTextTableParserConfig.descriptionHeader(), fieldErrors);
     validateAmountColumns(pdfTextTableParserConfig, fieldErrors);
     if (pdfTextTableParserConfig.yearSource() == null) {
-      fieldErrors.add(FieldError.of("yearSource", "Year source is required.", null));
+      fieldErrors.add(FieldError.forField("yearSource", "Year source is required.", null));
     }
     return fieldErrors;
   }
@@ -89,12 +90,12 @@ public class PdfTextTableParserConfigValidator {
   private void validateFileType(
       PdfTextTableParserConfig pdfTextTableParserConfig, List<FieldError> fieldErrors) {
     if (pdfTextTableParserConfig.fileType() == null) {
-      fieldErrors.add(FieldError.of("fileType", "File type is required.", null));
+      fieldErrors.add(FieldError.forField("fileType", "File type is required.", null));
       return;
     }
     if (pdfTextTableParserConfig.fileType() != PdfTextTableFileType.TEXT_PDF) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "fileType",
               "Only text-based PDF parser configurations are supported.",
               pdfTextTableParserConfig.fileType().name()));
@@ -106,13 +107,13 @@ public class PdfTextTableParserConfigValidator {
     if (pdfTextTableParserConfig.headerMustContain() == null
         || pdfTextTableParserConfig.headerMustContain().isEmpty()) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "headerMustContain",
               "At least one required table header token is required.",
               pdfTextTableParserConfig.headerMustContain()));
     } else if (pdfTextTableParserConfig.headerMustContain().stream().anyMatch(this::isBlank)) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "headerMustContain",
               "Required table header tokens must not be blank.",
               pdfTextTableParserConfig.headerMustContain()));
@@ -121,7 +122,7 @@ public class PdfTextTableParserConfigValidator {
     if (pdfTextTableParserConfig.minimumRows() == null
         || pdfTextTableParserConfig.minimumRows() < MINIMUM_ALLOWED_ROWS) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "minimumRows",
               "Minimum rows must be at least one.",
               pdfTextTableParserConfig.minimumRows()));
@@ -135,7 +136,7 @@ public class PdfTextTableParserConfigValidator {
     }
     if (!SUPPORTED_DATE_FORMATS.contains(dateFormat)) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "dateFormat",
               "Date format is not supported by the PDF text-table parser.",
               dateFormat));
@@ -145,7 +146,8 @@ public class PdfTextTableParserConfigValidator {
       DateTimeFormatter.ofPattern(dateFormat, Locale.ENGLISH)
           .withResolverStyle(ResolverStyle.SMART);
     } catch (IllegalArgumentException illegalArgumentException) {
-      fieldErrors.add(FieldError.of("dateFormat", "Date format pattern is invalid.", dateFormat));
+      fieldErrors.add(
+          FieldError.forField("dateFormat", "Date format pattern is invalid.", dateFormat));
     }
   }
 
@@ -158,7 +160,7 @@ public class PdfTextTableParserConfigValidator {
 
     if (hasSignedAmountColumn && hasDebitCreditColumns) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "amountHeader",
               "Use either a signed amount column or separate debit and credit columns.",
               pdfTextTableParserConfig.amountHeader()));
@@ -168,7 +170,7 @@ public class PdfTextTableParserConfigValidator {
       if (pdfTextTableParserConfig.negativeMeans() == null
           && isBlank(pdfTextTableParserConfig.typeHeader())) {
         fieldErrors.add(
-            FieldError.of(
+            FieldError.forField(
                 "negativeMeans",
                 "A signed amount column requires a type header or negative amount direction.",
                 null));
@@ -182,7 +184,7 @@ public class PdfTextTableParserConfigValidator {
 
   private void validateRequired(String field, String value, List<FieldError> fieldErrors) {
     if (isBlank(value)) {
-      fieldErrors.add(FieldError.of(field, "Field is required.", value));
+      fieldErrors.add(FieldError.forField(field, "Field is required.", value));
     }
   }
 

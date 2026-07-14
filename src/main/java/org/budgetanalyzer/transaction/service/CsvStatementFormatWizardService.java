@@ -380,7 +380,7 @@ public class CsvStatementFormatWizardService {
     var fieldErrors = new ArrayList<FieldError>();
     validateBankAndCurrency(bankName, defaultCurrencyIsoCode, fieldErrors);
     if (mapping == null) {
-      fieldErrors.add(FieldError.of("mapping", "CSV column mapping is required.", null));
+      fieldErrors.add(FieldError.forField("mapping", "CSV column mapping is required.", null));
       throwValidationException(fieldErrors);
     }
 
@@ -393,7 +393,7 @@ public class CsvStatementFormatWizardService {
         "mapping.categoryColumn", mapping.categoryColumn(), csvData.headers(), fieldErrors);
     if (csvData.rows().isEmpty()) {
       fieldErrors.add(
-          FieldError.of("file", "CSV sample must contain at least one data row.", null));
+          FieldError.forField("file", "CSV sample must contain at least one data row.", null));
     }
 
     if (!fieldErrors.isEmpty()) {
@@ -404,11 +404,11 @@ public class CsvStatementFormatWizardService {
   private void validateBankAndCurrency(
       String bankName, String defaultCurrencyIsoCode, List<FieldError> fieldErrors) {
     if (bankName == null || bankName.isBlank()) {
-      fieldErrors.add(FieldError.of("bankName", "Bank name is required.", bankName));
+      fieldErrors.add(FieldError.forField("bankName", "Bank name is required.", bankName));
     }
     if (defaultCurrencyIsoCode == null || defaultCurrencyIsoCode.isBlank()) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "defaultCurrencyIsoCode",
               "Default currency ISO code is required.",
               defaultCurrencyIsoCode));
@@ -418,7 +418,7 @@ public class CsvStatementFormatWizardService {
       Currency.getInstance(defaultCurrencyIsoCode.toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException illegalArgumentException) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "defaultCurrencyIsoCode",
               "Default currency ISO code must be a valid ISO 4217 code.",
               defaultCurrencyIsoCode));
@@ -428,11 +428,12 @@ public class CsvStatementFormatWizardService {
   private void validateColumn(
       String field, String column, List<String> headers, List<FieldError> fieldErrors) {
     if (column == null || column.isBlank()) {
-      fieldErrors.add(FieldError.of(field, "Column is required.", column));
+      fieldErrors.add(FieldError.forField(field, "Column is required.", column));
       return;
     }
     if (!headers.contains(column)) {
-      fieldErrors.add(FieldError.of(field, "Column does not exist in the CSV header row.", column));
+      fieldErrors.add(
+          FieldError.forField(field, "Column does not exist in the CSV header row.", column));
     }
   }
 
@@ -442,18 +443,20 @@ public class CsvStatementFormatWizardService {
       return;
     }
     if (!headers.contains(column)) {
-      fieldErrors.add(FieldError.of(field, "Column does not exist in the CSV header row.", column));
+      fieldErrors.add(
+          FieldError.forField(field, "Column does not exist in the CSV header row.", column));
     }
   }
 
   private void validateDateFormat(String dateFormat, List<FieldError> fieldErrors) {
     if (dateFormat == null || dateFormat.isBlank()) {
-      fieldErrors.add(FieldError.of("mapping.dateFormat", "Date format is required.", dateFormat));
+      fieldErrors.add(
+          FieldError.forField("mapping.dateFormat", "Date format is required.", dateFormat));
       return;
     }
     if (!SUPPORTED_DATE_FORMATS.contains(dateFormat)) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "mapping.dateFormat", "Date format is not supported by the CSV wizard.", dateFormat));
       return;
     }
@@ -461,14 +464,14 @@ public class CsvStatementFormatWizardService {
       buildDateFormatter(dateFormat);
     } catch (IllegalArgumentException illegalArgumentException) {
       fieldErrors.add(
-          FieldError.of("mapping.dateFormat", "Date format pattern is invalid.", dateFormat));
+          FieldError.forField("mapping.dateFormat", "Date format pattern is invalid.", dateFormat));
     }
   }
 
   private void validateAmountMapping(
       CsvWizardColumnMapping mapping, List<String> headers, List<FieldError> fieldErrors) {
     if (mapping.amountMode() == null) {
-      fieldErrors.add(FieldError.of("mapping.amountMode", "Amount mode is required.", null));
+      fieldErrors.add(FieldError.forField("mapping.amountMode", "Amount mode is required.", null));
       return;
     }
     if (mapping.amountMode() == CsvWizardAmountMode.SINGLE_AMOUNT_WITH_TYPE) {
@@ -509,7 +512,7 @@ public class CsvStatementFormatWizardService {
             "CSV wizard mapping did not parse enough valid transaction rows.",
             BudgetAnalyzerError.CSV_WIZARD_VALIDATION_FAILED.name(),
             List.of(
-                FieldError.of(
+                FieldError.forField(
                     "mapping", "Mapping must parse at least one valid transaction row.", null)));
       }
       return transactions;
@@ -521,7 +524,7 @@ public class CsvStatementFormatWizardService {
           "CSV wizard mapping validation failed.",
           BudgetAnalyzerError.CSV_WIZARD_VALIDATION_FAILED.name(),
           List.of(
-              FieldError.of(
+              FieldError.forField(
                   resolveParserErrorField(businessException),
                   businessException.getMessage(),
                   null)));

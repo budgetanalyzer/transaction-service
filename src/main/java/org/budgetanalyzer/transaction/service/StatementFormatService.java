@@ -333,10 +333,10 @@ public class StatementFormatService {
     validateRequired("bankName", command.bankName(), fieldErrors);
     validateRequired("defaultCurrencyIsoCode", command.defaultCurrencyIsoCode(), fieldErrors);
     if (command.formatType() == null) {
-      fieldErrors.add(FieldError.of("formatType", "Format type is required.", null));
+      fieldErrors.add(FieldError.forField("formatType", "Format type is required.", null));
     } else if (command.formatType() != FormatType.CSV) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "formatType",
               "Only CSV statement formats can be created through this endpoint.",
               command.formatType().name()));
@@ -363,15 +363,16 @@ public class StatementFormatService {
     var fieldErrors = new ArrayList<FieldError>();
     if (patch.displayName() != null && patch.displayName().isBlank()) {
       fieldErrors.add(
-          FieldError.of("displayName", "Field must not be blank.", patch.displayName()));
+          FieldError.forField("displayName", "Field must not be blank.", patch.displayName()));
     }
     if (patch.bankName() != null && patch.bankName().isBlank()) {
-      fieldErrors.add(FieldError.of("bankName", "Field must not be blank.", patch.bankName()));
+      fieldErrors.add(
+          FieldError.forField("bankName", "Field must not be blank.", patch.bankName()));
     }
     if (patch.defaultCurrencyIsoCode() != null) {
       if (patch.defaultCurrencyIsoCode().isBlank()) {
         fieldErrors.add(
-            FieldError.of(
+            FieldError.forField(
                 "defaultCurrencyIsoCode",
                 "Field must not be blank.",
                 patch.defaultCurrencyIsoCode()));
@@ -389,7 +390,7 @@ public class StatementFormatService {
 
   private void validateRequired(String field, String value, List<FieldError> fieldErrors) {
     if (isBlank(value)) {
-      fieldErrors.add(FieldError.of(field, "Field is required.", value));
+      fieldErrors.add(FieldError.forField(field, "Field is required.", value));
     }
   }
 
@@ -399,7 +400,7 @@ public class StatementFormatService {
       Currency.getInstance(normalizeCurrencyIsoCode(defaultCurrencyIsoCode));
     } catch (IllegalArgumentException illegalArgumentException) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "defaultCurrencyIsoCode",
               "Default currency ISO code must be a valid ISO 4217 code.",
               defaultCurrencyIsoCode));

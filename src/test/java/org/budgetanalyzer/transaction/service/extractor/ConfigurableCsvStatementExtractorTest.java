@@ -123,7 +123,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/25",
@@ -151,7 +151,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/16/25",
@@ -174,7 +174,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/25",
@@ -206,14 +206,14 @@ class ConfigurableCsvStatementExtractorTest {
               HANDLER_KEY_4_DIGIT,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Date", "31 Dec 2025 10:37",
                           "Description", "Payment for Goods /Services",
                           "Credit", "",
                           "Debit", "379.00")),
-                  new CsvRow(
+                  CsvRow.of(
                       3,
                       Map.of(
                           "Date", "25 Dec 2025",
@@ -236,7 +236,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "invalid-date",
@@ -280,7 +280,7 @@ class ConfigurableCsvStatementExtractorTest {
                   "Transaction Amount",
                   "Transaction Type"),
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/1999",
@@ -300,7 +300,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/25",
@@ -319,7 +319,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/25",
@@ -339,7 +339,7 @@ class ConfigurableCsvStatementExtractorTest {
       var csvData =
           createCsvData(
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Transaction Date", "01/15/25",
@@ -381,7 +381,7 @@ class ConfigurableCsvStatementExtractorTest {
               IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Date", "01/15/25",
@@ -404,7 +404,7 @@ class ConfigurableCsvStatementExtractorTest {
               IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Date", "01/15/25",
@@ -427,7 +427,7 @@ class ConfigurableCsvStatementExtractorTest {
               IMPLICIT_HANDLER_KEY,
               List.of("Date", "Description", "Credit", "Debit"),
               List.of(
-                  new CsvRow(
+                  CsvRow.of(
                       2,
                       Map.of(
                           "Date", "01/15/25",

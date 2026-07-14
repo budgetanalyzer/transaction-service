@@ -207,7 +207,7 @@ public class PdfStatementFormatWizardService {
       throw new BusinessException(
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
-          List.of(FieldError.of("mapping", "PDF column mapping is required.", null)));
+          List.of(FieldError.forField("mapping", "PDF column mapping is required.", null)));
     }
     var configuredHeaderMustContain = configuredHeaderTokens(headerMustContain, mapping);
     return new PdfTextTableParserConfig(
@@ -257,11 +257,11 @@ public class PdfStatementFormatWizardService {
   private void validateBankAndCurrency(String bankName, String defaultCurrencyIsoCode) {
     var fieldErrors = new ArrayList<FieldError>();
     if (bankName == null || bankName.isBlank()) {
-      fieldErrors.add(FieldError.of("bankName", "Bank name is required.", bankName));
+      fieldErrors.add(FieldError.forField("bankName", "Bank name is required.", bankName));
     }
     if (defaultCurrencyIsoCode == null || defaultCurrencyIsoCode.isBlank()) {
       fieldErrors.add(
-          FieldError.of(
+          FieldError.forField(
               "defaultCurrencyIsoCode",
               "Default currency ISO code is required.",
               defaultCurrencyIsoCode));
@@ -270,7 +270,7 @@ public class PdfStatementFormatWizardService {
         Currency.getInstance(defaultCurrencyIsoCode.toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException illegalArgumentException) {
         fieldErrors.add(
-            FieldError.of(
+            FieldError.forField(
                 "defaultCurrencyIsoCode",
                 "Default currency ISO code must be a valid ISO 4217 code.",
                 defaultCurrencyIsoCode));
@@ -289,7 +289,7 @@ public class PdfStatementFormatWizardService {
       throw new BusinessException(
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
-          List.of(FieldError.of("displayName", "Display name is required.", displayName)));
+          List.of(FieldError.forField("displayName", "Display name is required.", displayName)));
     }
   }
 
@@ -317,7 +317,7 @@ public class PdfStatementFormatWizardService {
           "PDF wizard mapping validation failed.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
           List.of(
-              FieldError.of(
+              FieldError.forField(
                   resolveParserErrorField(businessException),
                   businessException.getMessage(),
                   null)));

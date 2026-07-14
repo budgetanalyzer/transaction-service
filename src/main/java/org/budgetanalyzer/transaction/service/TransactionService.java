@@ -393,7 +393,7 @@ public class TransactionService {
       if (date != null) {
         if (date.getYear() < 2000) {
           errors.add(
-              FieldError.of(
+              FieldError.forIndexedField(
                   i,
                   "date",
                   "Transaction date "
@@ -403,7 +403,7 @@ public class TransactionService {
                   date));
         } else if (date.isAfter(maxAllowedDate)) {
           errors.add(
-              FieldError.of(
+              FieldError.forIndexedField(
                   i,
                   "date",
                   "Transaction date "

@@ -507,7 +507,7 @@ class StatementFormatControllerTest {
                   "CSV wizard mapping validation failed.",
                   BudgetAnalyzerError.CSV_WIZARD_VALIDATION_FAILED.name(),
                   List.of(
-                      org.budgetanalyzer.service.api.FieldError.of(
+                      org.budgetanalyzer.service.api.FieldError.forField(
                           "mapping.typeColumn", "Column is required.", null))));
 
       mockMvc

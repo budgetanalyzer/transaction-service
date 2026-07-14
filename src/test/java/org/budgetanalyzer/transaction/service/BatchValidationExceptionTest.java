@@ -31,8 +31,8 @@ class BatchValidationExceptionTest {
   void containsFieldErrors() {
     var errors =
         List.of(
-            FieldError.of(0, "amount", "Amount cannot be null", null),
-            FieldError.of(2, "date", "Invalid date format", null));
+            FieldError.forIndexedField(0, "amount", "Amount cannot be null", null),
+            FieldError.forIndexedField(2, "date", "Invalid date format", null));
 
     var exception = new BatchValidationException(errors);
 
@@ -47,8 +47,8 @@ class BatchValidationExceptionTest {
   void messageIncludesErrorCount() {
     var errors =
         List.of(
-            FieldError.of(0, "amount", "Amount cannot be null", null),
-            FieldError.of(2, "date", "Invalid date format", null));
+            FieldError.forIndexedField(0, "amount", "Amount cannot be null", null),
+            FieldError.forIndexedField(2, "date", "Invalid date format", null));
 
     var exception = new BatchValidationException(errors);
 
