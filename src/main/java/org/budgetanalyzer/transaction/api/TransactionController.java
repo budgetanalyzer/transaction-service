@@ -169,11 +169,7 @@ public class TransactionController {
           @NotNull
           @RequestParam("file")
           MultipartFile file) {
-    log.info(
-        "Received preview request format: {} accountId: {} fileName: {}",
-        statementFormatId,
-        accountId.orElse(null),
-        file.getOriginalFilename());
+    log.info("Received preview request format: {}", statementFormatId);
 
     var userId = getCurrentUserId();
     return PreviewResponse.from(
@@ -250,10 +246,9 @@ public class TransactionController {
     log.info("Received batch import request with {} transactions", request.transactions().size());
 
     var userId = getCurrentUserId();
-    var previewImportToken = requirePreviewImportToken(request);
     var fileImportSource =
         BatchFileImportSource.from(
-            previewImportTokenService.verifyToken(previewImportToken, userId));
+            previewImportTokenService.verifyToken(request.previewImportToken(), userId));
     var previewTransactions =
         request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
     var result = transactionService.batchImport(previewTransactions, userId, fileImportSource);
@@ -263,13 +258,6 @@ public class TransactionController {
         result.duplicatesSkipped(),
         result.duplicatesImported(),
         result.createdTransactions().stream().map(TransactionResponse::from).toList());
-  }
-
-  private String requirePreviewImportToken(BatchImportRequest request) {
-    if (request.previewImportToken() == null || request.previewImportToken().isBlank()) {
-      throw new InvalidRequestException("previewImportToken is required");
-    }
-    return request.previewImportToken();
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")
@@ -353,17 +341,10 @@ public class TransactionController {
           Pageable pageable) {
     validateSortFields(pageable);
     log.info(
-        "Cross-user transaction search request - page: {} size: {} sort: {} "
-            + "hasIdentityFilters: {} hasTextFilters: {} hasDateFilter: {} "
-            + "hasAmountFilter: {} hasTimestampFilter: {}",
+        "Cross-user transaction search request - page: {} size: {} sort: {}",
         pageable.getPageNumber(),
         pageable.getPageSize(),
-        pageable.getSort(),
-        hasIdentityFilters(filter),
-        hasTextFilters(filter),
-        hasDateFilter(filter),
-        hasAmountFilter(filter),
-        hasTimestampFilter(filter));
+        pageable.getSort());
     var page = transactionService.search(filter, pageable);
 
     return PagedResponse.from(page, TransactionResponse::from);
@@ -382,14 +363,7 @@ public class TransactionController {
       })
   @GetMapping(path = "/search/count", produces = "application/json")
   public long countTransactionsAcrossUsers(@ParameterObject @Valid TransactionFilter filter) {
-    log.info(
-        "Cross-user transaction count request - hasIdentityFilters: {} hasTextFilters: {} "
-            + "hasDateFilter: {} hasAmountFilter: {} hasTimestampFilter: {}",
-        hasIdentityFilters(filter),
-        hasTextFilters(filter),
-        hasDateFilter(filter),
-        hasAmountFilter(filter),
-        hasTimestampFilter(filter));
+    log.info("Cross-user transaction count request");
     return transactionService.countNotDeleted(filter);
   }
 
@@ -449,11 +423,7 @@ public class TransactionController {
   @PatchMapping(path = "/{id}", consumes = "application/json", produces = "application/json")
   public TransactionResponse updateTransaction(
       @PathVariable("id") Long id, @Valid @RequestBody TransactionUpdateRequest request) {
-    log.info(
-        "Received update transaction request id: {} description: {} accountId: {}",
-        id,
-        request.description(),
-        request.accountId());
+    log.info("Received update transaction request id: {}", id);
 
     var userId = getCurrentUserId();
     var canActOnAny = SecurityContextUtil.hasAuthority("transactions:write:any");
@@ -561,36 +531,5 @@ public class TransactionController {
                 + String.join(", ", ALLOWED_SORT_FIELDS));
       }
     }
-  }
-
-  private boolean hasIdentityFilters(TransactionFilter filter) {
-    return filter.id() != null || hasText(filter.ownerId());
-  }
-
-  private boolean hasTextFilters(TransactionFilter filter) {
-    return hasText(filter.accountId())
-        || hasText(filter.bankName())
-        || hasText(filter.currencyIsoCode())
-        || hasText(filter.description())
-        || filter.type() != null;
-  }
-
-  private boolean hasDateFilter(TransactionFilter filter) {
-    return filter.dateFrom() != null || filter.dateTo() != null;
-  }
-
-  private boolean hasAmountFilter(TransactionFilter filter) {
-    return filter.minAmount() != null || filter.maxAmount() != null;
-  }
-
-  private boolean hasTimestampFilter(TransactionFilter filter) {
-    return filter.createdAfter() != null
-        || filter.createdBefore() != null
-        || filter.updatedAfter() != null
-        || filter.updatedBefore() != null;
-  }
-
-  private boolean hasText(String value) {
-    return value != null && !value.isBlank();
   }
 }

@@ -1,18 +1,15 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.repository.FileImportRepository;
 
-/** Service for tracking imported files and detecting duplicates. */
+/** Service for tracking imported files and exact reupload status. */
 @Service
 public class FileImportTrackingService {
 
@@ -31,19 +28,6 @@ public class FileImportTrackingService {
       FileImportRepository fileImportRepository, FileHashService fileHashService) {
     this.fileImportRepository = fileImportRepository;
     this.fileHashService = fileHashService;
-  }
-
-  /**
-   * Checks if a file has already been imported by the specified user.
-   *
-   * @param file the file to check
-   * @param userId the user ID to check against
-   * @return file hash and existing import record (if any)
-   * @throws IOException if reading the file fails
-   */
-  public FileCheckResult checkFile(MultipartFile file, String userId) throws IOException {
-    var hash = fileHashService.computeHash(file);
-    return checkHash(hash, userId);
   }
 
   /**
@@ -68,38 +52,6 @@ public class FileImportTrackingService {
   public FileCheckResult checkHash(String hash, String userId) {
     var existingImport = fileImportRepository.findByContentHashAndImportedBy(hash, userId);
     return new FileCheckResult(hash, existingImport);
-  }
-
-  /**
-   * Checks file and throws exception if already imported by the user.
-   *
-   * @param file the file to check
-   * @param userId the user ID to check against
-   * @return the computed file hash
-   * @throws BusinessException if file was already imported by this user
-   * @throws IOException if reading the file fails
-   */
-  public String checkAndRejectDuplicate(MultipartFile file, String userId) throws IOException {
-    var result = checkFile(file, userId);
-    if (result.existingImport().isPresent()) {
-      var existing = result.existingImport().get();
-      log.warn(
-          "Duplicate file detected: '{}' matches previously imported file '{}' from {}",
-          file.getOriginalFilename(),
-          existing.getOriginalFilename(),
-          existing.getImportedAt());
-
-      throw new BusinessException(
-          String.format(
-              "File '%s' has already been imported on %s (original filename: '%s', %d "
-                  + "transactions). The same file content cannot be imported twice.",
-              file.getOriginalFilename(),
-              existing.getImportedAt(),
-              existing.getOriginalFilename(),
-              existing.getTransactionCount()),
-          BudgetAnalyzerError.FILE_ALREADY_IMPORTED.name());
-    }
-    return result.hash();
   }
 
   /**
@@ -136,10 +88,7 @@ public class FileImportTrackingService {
             importedBy);
 
     log.info(
-        "Recording file import: filename='{}' hash='{}' statementFormatId={} "
-            + "parserRevisionId={} transactions={}",
-        originalFilename,
-        contentHash.substring(0, 8) + "...",
+        "Recording file import: statementFormatId={} parserRevisionId={} transactions={}",
         statementFormatId,
         parserRevisionId,
         transactionCount);
@@ -147,6 +96,6 @@ public class FileImportTrackingService {
     return fileImportRepository.save(fileImport);
   }
 
-  /** Result of checking a file for duplicate import. */
+  /** Result of checking a file for prior exact import by the same user. */
   public record FileCheckResult(String hash, Optional<FileImport> existingImport) {}
 }

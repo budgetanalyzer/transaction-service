@@ -1,10 +1,7 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.time.format.DateTimeFormatter;
-import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
@@ -140,14 +137,6 @@ public class PdfTextTableParserConfigValidator {
               "dateFormat",
               "Date format is not supported by the PDF text-table parser.",
               dateFormat));
-      return;
-    }
-    try {
-      DateTimeFormatter.ofPattern(dateFormat, Locale.ENGLISH)
-          .withResolverStyle(ResolverStyle.SMART);
-    } catch (IllegalArgumentException illegalArgumentException) {
-      fieldErrors.add(
-          FieldError.forField("dateFormat", "Date format pattern is invalid.", dateFormat));
     }
   }
 

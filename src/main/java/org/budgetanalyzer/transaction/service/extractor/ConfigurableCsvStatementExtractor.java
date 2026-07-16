@@ -2,7 +2,6 @@ package org.budgetanalyzer.transaction.service.extractor;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -11,21 +10,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.budgetanalyzer.core.csv.CsvData;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.core.csv.CsvRow;
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
-import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
@@ -46,7 +44,8 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
   private final ParserRevision parserRevision;
   private final CsvColumnParserConfig csvColumnParserConfig;
   private final CsvParser csvParser;
-  private final Map<String, DateTimeFormatter> dateFormatterCache = new HashMap<>();
+  private final DateTimeFormatter primaryDateFormatter;
+  private final DateTimeFormatter simplifiedDateFormatter;
 
   /**
    * Constructs a new ConfigurableCsvStatementExtractor.
@@ -65,8 +64,8 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
     this.parserRevision = parserRevision;
     this.csvColumnParserConfig = csvColumnParserConfig;
     this.csvParser = csvParser;
-    this.dateFormatterCache.put(
-        csvColumnParserConfig.dateFormat(), buildDateFormatter(csvColumnParserConfig.dateFormat()));
+    this.primaryDateFormatter = buildDateFormatter(csvColumnParserConfig.dateFormat());
+    this.simplifiedDateFormatter = buildSimplifiedDateFormatter(csvColumnParserConfig.dateFormat());
   }
 
   private static Map<String, TransactionType> initializeTransactionTypeMap() {
@@ -84,49 +83,28 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
   }
 
   @Override
-  public boolean canHandle(byte[] fileContent, String filename) {
-    if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
-      return false;
+  public ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
+    if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".csv")) {
+      return ParserAttempt.notApplicable(parserRevision);
     }
-    return validateHeaders(fileContent);
-  }
 
-  @Override
-  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
       var csvData =
           csvParser.parseCsvInputStream(
-              new ByteArrayInputStream(fileContent), "preview.csv", getHandlerKey());
-
-      return csvData.rows().stream().map(row -> mapToPreview(row, accountId)).toList();
+              new ByteArrayInputStream(fileContent), filename, getHandlerKey());
+      if (!hasMappedHeaders(csvData)) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      var transactions = mapRows(csvData, accountId);
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
     } catch (BusinessException e) {
-      throw e;
+      return ParserAttempt.failed(parserRevision, e);
     } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to parse CSV file: " + e.getMessage(),
-          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          e);
-    }
-  }
-
-  @Override
-  public List<Transaction> extractEntities(
-      byte[] fileContent, String accountId, FileImport fileImport) {
-    try {
-      var csvData =
-          csvParser.parseCsvInputStream(
-              new ByteArrayInputStream(fileContent),
-              fileImport.getOriginalFilename(),
-              getHandlerKey());
-
-      return csvData.rows().stream().map(row -> mapToEntity(row, accountId, fileImport)).toList();
-    } catch (BusinessException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to parse CSV file: " + e.getMessage(),
-          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          e);
+      return ParserAttempt.failed(parserRevision, csvParsingError(e));
     }
   }
 
@@ -135,44 +113,38 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
     return "statement-format-" + format.getId() + "-revision-" + parserRevision.getId();
   }
 
-  private boolean validateHeaders(byte[] content) {
-    try {
-      var text = new String(content, StandardCharsets.UTF_8);
-      var lines = text.split("\\r?\\n");
-      if (lines.length == 0) {
-        return false;
-      }
-
-      var headerLine = lines[0];
-      var headers = Set.of(headerLine.split(","));
-
-      // Check required headers exist
-      var requiredHeaders =
-          List.of(
-              csvColumnParserConfig.dateHeader(),
-              csvColumnParserConfig.descriptionHeader(),
-              csvColumnParserConfig.creditHeader());
-
-      for (var header : requiredHeaders) {
-        if (header != null && !containsHeader(headers, header)) {
-          log.debug(
-              "Format '{}' header validation failed: missing '{}' in headers: {}",
-              getHandlerKey(),
-              header,
-              headers);
-          return false;
-        }
-      }
-
-      return true;
-    } catch (Exception e) {
-      log.debug("Header validation failed for format '{}': {}", getHandlerKey(), e.getMessage());
-      return false;
-    }
+  private List<PreviewTransaction> mapRows(CsvData csvData, String accountId) {
+    return csvData.rows().stream().map(row -> mapToPreview(row, accountId)).toList();
   }
 
-  private boolean containsHeader(Set<String> headers, String expected) {
+  private boolean hasMappedHeaders(CsvData csvData) {
+    var requiredHeaders =
+        new String[] {
+          csvColumnParserConfig.dateHeader(),
+          csvColumnParserConfig.descriptionHeader(),
+          csvColumnParserConfig.creditHeader(),
+          csvColumnParserConfig.debitHeader(),
+          csvColumnParserConfig.typeHeader(),
+          csvColumnParserConfig.categoryHeader()
+        };
+    for (var header : requiredHeaders) {
+      if (header != null && !containsHeader(csvData.headers(), header)) {
+        log.debug("Format '{}' header validation failed for a mapped column", getHandlerKey());
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean containsHeader(List<String> headers, String expected) {
     return headers.stream().map(String::trim).anyMatch(h -> h.equalsIgnoreCase(expected));
+  }
+
+  private BusinessException csvParsingError(Exception exception) {
+    return new BusinessException(
+        "Failed to parse CSV file: " + exception.getMessage(),
+        BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+        exception);
   }
 
   private PreviewTransaction mapToPreview(CsvRow csvRow, String accountId) {
@@ -195,29 +167,6 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
         format.getBankName(),
         format.getDefaultCurrencyIsoCode(),
         accountId);
-  }
-
-  private Transaction mapToEntity(CsvRow csvRow, String accountId, FileImport fileImport) {
-    var context = new CsvFileContext(csvRow);
-
-    var date = parseDate(context);
-    validateDateNotBeforeYear2000(date, context);
-    validateDateNotTooFarInFuture(date, context);
-
-    var description = getRequiredValue(context, csvColumnParserConfig.descriptionHeader());
-    var typeAndAmount = parseTypeAndAmount(context);
-
-    var transaction = new Transaction();
-    transaction.setAccountId(accountId);
-    transaction.setBankName(format.getBankName());
-    transaction.setDescription(description);
-    transaction.setDate(date);
-    transaction.setCurrencyIsoCode(format.getDefaultCurrencyIsoCode());
-    transaction.setType(typeAndAmount.type());
-    transaction.setAmount(typeAndAmount.amount());
-    transaction.setFileImport(fileImport);
-
-    return transaction;
   }
 
   private record TypeAndAmount(TransactionType type, BigDecimal amount) {}
@@ -263,43 +212,38 @@ public class ConfigurableCsvStatementExtractor implements StatementExtractor {
 
   private LocalDate parseDate(CsvFileContext context) {
     var rawDate = getRequiredValue(context, csvColumnParserConfig.dateHeader());
-    var dateFormat = csvColumnParserConfig.dateFormat();
-    var formatter = dateFormatterCache.get(dateFormat);
 
     try {
-      return LocalDate.from(formatter.parse(rawDate));
-    } catch (DateTimeParseException d) {
-      try {
-        return parseWithSimplifiedFormat(dateFormat, rawDate);
-      } catch (Exception e) {
-        throw new BusinessException(
-            String.format(
-                "Invalid date value '%s' at line %d", rawDate, context.row().lineNumber()),
-            BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+      return LocalDate.from(primaryDateFormatter.parse(rawDate));
+    } catch (DateTimeParseException dateTimeParseException) {
+      if (simplifiedDateFormatter != null) {
+        try {
+          return LocalDate.from(simplifiedDateFormatter.parse(rawDate));
+        } catch (DateTimeParseException simplifiedDateTimeParseException) {
+          throw invalidDateValue(rawDate, context);
+        }
       }
+      throw invalidDateValue(rawDate, context);
     }
   }
 
-  private LocalDate parseWithSimplifiedFormat(String dateFormat, String rawDate) {
-    var simpleFormatter = getSimpleFormatter(dateFormat);
-    return LocalDate.from(simpleFormatter.parse(rawDate));
-  }
-
-  private DateTimeFormatter getSimpleFormatter(String dateFormat) {
+  private DateTimeFormatter buildSimplifiedDateFormatter(String dateFormat) {
     var simplifiedPattern = dateFormat.replaceAll("\\s*HH(:mm(:ss)?)?", "").trim();
-    var simpleFormatter = dateFormatterCache.get(simplifiedPattern);
-
-    if (simpleFormatter == null) {
-      simpleFormatter = buildDateFormatter(simplifiedPattern);
-      dateFormatterCache.put(simplifiedPattern, simpleFormatter);
+    if (simplifiedPattern.equals(dateFormat)) {
+      return null;
     }
-
-    return simpleFormatter;
+    return buildDateFormatter(simplifiedPattern);
   }
 
   private DateTimeFormatter buildDateFormatter(String dateFormat) {
     return DateTimeFormatter.ofPattern(dateFormat, Locale.ROOT)
         .withResolverStyle(ResolverStyle.SMART);
+  }
+
+  private BusinessException invalidDateValue(String rawDate, CsvFileContext context) {
+    return new BusinessException(
+        String.format("Invalid date value '%s' at line %d", rawDate, context.row().lineNumber()),
+        BudgetAnalyzerError.CSV_PARSING_ERROR.name());
   }
 
   private void validateDateNotBeforeYear2000(LocalDate date, CsvFileContext context) {

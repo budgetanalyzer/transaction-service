@@ -177,7 +177,6 @@ StatementFormat -> Transaction import flow through public ID metadata
 - `FormatType` - `CSV`, `PDF`, `XLSX`
 - `StatementFormatScope` - `SYSTEM`, `USER`
 - `ParserType` - `STATIC_HANDLER`, `CSV_COLUMN_CONFIG`, `PDF_TEXT_TABLE_CONFIG`
-- `MembershipType` - `MATCHED`, `PINNED`
 
 ## Discovery Commands
 

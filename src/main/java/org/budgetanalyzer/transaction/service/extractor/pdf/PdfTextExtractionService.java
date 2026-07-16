@@ -58,8 +58,6 @@ public class PdfTextExtractionService {
       }
 
       return new PdfTextDocument(pages, detectTableCandidates(pages));
-    } catch (BusinessException businessException) {
-      throw businessException;
     } catch (IOException ioException) {
       throw new BusinessException(
           "Failed to extract text from PDF: " + ioException.getMessage(),

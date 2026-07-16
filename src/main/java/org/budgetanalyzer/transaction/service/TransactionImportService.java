@@ -88,10 +88,9 @@ public class TransactionImportService {
     var parserRevision = parserAttempt.parserRevision();
 
     log.info(
-        "Previewing file with statementFormatId={} parserRevisionId={}: {}",
+        "Previewing file with statementFormatId={} parserRevisionId={}",
         statementFormat.getId(),
-        parserRevision.getId(),
-        originalFilename);
+        parserRevision.getId());
 
     var previewImportToken =
         previewImportTokenService.createToken(
@@ -104,10 +103,7 @@ public class TransactionImportService {
             file.getSize());
     var extractedTransactions = parserAttempt.transactions();
 
-    log.info(
-        "Successfully previewed {} transactions from file {}",
-        extractedTransactions.size(),
-        originalFilename);
+    log.info("Successfully previewed {} transactions", extractedTransactions.size());
 
     var transactions = markDuplicates(extractedTransactions, userId);
 

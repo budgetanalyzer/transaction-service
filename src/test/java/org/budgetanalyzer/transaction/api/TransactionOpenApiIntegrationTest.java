@@ -169,8 +169,9 @@ class TransactionOpenApiIntegrationTest {
     assertThat(previewTransactionSchemaJsonNode.at("/properties/duplicateReason").isMissingNode())
         .isFalse();
     assertThat(requiredPropertyNames(previewTransactionSchemaJsonNode))
-        .contains("duplicate")
-        .doesNotContain("duplicateReason");
+        .contains(
+            "date", "description", "amount", "type", "bankName", "currencyIsoCode", "duplicate")
+        .doesNotContain("category", "accountId", "duplicateReason");
     assertThat(
             previewTransactionSchemaJsonNode
                 .at("/properties/duplicate")

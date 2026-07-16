@@ -31,7 +31,6 @@ import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatUserPreferenceRepository;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatPatch;
-import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class StatementFormatServiceTest {
@@ -39,7 +38,6 @@ class StatementFormatServiceTest {
   @Mock private StatementFormatRepository statementFormatRepository;
   @Mock private StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
   @Mock private ParserRevisionRepository parserRevisionRepository;
-  @Mock private StatementExtractorRegistry statementExtractorRegistry;
 
   private StatementFormatService statementFormatService;
 
@@ -50,7 +48,6 @@ class StatementFormatServiceTest {
             statementFormatRepository,
             statementFormatUserPreferenceRepository,
             parserRevisionRepository,
-            statementExtractorRegistry,
             new ObjectMapper().findAndRegisterModules());
   }
 
@@ -303,7 +300,6 @@ class StatementFormatServiceTest {
       assertThat(result.getScope()).isEqualTo(StatementFormatScope.USER);
       assertThat(result.getOwnerId()).isEqualTo("usr_owner");
       verify(parserRevisionRepository).save(any());
-      verify(statementExtractorRegistry).refreshCsvExtractors();
     }
 
     @Test
@@ -331,7 +327,6 @@ class StatementFormatServiceTest {
       assertThat(result.getOwnerId()).isNull();
       assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("USD");
       verify(parserRevisionRepository).save(any());
-      verify(statementExtractorRegistry).refreshCsvExtractors();
     }
 
     @Test
@@ -391,6 +386,42 @@ class StatementFormatServiceTest {
     }
 
     @Test
+    void rejectsCsvFormatsWithInvalidDatePatternBeforePersistence() {
+      var command =
+          new StatementFormatCommand(
+              "Test Bank - CSV",
+              FormatType.CSV,
+              "Test Bank",
+              "USD",
+              null,
+              "Date",
+              "not-a-pattern",
+              "Description",
+              "Amount",
+              "Amount",
+              null,
+              null);
+
+      assertThatThrownBy(() -> statementFormatService.createFormat(command, "usr_owner", false))
+          .isInstanceOf(BusinessException.class)
+          .satisfies(
+              exception -> {
+                var businessException = (BusinessException) exception;
+                assertThat(businessException.getCode())
+                    .isEqualTo(BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name());
+                assertThat(businessException.getFieldErrors())
+                    .anySatisfy(
+                        fieldError -> {
+                          assertThat(fieldError.getField()).isEqualTo("dateFormat");
+                          assertThat(fieldError.getRejectedValue()).isEqualTo("not-a-pattern");
+                        });
+              });
+
+      verify(statementFormatRepository, never()).save(any());
+      verify(parserRevisionRepository, never()).save(any());
+    }
+
+    @Test
     void rejectsSystemFormatWithoutWriteAny() {
       var command =
           new StatementFormatCommand(
@@ -434,7 +465,6 @@ class StatementFormatServiceTest {
       assertThat(result.getBankName()).isEqualTo("Updated Bank");
       assertThat(result.getDefaultCurrencyIsoCode()).isEqualTo("EUR");
       assertThat(result.isEnabled()).isFalse();
-      verify(statementExtractorRegistry).refreshCsvExtractors();
     }
 
     @Test
@@ -452,7 +482,7 @@ class StatementFormatServiceTest {
     }
 
     @Test
-    void doesNotRefreshExtractorsForPdfFormat() {
+    void updatesWritablePdfFormatById() {
       var pdfFormat = StatementFormat.createUserPdfFormat("Bank PDF", "Bank", "USD", "usr_owner");
       when(statementFormatRepository.findVisibleToUserById(9L, "usr_owner"))
           .thenReturn(Optional.of(pdfFormat));
@@ -461,9 +491,9 @@ class StatementFormatServiceTest {
 
       var patch = new StatementFormatPatch(null, "Updated Bank", null, null);
 
-      statementFormatService.updateFormat(9L, patch, "usr_owner", false);
+      var result = statementFormatService.updateFormat(9L, patch, "usr_owner", false);
 
-      verify(statementExtractorRegistry, never()).refreshCsvExtractors();
+      assertThat(result.getBankName()).isEqualTo("Updated Bank");
     }
 
     @Test

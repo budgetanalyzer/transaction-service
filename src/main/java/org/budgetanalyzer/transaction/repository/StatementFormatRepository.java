@@ -7,9 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import org.budgetanalyzer.transaction.domain.FormatType;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
-import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 
 /** Repository for StatementFormat entities. */
 public interface StatementFormatRepository extends JpaRepository<StatementFormat, Long> {
@@ -53,28 +51,4 @@ public interface StatementFormatRepository extends JpaRepository<StatementFormat
       """)
   Optional<StatementFormat> findVisibleToUserById(
       @Param("id") Long id, @Param("ownerId") String ownerId);
-
-  /**
-   * Finds all enabled statement formats of a specific type.
-   *
-   * @param formatType the format type (CSV, PDF, XLSX)
-   * @return list of enabled formats of the specified type
-   */
-  List<StatementFormat> findByFormatTypeAndEnabledTrue(FormatType formatType);
-
-  /**
-   * Finds all enabled statement formats.
-   *
-   * @return list of all enabled formats
-   */
-  List<StatementFormat> findByEnabledTrue();
-
-  /**
-   * Finds statement formats by scope and owner.
-   *
-   * @param scope statement format scope
-   * @param ownerId owner ID
-   * @return matching statement formats
-   */
-  List<StatementFormat> findByScopeAndOwnerId(StatementFormatScope scope, String ownerId);
 }

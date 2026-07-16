@@ -3,8 +3,9 @@ package org.budgetanalyzer.transaction.service;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
@@ -47,32 +49,6 @@ public class TransactionService {
       FileImportTrackingService fileImportTrackingService) {
     this.transactionRepository = transactionRepository;
     this.fileImportTrackingService = fileImportTrackingService;
-  }
-
-  /**
-   * Creates a new transaction, assigning ownership to the specified user.
-   *
-   * @param transaction the transaction to create
-   * @param userId the ID of the user who will own this transaction
-   * @return the created transaction
-   */
-  @Transactional
-  public Transaction createTransaction(Transaction transaction, String userId) {
-    transaction.setOwnerId(userId);
-    return transactionRepository.save(transaction);
-  }
-
-  /**
-   * Creates multiple transactions in batch, assigning ownership to the specified user.
-   *
-   * @param transactions the list of transactions to create
-   * @param userId the ID of the user who will own these transactions
-   * @return the list of created transactions
-   */
-  @Transactional
-  public List<Transaction> createTransactions(List<Transaction> transactions, String userId) {
-    transactions.forEach(t -> t.setOwnerId(userId));
-    return transactionRepository.saveAll(transactions);
   }
 
   /**
@@ -157,26 +133,25 @@ public class TransactionService {
   public BulkDeleteResult bulkDeleteTransactions(
       List<Long> ids, String userId, boolean canActOnAny) {
     var notFoundIds = new ArrayList<Long>();
-    var deletedCount = 0;
+    var transactionsById = activeBulkDeleteCandidatesById(ids, userId, canActOnAny);
+    var transactionsToDelete = new ArrayList<Transaction>();
 
-    for (Long id : ids) {
-      var transactionOpt = transactionRepository.findByIdNotDeleted(id);
-
-      if (transactionOpt.isEmpty()) {
+    for (var id : ids) {
+      var transaction = transactionsById.remove(id);
+      if (transaction == null) {
         notFoundIds.add(id);
-      } else {
-        var transaction = transactionOpt.get();
-        if (!canActOnAny && !transaction.getOwnerId().equals(userId)) {
-          notFoundIds.add(id);
-        } else {
-          transaction.markDeleted(userId);
-          transactionRepository.save(transaction);
-          deletedCount++;
-        }
+        continue;
       }
+
+      transaction.markDeleted(userId);
+      transactionsToDelete.add(transaction);
     }
 
-    return new BulkDeleteResult(deletedCount, notFoundIds);
+    if (!transactionsToDelete.isEmpty()) {
+      transactionRepository.saveAll(transactionsToDelete);
+    }
+
+    return new BulkDeleteResult(transactionsToDelete.size(), notFoundIds);
   }
 
   /**
@@ -270,8 +245,6 @@ public class TransactionService {
       List<PreviewTransaction> transactions,
       String userId,
       BatchFileImportSource fileImportSource) {
-    final var requiredFileImportSource =
-        Objects.requireNonNull(fileImportSource, "fileImportSource is required");
     log.info("Starting batch import of {} transactions", transactions.size());
 
     // Phase 1: Business validation (beyond Jakarta Bean Validation)
@@ -286,12 +259,12 @@ public class TransactionService {
     // Phase 3: Filter out duplicates and persist non-duplicates
     var toCreate = new ArrayList<Transaction>();
     var seenTransactionsByCandidateKey =
-        new HashMap<TransactionDuplicateCandidateKey, List<PreviewTransaction>>();
+        new HashMap<TransactionDuplicateIdentity, List<PreviewTransaction>>();
     var duplicatesSkipped = 0;
     var duplicatesImported = 0;
 
     for (var dto : transactions) {
-      var transactionCandidateKey = TransactionDuplicateMatcher.candidateKey(dto);
+      var transactionCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
       var duplicate =
           transactionDuplicateMatcher.matchesExistingTransaction(
                   dto, existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))
@@ -318,7 +291,7 @@ public class TransactionService {
 
     rejectEmptyImport(toCreate, duplicatesSkipped);
 
-    var fileImport = resolveFileImport(requiredFileImportSource, userId, toCreate.size());
+    var fileImport = resolveFileImport(fileImportSource, userId, toCreate.size());
     toCreate.forEach(transaction -> transaction.setFileImport(fileImport));
 
     var created = transactionRepository.saveAll(toCreate);
@@ -337,9 +310,7 @@ public class TransactionService {
     var fileCheckResult =
         fileImportTrackingService.checkHash(fileImportSource.contentHash(), userId);
     if (fileCheckResult.existingImport().isPresent()) {
-      log.info(
-          "Linking batch import to previously imported source file hash '{}'",
-          fileImportSource.contentHash().substring(0, 8) + "...");
+      log.info("Linking batch import to previously imported source file");
       return fileCheckResult.existingImport().get();
     }
 
@@ -390,28 +361,26 @@ public class TransactionService {
       var dto = transactions.get(i);
       var date = dto.date();
 
-      if (date != null) {
-        if (date.getYear() < 2000) {
-          errors.add(
-              FieldError.forIndexedField(
-                  i,
-                  "date",
-                  "Transaction date "
-                      + date
-                      + " is before year 2000. "
-                      + "Transactions before 2000 are not supported.",
-                  date));
-        } else if (date.isAfter(maxAllowedDate)) {
-          errors.add(
-              FieldError.forIndexedField(
-                  i,
-                  "date",
-                  "Transaction date "
-                      + date
-                      + " is more than 1 day in the future. "
-                      + "Future-dated transactions are not allowed.",
-                  date));
-        }
+      if (date.getYear() < 2000) {
+        errors.add(
+            FieldError.forIndexedField(
+                i,
+                "date",
+                "Transaction date "
+                    + date
+                    + " is before year 2000. "
+                    + "Transactions before 2000 are not supported.",
+                date));
+      } else if (date.isAfter(maxAllowedDate)) {
+        errors.add(
+            FieldError.forIndexedField(
+                i,
+                "date",
+                "Transaction date "
+                    + date
+                    + " is more than 1 day in the future. "
+                    + "Future-dated transactions are not allowed.",
+                date));
       }
     }
 
@@ -419,6 +388,21 @@ public class TransactionService {
       log.warn("Batch validation failed with {} error(s)", errors.size());
       throw new BatchValidationException(errors);
     }
+  }
+
+  private LinkedHashMap<Long, Transaction> activeBulkDeleteCandidatesById(
+      List<Long> ids, String userId, boolean canActOnAny) {
+    var requestedUniqueIds = new LinkedHashSet<>(ids);
+    var transactions =
+        canActOnAny
+            ? transactionRepository.findActiveByIdIn(requestedUniqueIds)
+            : transactionRepository.findActiveByOwnerIdAndIdIn(userId, requestedUniqueIds);
+    var transactionsById = new LinkedHashMap<Long, Transaction>();
+    for (var transaction : transactions) {
+      transactionsById.put(transaction.getId(), transaction);
+    }
+
+    return transactionsById;
   }
 
   /**

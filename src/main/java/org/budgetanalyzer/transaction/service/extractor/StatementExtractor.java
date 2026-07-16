@@ -1,46 +1,30 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
-import java.util.List;
-
-import org.budgetanalyzer.transaction.domain.FileImport;
-import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
  * Interface for extracting transactions from statement files (PDF, CSV, etc.).
  *
- * <p>Implementations detect whether they can handle a given file and extract transactions into a
- * standardized format for preview before import.
+ * <p>Implementations attempt one parser revision against the uploaded content. The attempt returns
+ * not-applicable for file type or signature mismatches, matched for nonempty preview rows, and
+ * failed when a matching parser cannot parse the content or its persisted configuration.
  */
 public interface StatementExtractor {
 
   /**
-   * Determines if this extractor can handle the given file.
+   * Attempts to extract preview transactions from the uploaded file for one parser revision.
    *
+   * @param parserRevision parser revision being attempted
    * @param fileContent the raw file bytes
    * @param filename the original filename (used for extension detection)
-   * @return true if this extractor can process the file
-   */
-  boolean canHandle(byte[] fileContent, String filename);
-
-  /**
-   * Extracts transactions from the file content for preview.
-   *
-   * @param fileContent the raw file bytes
    * @param accountId optional account ID to pre-fill for all transactions
-   * @return extracted preview transactions
+   * @return parser attempt outcome
+   * @see PreviewTransaction
    */
-  List<PreviewTransaction> extract(byte[] fileContent, String accountId);
-
-  /**
-   * Extracts transactions as entities for batch import.
-   *
-   * @param fileContent the raw file bytes
-   * @param accountId optional account ID to pre-fill for all transactions
-   * @param fileImport the file import record to link transactions to
-   * @return list of Transaction entities ready for persistence
-   */
-  List<Transaction> extractEntities(byte[] fileContent, String accountId, FileImport fileImport);
+  ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId);
 
   /**
    * Returns the internal parser handler identifier.

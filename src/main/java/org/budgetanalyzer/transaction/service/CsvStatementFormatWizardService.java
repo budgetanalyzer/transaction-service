@@ -33,6 +33,7 @@ import org.budgetanalyzer.transaction.service.dto.CsvWizardMappingPreviewCommand
 import org.budgetanalyzer.transaction.service.dto.CsvWizardPreviewResult;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardSaveCommand;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardValidationWarning;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 import org.budgetanalyzer.transaction.service.extractor.ConfigurableCsvStatementExtractor;
 
@@ -156,16 +157,11 @@ public class CsvStatementFormatWizardService {
    * @param filename uploaded filename
    * @param command save command
    * @param userId current user ID
-   * @param canWriteAny whether the caller can create system formats
    * @return saved statement format
    */
   @Transactional
   public StatementFormat save(
-      byte[] fileContent,
-      String filename,
-      CsvWizardSaveCommand command,
-      String userId,
-      boolean canWriteAny) {
+      byte[] fileContent, String filename, CsvWizardSaveCommand command, String userId) {
     var csvData = parseCsv(fileContent, filename, "csv-wizard-save");
     validateMapping(
         command.bankName(), command.defaultCurrencyIsoCode(), command.mapping(), csvData);
@@ -186,7 +182,7 @@ public class CsvStatementFormatWizardService {
             debitHeader(command.mapping()),
             typeHeader(command.mapping()),
             command.mapping().categoryColumn());
-    return statementFormatService.createFormat(statementFormatCommand, userId, canWriteAny);
+    return statementFormatService.createFormat(statementFormatCommand, userId, false);
   }
 
   private CsvData parseCsv(byte[] fileContent, String filename, String format) {
@@ -379,10 +375,6 @@ public class CsvStatementFormatWizardService {
       CsvData csvData) {
     var fieldErrors = new ArrayList<FieldError>();
     validateBankAndCurrency(bankName, defaultCurrencyIsoCode, fieldErrors);
-    if (mapping == null) {
-      fieldErrors.add(FieldError.forField("mapping", "CSV column mapping is required.", null));
-      throwValidationException(fieldErrors);
-    }
 
     validateColumn("mapping.dateColumn", mapping.dateColumn(), csvData.headers(), fieldErrors);
     validateColumn(
@@ -403,17 +395,6 @@ public class CsvStatementFormatWizardService {
 
   private void validateBankAndCurrency(
       String bankName, String defaultCurrencyIsoCode, List<FieldError> fieldErrors) {
-    if (bankName == null || bankName.isBlank()) {
-      fieldErrors.add(FieldError.forField("bankName", "Bank name is required.", bankName));
-    }
-    if (defaultCurrencyIsoCode == null || defaultCurrencyIsoCode.isBlank()) {
-      fieldErrors.add(
-          FieldError.forField(
-              "defaultCurrencyIsoCode",
-              "Default currency ISO code is required.",
-              defaultCurrencyIsoCode));
-      return;
-    }
     try {
       Currency.getInstance(defaultCurrencyIsoCode.toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException illegalArgumentException) {
@@ -470,10 +451,6 @@ public class CsvStatementFormatWizardService {
 
   private void validateAmountMapping(
       CsvWizardColumnMapping mapping, List<String> headers, List<FieldError> fieldErrors) {
-    if (mapping.amountMode() == null) {
-      fieldErrors.add(FieldError.forField("mapping.amountMode", "Amount mode is required.", null));
-      return;
-    }
     if (mapping.amountMode() == CsvWizardAmountMode.SINGLE_AMOUNT_WITH_TYPE) {
       validateColumn("mapping.amountColumn", mapping.amountColumn(), headers, fieldErrors);
       validateColumn("mapping.typeColumn", mapping.typeColumn(), headers, fieldErrors);
@@ -506,7 +483,8 @@ public class CsvStatementFormatWizardService {
         new ConfigurableCsvStatementExtractor(
             statementFormat, parserRevision, csvColumnParserConfig, csvParser);
     try {
-      var transactions = extractor.extract(fileContent, accountId);
+      var parserAttempt = extractor.attempt(parserRevision, fileContent, "preview.csv", accountId);
+      var transactions = requireMatchedPreviewRows(parserAttempt);
       if (transactions.size() < MIN_VALID_ROW_COUNT) {
         throw new BusinessException(
             "CSV wizard mapping did not parse enough valid transaction rows.",
@@ -529,6 +507,20 @@ public class CsvStatementFormatWizardService {
                   businessException.getMessage(),
                   null)));
     }
+  }
+
+  private List<org.budgetanalyzer.transaction.service.dto.PreviewTransaction>
+      requireMatchedPreviewRows(
+          org.budgetanalyzer.transaction.service.dto.ParserAttempt parserAttempt) {
+    if (parserAttempt.status() == ParserAttemptStatus.MATCHED) {
+      return parserAttempt.transactions();
+    }
+    if (parserAttempt.status() == ParserAttemptStatus.FAILED) {
+      throw parserAttempt.failure();
+    }
+    throw new BusinessException(
+        "CSV wizard mapping did not match the uploaded file.",
+        BudgetAnalyzerError.CSV_PARSING_ERROR.name());
   }
 
   private String resolveParserErrorField(BusinessException businessException) {

@@ -1,9 +1,10 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.InputStream;
@@ -24,11 +25,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.budgetanalyzer.core.csv.CsvData;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.core.csv.CsvRow;
-import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.core.csv.impl.OpenCsvParser;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.dto.CsvColumnParserConfig;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
+import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 
 @ExtendWith(MockitoExtension.class)
 class ConfigurableCsvStatementExtractorTest {
@@ -61,57 +64,111 @@ class ConfigurableCsvStatementExtractorTest {
   }
 
   @Nested
-  class CanHandle {
+  class Attempt {
 
     @Test
-    void returnsTrueForCsvFileWithMatchingHeaders() {
+    void returnsMatchedForCsvFileWithMatchingHeaders() {
       var csvContent =
-          "Transaction Date,Transaction Description,Transaction Amount,Transaction Type\n";
+          "Transaction Date,Transaction Description,Transaction Amount,Transaction Type\n"
+              + "01/15/25,Grocery Store,52.34,Debit\n";
       var content = csvContent.getBytes(StandardCharsets.UTF_8);
+      var realParserExtractor = createExtractorWithSharedParser();
 
-      var result = extractor.canHandle(content, "test.csv");
+      var parserAttempt = attempt(realParserExtractor, content, "test.csv", "account-123");
 
-      assertThat(result).isTrue();
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
     }
 
     @Test
-    void returnsFalseForNonCsvFile() {
+    void returnsNotApplicableForNonCsvFile() {
       var content = "some content".getBytes(StandardCharsets.UTF_8);
 
-      var result = extractor.canHandle(content, "test.pdf");
+      var parserAttempt = attempt(extractor, content, "test.pdf", null);
 
-      assertThat(result).isFalse();
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
     }
 
     @Test
-    void returnsFalseForNullFilename() {
+    void returnsNotApplicableForNullFilename() {
       var content = "some content".getBytes(StandardCharsets.UTF_8);
 
-      var result = extractor.canHandle(content, null);
+      var parserAttempt = attempt(extractor, content, null, null);
 
-      assertThat(result).isFalse();
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
     }
 
     @Test
-    void returnsFalseForMissingRequiredHeaders() {
+    void returnsNotApplicableForMissingRequiredHeaders() {
       var csvContent = "Date,Description\n";
       var content = csvContent.getBytes(StandardCharsets.UTF_8);
+      var realParserExtractor = createExtractorWithSharedParser();
 
-      var result = extractor.canHandle(content, "test.csv");
+      var parserAttempt = attempt(realParserExtractor, content, "test.csv", null);
 
-      assertThat(result).isFalse();
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
     }
 
     @Test
-    void returnsTrueWithExtraHeaders() {
+    void returnsMatchedWithExtraHeaders() {
       var csvContent =
           "Transaction Date,Transaction Description,Transaction Amount,"
-              + "Transaction Type,Extra Column\n";
+              + "Transaction Type,Extra Column\n"
+              + "01/15/25,Grocery Store,52.34,Debit,ignored\n";
       var content = csvContent.getBytes(StandardCharsets.UTF_8);
+      var realParserExtractor = createExtractorWithSharedParser();
 
-      var result = extractor.canHandle(content, "test.csv");
+      var parserAttempt = attempt(realParserExtractor, content, "test.csv", "account-123");
 
-      assertThat(result).isTrue();
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
+    }
+  }
+
+  @Nested
+  class SharedCsvParserHeaderBehavior {
+
+    @Test
+    void quotedHeadersAreAcceptedBySingleSharedParserAttempt() {
+      var realParserExtractor = createExtractorWithSharedParser();
+      var content =
+          ("\"Transaction Date\",\"Transaction Description\",\"Transaction Amount\","
+                  + "\"Transaction Type\"\n"
+                  + "\"01/15/25\",\"Grocery Store\",\"52.34\",\"Debit\"\n")
+              .getBytes(StandardCharsets.UTF_8);
+
+      var transactions = matchedTransactions(realParserExtractor, content, "account-123");
+      assertThat(transactions).hasSize(1);
+      assertThat(transactions.getFirst().description()).isEqualTo("Grocery Store");
+      assertThat(transactions.getFirst().amount()).isEqualByComparingTo(new BigDecimal("52.34"));
+    }
+
+    @Test
+    void bomBearingHeadersAreNotApplicableAfterSingleSharedParserAttempt() {
+      var realParserExtractor = createExtractorWithSharedParser();
+      var content =
+          ("\\uFEFFTransaction Date,Transaction Description,Transaction Amount,"
+                  + "Transaction Type\n"
+                  + "01/15/25,Grocery Store,52.34,Debit\n")
+              .replace("\\uFEFF", "\uFEFF")
+              .getBytes(StandardCharsets.UTF_8);
+
+      var parserAttempt = attempt(realParserExtractor, content, "bom.csv", "account-123");
+
+      assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
+    }
+
+    @Test
+    void extraHeadersAreAcceptedAndSharedParserExtractionIgnoresExtraValues() {
+      var realParserExtractor = createExtractorWithSharedParser();
+      var content =
+          ("Transaction Date,Transaction Description,Transaction Amount,Transaction Type,Extra\n"
+                  + "01/15/25,Grocery Store,52.34,Debit,ignored\n")
+              .getBytes(StandardCharsets.UTF_8);
+
+      var transactions = matchedTransactions(realParserExtractor, content, "account-123");
+      assertThat(transactions).hasSize(1);
+      assertThat(transactions.getFirst().date()).isEqualTo(LocalDate.of(2025, 1, 15));
+      assertThat(transactions.getFirst().description()).isEqualTo("Grocery Store");
+      assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
     }
   }
 
@@ -133,7 +190,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = extractor.extract("dummy".getBytes(), "account-123");
+      var transactions = matchedTransactions(extractor, "dummy".getBytes(), "account-123");
 
       assertThat(transactions).hasSize(1);
       var tx = transactions.get(0);
@@ -144,6 +201,8 @@ class ConfigurableCsvStatementExtractorTest {
       assertThat(tx.bankName()).isEqualTo("Test Bank");
       assertThat(tx.currencyIsoCode()).isEqualTo("USD");
       assertThat(tx.accountId()).isEqualTo("account-123");
+      verify(csvParser, times(1))
+          .parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY));
     }
 
     @Test
@@ -161,7 +220,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = extractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(extractor, "dummy".getBytes(), null);
 
       assertThat(transactions).hasSize(1);
       var tx = transactions.get(0);
@@ -184,13 +243,13 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = extractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(extractor, "dummy".getBytes(), null);
 
       assertThat(transactions.get(0).amount()).isEqualByComparingTo(new BigDecimal("1234.56"));
     }
 
     @Test
-    void parsesDateTimeFormatWithDateOnlyFallback() throws Exception {
+    void dateTimeFormatRetriesDateOnlyRowsBecauseSimplifiedFormatterIsDistinct() throws Exception {
       var dateTimeExtractor =
           createExtractor(
               8L,
@@ -223,7 +282,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY_4_DIGIT)))
           .thenReturn(csvData);
 
-      var transactions = dateTimeExtractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(dateTimeExtractor, "dummy".getBytes(), null);
 
       assertThat(transactions).hasSize(2);
       assertThat(transactions.get(0).date()).isEqualTo(LocalDate.of(2025, 12, 31));
@@ -246,9 +305,8 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("Invalid date value");
+      assertThat(failedAttempt(extractor, "dummy".getBytes(), null).getMessage())
+          .contains("Invalid date value");
     }
 
     @Test
@@ -290,9 +348,8 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY_4_DIGIT)))
           .thenReturn(csvData);
 
-      assertThatThrownBy(() -> extractor4Digit.extract("dummy".getBytes(), null))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("prior to year 2000");
+      assertThat(failedAttempt(extractor4Digit, "dummy".getBytes(), null).getMessage())
+          .contains("prior to year 2000");
     }
 
     @Test
@@ -309,9 +366,8 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("Missing value for required column");
+      assertThat(failedAttempt(extractor, "dummy".getBytes(), null).getMessage())
+          .contains("Missing value for required column");
     }
 
     @Test
@@ -329,9 +385,8 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("Invalid value for required column");
+      assertThat(failedAttempt(extractor, "dummy".getBytes(), null).getMessage())
+          .contains("Invalid value for required column");
     }
 
     @Test
@@ -349,9 +404,8 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(HANDLER_KEY)))
           .thenReturn(csvData);
 
-      assertThatThrownBy(() -> extractor.extract("dummy".getBytes(), null))
-          .isInstanceOf(BusinessException.class)
-          .hasMessageContaining("Missing amount value");
+      assertThat(failedAttempt(extractor, "dummy".getBytes(), null).getMessage())
+          .contains("Missing amount value");
     }
   }
 
@@ -391,7 +445,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(implicitTypeExtractor, "dummy".getBytes(), null);
 
       assertThat(transactions.get(0).type()).isEqualTo(TransactionType.CREDIT);
     }
@@ -414,7 +468,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(implicitTypeExtractor, "dummy".getBytes(), null);
 
       assertThat(transactions.get(0).type()).isEqualTo(TransactionType.DEBIT);
     }
@@ -437,7 +491,7 @@ class ConfigurableCsvStatementExtractorTest {
       when(csvParser.parseCsvInputStream(any(InputStream.class), any(), eq(IMPLICIT_HANDLER_KEY)))
           .thenReturn(csvData);
 
-      var transactions = implicitTypeExtractor.extract("dummy".getBytes(), null);
+      var transactions = matchedTransactions(implicitTypeExtractor, "dummy".getBytes(), null);
 
       assertThat(transactions.get(0).type()).isEqualTo(TransactionType.DEBIT);
     }
@@ -464,6 +518,37 @@ class ConfigurableCsvStatementExtractorTest {
         rows);
   }
 
+  private ParserAttempt attempt(
+      ConfigurableCsvStatementExtractor configurableCsvStatementExtractor,
+      byte[] content,
+      String filename,
+      String accountId) {
+    return configurableCsvStatementExtractor.attempt(
+        parserRevision(11L), content, filename, accountId);
+  }
+
+  private List<org.budgetanalyzer.transaction.service.dto.PreviewTransaction> matchedTransactions(
+      ConfigurableCsvStatementExtractor configurableCsvStatementExtractor,
+      byte[] content,
+      String accountId) {
+    var parserAttempt =
+        configurableCsvStatementExtractor.attempt(
+            parserRevision(11L), content, "test.csv", accountId);
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
+    return parserAttempt.transactions();
+  }
+
+  private org.budgetanalyzer.service.exception.BusinessException failedAttempt(
+      ConfigurableCsvStatementExtractor configurableCsvStatementExtractor,
+      byte[] content,
+      String accountId) {
+    var parserAttempt =
+        configurableCsvStatementExtractor.attempt(
+            parserRevision(11L), content, "test.csv", accountId);
+    assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.FAILED);
+    return parserAttempt.failure();
+  }
+
   private ConfigurableCsvStatementExtractor createExtractor(
       Long statementFormatId,
       Long parserRevisionId,
@@ -479,5 +564,38 @@ class ConfigurableCsvStatementExtractorTest {
     ReflectionTestUtils.setField(parserRevision, "id", parserRevisionId);
     return new ConfigurableCsvStatementExtractor(
         statementFormat, parserRevision, csvColumnParserConfig, csvParser);
+  }
+
+  private ConfigurableCsvStatementExtractor createExtractorWithSharedParser() {
+    return new ConfigurableCsvStatementExtractor(
+        extractorFormat(7L, "Test Bank - Export", "Test Bank", "USD"),
+        parserRevision(11L),
+        new CsvColumnParserConfig(
+            "Transaction Date",
+            "MM/dd/uu",
+            "Transaction Description",
+            "Transaction Amount",
+            "Transaction Amount",
+            "Transaction Type",
+            null),
+        new OpenCsvParser());
+  }
+
+  private StatementFormat extractorFormat(
+      Long statementFormatId, String displayName, String bankName, String defaultCurrencyIsoCode) {
+    var statementFormat =
+        StatementFormat.createCsvFormat(
+            displayName, bankName, defaultCurrencyIsoCode, "usr_test123");
+    ReflectionTestUtils.setField(statementFormat, "id", statementFormatId);
+    return statementFormat;
+  }
+
+  private ParserRevision parserRevision(Long parserRevisionId) {
+    var statementFormat =
+        StatementFormat.createCsvFormat(
+            "Parser Revision Owner", "Parser Revision Bank", "USD", "usr_test123");
+    var parserRevision = ParserRevision.createCsvColumnConfig(statementFormat, 1, "{}");
+    ReflectionTestUtils.setField(parserRevision, "id", parserRevisionId);
+    return parserRevision;
   }
 }

@@ -116,10 +116,7 @@ public record TransactionCriteria(
    * @return internal transaction criteria
    */
   public static TransactionCriteria fromFilter(TransactionFilter filter) {
-    if (filter == null) {
-      return empty();
-    }
-
+    Objects.requireNonNull(filter, "filter");
     return new TransactionCriteria(
         filter.id(),
         filter.ownerId(),
@@ -153,8 +150,7 @@ public record TransactionCriteria(
    */
   public static TransactionCriteria fromViewCriteria(
       ViewCriteria criteria, String ownerId, boolean openEnded) {
-    var effectiveCriteria = criteria == null ? ViewCriteria.empty() : criteria;
-    var effectiveDateTo = effectiveCriteria.dateTo();
+    var effectiveDateTo = criteria.dateTo();
     if (openEnded && effectiveDateTo == null) {
       effectiveDateTo = LocalDate.now();
     }
@@ -162,16 +158,16 @@ public record TransactionCriteria(
     return new TransactionCriteria(
         null,
         ownerId,
-        effectiveCriteria.accountIds(),
-        effectiveCriteria.bankNames(),
-        effectiveCriteria.dateFrom(),
+        criteria.accountIds(),
+        criteria.bankNames(),
+        criteria.dateFrom(),
         effectiveDateTo,
-        effectiveCriteria.currencyIsoCodes(),
-        effectiveCriteria.minAmount(),
-        effectiveCriteria.maxAmount(),
-        effectiveCriteria.type(),
+        criteria.currencyIsoCodes(),
+        criteria.minAmount(),
+        criteria.maxAmount(),
+        criteria.type(),
         null,
-        effectiveCriteria.searchText(),
+        criteria.searchText(),
         null,
         null,
         null,

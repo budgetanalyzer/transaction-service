@@ -51,7 +51,7 @@ class TestFixtureGenerator {
   }
 
   private void generateCreditMonthlyFixture() throws IOException {
-    // Text must trigger canHandle: "Credit Card" + "\d+ days in Billing Cycle" + "capital one"
+    // Text must match: "Credit Card" + "\d+ days in Billing Cycle" + "capital one"
     // Text must contain statement period, section headers, and transaction lines
     String[] lines = {
       "Capital One",
@@ -87,7 +87,7 @@ class TestFixtureGenerator {
   }
 
   private void generateBankMonthlyFixture() throws IOException {
-    // Text must trigger canHandle: "Capital One 360" + "bank statement" (DOTALL)
+    // Text must match: "Capital One 360" + "bank statement" (DOTALL)
     // Text must contain statement period, account headers, transaction lines with Category column
     String[] lines = {
       "Capital One 360",
@@ -111,7 +111,7 @@ class TestFixtureGenerator {
   }
 
   private void generateCreditYearlySummaryFixture() throws IOException {
-    // Text must trigger canHandle: "Year-End Summary \d{4}" + "capital one"
+    // Text must match: "Year-End Summary \d{4}" + "capital one"
     // Text must contain "Section 4" / "Transaction Details", category headers, transaction lines
     String[] lines = {
       "Capital One",

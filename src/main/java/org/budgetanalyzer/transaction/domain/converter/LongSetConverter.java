@@ -19,7 +19,10 @@ public class LongSetConverter implements AttributeConverter<Set<Long>, String> {
 
   @Override
   public String convertToDatabaseColumn(Set<Long> attribute) {
-    if (attribute == null || attribute.isEmpty()) {
+    if (attribute == null) {
+      throw new IllegalArgumentException("Long ID set must not be null");
+    }
+    if (attribute.isEmpty()) {
       return "[]";
     }
     try {
@@ -31,7 +34,7 @@ public class LongSetConverter implements AttributeConverter<Set<Long>, String> {
 
   @Override
   public Set<Long> convertToEntityAttribute(String dbData) {
-    if (dbData == null || dbData.isBlank() || "[]".equals(dbData)) {
+    if ("[]".equals(dbData)) {
       return new HashSet<>();
     }
     try {

@@ -316,14 +316,9 @@ public class StatementFormatController {
     log.info("Received CSV statement format wizard save request: {}", request.displayName());
 
     var userId = getCurrentUserId();
-    var canWriteAny = SecurityContextUtil.hasAuthority("statementformats:write:any");
     var created =
         csvStatementFormatWizardService.save(
-            file.getBytes(),
-            file.getOriginalFilename(),
-            request.toServiceDto(),
-            userId,
-            canWriteAny);
+            file.getBytes(), file.getOriginalFilename(), request.toServiceDto(), userId);
     var location =
         ServletUriComponentsBuilder.fromCurrentContextPath()
             .path("/v1/statement-formats/{id}")

@@ -19,7 +19,7 @@ public class ViewCriteriaConverter implements AttributeConverter<ViewCriteria, S
   @Override
   public String convertToDatabaseColumn(ViewCriteria criteria) {
     if (criteria == null) {
-      return "{}";
+      throw new IllegalArgumentException("ViewCriteria must not be null");
     }
     try {
       return OBJECT_MAPPER.writeValueAsString(criteria);
@@ -30,11 +30,12 @@ public class ViewCriteriaConverter implements AttributeConverter<ViewCriteria, S
 
   @Override
   public ViewCriteria convertToEntityAttribute(String json) {
-    if (json == null || json.isBlank()) {
-      return ViewCriteria.empty();
-    }
     try {
-      return OBJECT_MAPPER.readValue(json, ViewCriteria.class);
+      var criteria = OBJECT_MAPPER.readValue(json, ViewCriteria.class);
+      if (criteria == null) {
+        throw new IllegalArgumentException("ViewCriteria JSON must not be null");
+      }
+      return criteria;
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("Failed to deserialize ViewCriteria from JSON", e);
     }

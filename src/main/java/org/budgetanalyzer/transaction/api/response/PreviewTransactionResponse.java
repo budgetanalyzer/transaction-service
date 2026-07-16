@@ -3,9 +3,6 @@ package org.budgetanalyzer.transaction.api.response;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.TransactionType;
@@ -24,26 +21,22 @@ public record PreviewTransactionResponse(
             description = "Date of the transaction",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "2024-04-12")
-        @NotNull(message = "date is required")
         LocalDate date,
     @Schema(
             description = "Description of the transaction",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "TAQUERIA DEL SOL #3")
-        @NotBlank(message = "description is required")
         String description,
     @Schema(
             description = "Amount of the transaction",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "55.12")
-        @NotNull(message = "amount is required")
         BigDecimal amount,
     @Schema(
             description = "Type of the transaction",
             requiredMode = Schema.RequiredMode.REQUIRED,
             allowableValues = {"CREDIT", "DEBIT"},
             example = "DEBIT")
-        @NotNull(message = "type is required")
         TransactionType type,
     @Schema(
             description = "Category extracted from source data",
@@ -54,13 +47,11 @@ public record PreviewTransactionResponse(
             description = "Name of the bank",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "Capital One")
-        @NotBlank(message = "bankName is required")
         String bankName,
     @Schema(
             description = "ISO currency code",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "USD")
-        @NotBlank(message = "currencyIsoCode is required")
         String currencyIsoCode,
     @Schema(
             description =

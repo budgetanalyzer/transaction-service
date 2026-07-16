@@ -16,10 +16,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
-import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
@@ -92,40 +92,39 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
           Pattern.CASE_INSENSITIVE);
 
   @Override
-  public boolean canHandle(byte[] fileContent, String filename) {
+  public ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
     if (filename == null || !filename.toLowerCase().endsWith(".pdf")) {
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
 
+    String fullText;
     try {
-      String text = extractTextFromPdf(fileContent, 1, 3);
-      return YEAR_END_SUMMARY_PATTERN.matcher(text).find()
-          && text.toLowerCase().contains("capital one");
+      fullText = extractTextFromPdf(fileContent);
     } catch (Exception e) {
       log.debug("Failed to check if file is Capital One Year-End Summary: {}", e.getMessage());
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
-  }
+    if (!YEAR_END_SUMMARY_PATTERN.matcher(fullText).find()
+        || !fullText.toLowerCase().contains("capital one")) {
+      return ParserAttempt.notApplicable(parserRevision);
+    }
 
-  @Override
-  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
     try {
-      String fullText = extractTextFromPdf(fileContent, 1, Integer.MAX_VALUE);
-
       int year = extractYear(fullText);
       log.info("Extracting Capital One Year-End Summary for year {}", year);
 
       List<PreviewTransaction> transactions = parseTransactions(fullText, year, accountId);
       log.info("Extracted {} transactions from Capital One Year-End Summary", transactions.size());
 
-      return transactions;
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
     } catch (BusinessException e) {
-      throw e;
+      return ParserAttempt.failed(parserRevision, e);
     } catch (Exception e) {
-      throw new BusinessException(
-          "Failed to extract transactions from PDF: " + e.getMessage(),
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
-          e);
+      return ParserAttempt.failed(parserRevision, pdfParsingError(e));
     }
   }
 
@@ -134,35 +133,18 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
     return HANDLER_KEY;
   }
 
-  @Override
-  public List<Transaction> extractEntities(
-      byte[] fileContent, String accountId, FileImport fileImport) {
-    return extract(fileContent, accountId).stream()
-        .map(preview -> toTransaction(preview, fileImport))
-        .toList();
-  }
-
-  private Transaction toTransaction(PreviewTransaction preview, FileImport fileImport) {
-    var transaction = new Transaction();
-    transaction.setDate(preview.date());
-    transaction.setDescription(preview.description());
-    transaction.setAmount(preview.amount());
-    transaction.setType(preview.type());
-    transaction.setBankName(preview.bankName());
-    transaction.setCurrencyIsoCode(preview.currencyIsoCode());
-    transaction.setAccountId(preview.accountId());
-    transaction.setFileImport(fileImport);
-    return transaction;
-  }
-
-  private String extractTextFromPdf(byte[] fileContent, int startPage, int endPage)
-      throws IOException {
+  private String extractTextFromPdf(byte[] fileContent) throws IOException {
     try (PDDocument document = Loader.loadPDF(fileContent)) {
       PDFTextStripper stripper = new PDFTextStripper();
-      stripper.setStartPage(startPage);
-      stripper.setEndPage(Math.min(endPage, document.getNumberOfPages()));
       return stripper.getText(document);
     }
+  }
+
+  private BusinessException pdfParsingError(Exception exception) {
+    return new BusinessException(
+        "Failed to extract transactions from PDF: " + exception.getMessage(),
+        BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
+        exception);
   }
 
   private int extractYear(String text) {
@@ -202,7 +184,7 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
       Matcher categoryMatcher = CATEGORY_HEADER_PATTERN.matcher(line);
       if (categoryMatcher.find()) {
         currentCategory = categoryMatcher.group(1);
-        log.debug("Switched to category: {}", currentCategory);
+        log.debug("Switched statement category section");
         continue;
       }
 
@@ -225,7 +207,7 @@ public class CapitalOneCreditYearlySummaryExtractor implements StatementExtracto
       String line, int year, String category, String accountId) {
     Matcher matcher = TRANSACTION_PATTERN.matcher(line);
     if (!matcher.find()) {
-      log.trace("Line did not match transaction pattern: {}", line);
+      log.trace("Line did not match transaction pattern");
       return null;
     }
 

@@ -14,12 +14,11 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
-import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableParserConfig;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
@@ -61,52 +60,37 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
   }
 
   @Override
-  public boolean canHandle(byte[] fileContent, String filename) {
+  public ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
     if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
-    try {
-      var pdfTextDocument = pdfTextExtractionService.extract(fileContent, filename);
-      return !selectCandidates(pdfTextDocument).isEmpty();
-    } catch (BusinessException businessException) {
-      return false;
-    }
-  }
 
-  @Override
-  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
-    return extract(fileContent, "preview.pdf", accountId);
-  }
-
-  /**
-   * Extracts preview transactions from a PDF file using the supplied filename for validation.
-   *
-   * @param fileContent uploaded PDF bytes
-   * @param filename uploaded filename
-   * @param accountId account identifier to attach to preview rows
-   * @return parsed preview transactions
-   */
-  public List<PreviewTransaction> extract(byte[] fileContent, String filename, String accountId) {
+    PdfTextDocument pdfTextDocument;
     try {
-      var pdfTextDocument = pdfTextExtractionService.extract(fileContent, filename);
-      var pdfTextTableCandidates = requireCandidates(pdfTextDocument);
-      return parseRows(pdfTextDocument, pdfTextTableCandidates, accountId);
+      pdfTextDocument = pdfTextExtractionService.extract(fileContent, filename);
     } catch (BusinessException businessException) {
-      throw businessException;
+      return ParserAttempt.notApplicable(parserRevision);
     } catch (Exception exception) {
-      throw new BusinessException(
-          "Failed to parse PDF text table: " + exception.getMessage(),
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
-          exception);
+      return ParserAttempt.notApplicable(parserRevision);
     }
-  }
 
-  @Override
-  public List<Transaction> extractEntities(
-      byte[] fileContent, String accountId, FileImport fileImport) {
-    return extract(fileContent, accountId).stream()
-        .map(previewTransaction -> toTransaction(previewTransaction, fileImport))
-        .toList();
+    var pdfTextTableCandidates = selectCandidates(pdfTextDocument);
+    if (pdfTextTableCandidates.isEmpty()) {
+      return ParserAttempt.notApplicable(parserRevision);
+    }
+
+    try {
+      var transactions = parseRows(pdfTextDocument, pdfTextTableCandidates, accountId);
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
+    } catch (BusinessException businessException) {
+      return ParserAttempt.failed(parserRevision, businessException);
+    } catch (Exception exception) {
+      return ParserAttempt.failed(parserRevision, pdfParsingError(exception));
+    }
   }
 
   @Override
@@ -116,16 +100,6 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
         + "-revision-"
         + parserRevision.getId()
         + "-pdf-text-table";
-  }
-
-  private List<PdfTextTableCandidate> requireCandidates(PdfTextDocument pdfTextDocument) {
-    var pdfTextTableCandidates = selectCandidates(pdfTextDocument);
-    if (pdfTextTableCandidates.isEmpty()) {
-      throw new BusinessException(
-          "No PDF text table matched the parser configuration.",
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name());
-    }
-    return pdfTextTableCandidates;
   }
 
   private List<PdfTextTableCandidate> selectCandidates(PdfTextDocument pdfTextDocument) {
@@ -182,11 +156,6 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
       pdfTextTableCandidate.dataRows().stream()
           .map(row -> parseRow(row, headerIndexes, statementYear, accountId))
           .forEach(transactions::add);
-    }
-    if (transactions.size() < pdfTextTableParserConfig.minimumRows()) {
-      throw new BusinessException(
-          "PDF text-table parser did not parse enough transaction rows.",
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name());
     }
     return List.copyOf(transactions);
   }
@@ -361,23 +330,11 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
 
   private String value(List<String> row, Map<String, Integer> headerIndexes, String header) {
     var index = headerIndexes.get(normalize(header));
-    if (index == null || index >= row.size() || row.get(index) == null) {
+    // selectCandidates proves mapped headers before parsing; remaining checks cover malformed rows.
+    if (index >= row.size() || row.get(index) == null) {
       return "";
     }
     return row.get(index).strip();
-  }
-
-  private Transaction toTransaction(PreviewTransaction previewTransaction, FileImport fileImport) {
-    var transaction = new Transaction();
-    transaction.setDate(previewTransaction.date());
-    transaction.setDescription(previewTransaction.description());
-    transaction.setAmount(previewTransaction.amount());
-    transaction.setType(previewTransaction.type());
-    transaction.setBankName(previewTransaction.bankName());
-    transaction.setCurrencyIsoCode(previewTransaction.currencyIsoCode());
-    transaction.setAccountId(previewTransaction.accountId());
-    transaction.setFileImport(fileImport);
-    return transaction;
   }
 
   private DateTimeFormatter buildDateFormatter(String dateFormat) {
@@ -403,6 +360,13 @@ public class ConfigurablePdfTextTableStatementExtractor implements StatementExtr
       return "";
     }
     return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+  }
+
+  private BusinessException pdfParsingError(Exception exception) {
+    return new BusinessException(
+        "Failed to parse PDF text table: " + exception.getMessage(),
+        BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
+        exception);
   }
 
   private record TypeAndAmount(TransactionType type, BigDecimal amount) {}

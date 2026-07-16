@@ -10,6 +10,10 @@ import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 /**
  * Request DTO for creating a new statement format.
  *
+ * <p>API Bean Validation owns request-shape checks such as required display name, bank, format
+ * type, and currency code. Statement-format services own business invariants such as writable
+ * scope, ISO validity, and parser-specific mapping rules.
+ *
  * @param displayName user-friendly display name for UI dropdowns
  * @param formatType type of format (CSV, PDF, XLSX)
  * @param bankName bank name for transactions created from this format

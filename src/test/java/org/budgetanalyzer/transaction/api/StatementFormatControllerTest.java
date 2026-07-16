@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.api;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -157,6 +158,7 @@ class StatementFormatControllerTest {
           .andExpect(jsonPath("$.formatType").value("CSV"))
           .andExpect(jsonPath("$.defaultCurrencyIsoCode").value("USD"))
           .andExpect(jsonPath("$.enabled").value(true))
+          .andExpect(jsonPath("$.hidden").doesNotExist())
           .andExpect(jsonPath("$.createdAt").value("2026-04-08T10:30:00Z"))
           .andExpect(jsonPath("$.updatedAt").value("2026-04-08T10:45:00Z"))
           .andExpect(jsonPath("$.createdBy").value("usr_creator"))
@@ -271,6 +273,9 @@ class StatementFormatControllerTest {
                       }
                       """))
           .andExpect(status().isBadRequest());
+
+      verify(statementFormatService, never())
+          .createFormat(any(StatementFormatCommand.class), eq("usr_test123"), eq(false));
     }
 
     @Test
@@ -481,8 +486,7 @@ class StatementFormatControllerTest {
               any(byte[].class),
               eq("sample.csv"),
               any(CsvWizardSaveCommand.class),
-              eq("usr_test123"),
-              eq(false)))
+              eq("usr_test123")))
           .thenReturn(saved);
 
       mockMvc
@@ -521,6 +525,33 @@ class StatementFormatControllerTest {
           .andExpect(status().isUnprocessableEntity())
           .andExpect(jsonPath("$.code").value("CSV_WIZARD_VALIDATION_FAILED"))
           .andExpect(jsonPath("$.fieldErrors[0].field").value("mapping.typeColumn"));
+    }
+
+    @Test
+    void previewApiRequestShapeMissingMappingReturns400BeforeCsvBusinessValidation()
+        throws Exception {
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/csv-wizard/preview")
+                  .file(csvFile())
+                  .file(
+                      jsonPart(
+                          "request",
+                          """
+                          {
+                            "bankName": "Example Bank",
+                            "defaultCurrencyIsoCode": "USD"
+                          }
+                          """))
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("mapping"));
+
+      verify(csvStatementFormatWizardService, never())
+          .preview(any(byte[].class), eq("sample.csv"), any(CsvWizardMappingPreviewCommand.class));
     }
   }
 
@@ -628,6 +659,67 @@ class StatementFormatControllerTest {
           .andExpect(
               jsonPath("$.diagnostics[0]")
                   .value("Matched a text-PDF table using 3 configured header token(s)."));
+    }
+
+    @Test
+    void previewApiRequestShapeMissingYearSourceReturns400BeforePdfBusinessValidation()
+        throws Exception {
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/preview")
+                  .file(pdfFile())
+                  .file(
+                      jsonPart(
+                          "request",
+                          """
+                          {
+                            "bankName": "Example Bank",
+                            "defaultCurrencyIsoCode": "USD",
+                            "mapping": {
+                              "dateHeader": "Date",
+                              "dateFormat": "MM/dd/uuuu",
+                              "descriptionHeader": "Description",
+                              "amountMode": "SIGNED_AMOUNT",
+                              "amountHeader": "Amount",
+                              "negativeMeans": "CREDIT"
+                            }
+                          }
+                          """))
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("yearSource"));
+
+      verify(pdfStatementFormatWizardService, never())
+          .preview(any(byte[].class), eq("sample.pdf"), any(PdfWizardMappingPreviewCommand.class));
+    }
+
+    @Test
+    void previewPdfBusinessValidationReturns422WithFieldErrorsAfterRequestShapePasses()
+        throws Exception {
+      when(pdfStatementFormatWizardService.preview(
+              any(byte[].class), eq("sample.pdf"), any(PdfWizardMappingPreviewCommand.class)))
+          .thenThrow(
+              new BusinessException(
+                  "PDF wizard mapping validation failed.",
+                  BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
+                  List.of(
+                      org.budgetanalyzer.service.api.FieldError.forField(
+                          "mapping.amountHeader", "Column is required.", null))));
+
+      mockMvc
+          .perform(
+              multipart("/v1/statement-formats/pdf-wizard/preview")
+                  .file(pdfFile())
+                  .file(jsonPart("request", pdfPreviewRequestJson()))
+                  .with(
+                      ClaimsHeaderTestBuilder.user("usr_test123")
+                          .withPermissions("statementformats:write")))
+          .andExpect(status().isUnprocessableEntity())
+          .andExpect(jsonPath("$.code").value("PDF_WIZARD_VALIDATION_FAILED"))
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("mapping.amountHeader"));
     }
 
     @Test

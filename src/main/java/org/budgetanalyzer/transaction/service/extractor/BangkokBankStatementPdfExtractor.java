@@ -24,10 +24,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FileImport;
-import org.budgetanalyzer.transaction.domain.Transaction;
+import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
+import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 /**
@@ -66,51 +66,39 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
       Pattern.compile("(?<!\\d)[(+-]?(?:THB\\s*)?(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}\\)?");
 
   @Override
-  public boolean canHandle(byte[] fileContent, String filename) {
+  public ParserAttempt attempt(
+      ParserRevision parserRevision, byte[] fileContent, String filename, String accountId) {
     if (fileContent == null
         || filename == null
         || !filename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
 
+    List<PdfTextLine> lines;
     try {
-      var text = extractTextFromPdf(fileContent, 1, 2);
-      if (!BANK_PATTERN.matcher(text).find()) {
-        return false;
-      }
-      var lines = extractTextLinesFromPdf(fileContent, 1, 2);
-      return containsTransactionTable(lines);
+      lines = extractTextLinesFromPdf(fileContent);
     } catch (Exception exception) {
       log.debug(
           "Failed to check if file is Bangkok Bank Statement PDF: {}", exception.getMessage());
-      return false;
+      return ParserAttempt.notApplicable(parserRevision);
     }
-  }
 
-  @Override
-  public List<PreviewTransaction> extract(byte[] fileContent, String accountId) {
+    if (!containsBankSignature(lines) || !containsTransactionTable(lines)) {
+      return ParserAttempt.notApplicable(parserRevision);
+    }
+
     try {
-      var lines = extractTextLinesFromPdf(fileContent, 1, Integer.MAX_VALUE);
       var transactions = parseTransactions(lines, accountId);
       log.info("Extracted {} transactions from Bangkok Bank Statement PDF", transactions.size());
-      return transactions;
+      if (transactions.isEmpty()) {
+        return ParserAttempt.notApplicable(parserRevision);
+      }
+      return ParserAttempt.matched(parserRevision, transactions);
     } catch (BusinessException businessException) {
-      throw businessException;
+      return ParserAttempt.failed(parserRevision, businessException);
     } catch (Exception exception) {
-      throw new BusinessException(
-          "Failed to extract transactions from Bangkok Bank Statement PDF: "
-              + exception.getMessage(),
-          BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
-          exception);
+      return ParserAttempt.failed(parserRevision, pdfParsingError(exception));
     }
-  }
-
-  @Override
-  public List<Transaction> extractEntities(
-      byte[] fileContent, String accountId, FileImport fileImport) {
-    return extract(fileContent, accountId).stream()
-        .map(previewTransaction -> toTransaction(previewTransaction, fileImport))
-        .toList();
   }
 
   @Override
@@ -118,26 +106,24 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     return HANDLER_KEY;
   }
 
-  private String extractTextFromPdf(byte[] fileContent, int startPage, int endPage)
-      throws IOException {
-    try (PDDocument document = Loader.loadPDF(fileContent)) {
-      var pdfTextStripper = new PDFTextStripper();
-      pdfTextStripper.setStartPage(startPage);
-      pdfTextStripper.setEndPage(Math.min(endPage, document.getNumberOfPages()));
-      return pdfTextStripper.getText(document);
-    }
-  }
-
-  private List<PdfTextLine> extractTextLinesFromPdf(byte[] fileContent, int startPage, int endPage)
-      throws IOException {
+  private List<PdfTextLine> extractTextLinesFromPdf(byte[] fileContent) throws IOException {
     try (PDDocument document = Loader.loadPDF(fileContent)) {
       var pdfTextStripper = new PositionAwareTextStripper();
       pdfTextStripper.setSortByPosition(true);
-      pdfTextStripper.setStartPage(startPage);
-      pdfTextStripper.setEndPage(Math.min(endPage, document.getNumberOfPages()));
       pdfTextStripper.getText(document);
       return groupTextChunksIntoLines(pdfTextStripper.getChunks());
     }
+  }
+
+  private boolean containsBankSignature(List<PdfTextLine> lines) {
+    return BANK_PATTERN.matcher(joinLines(lines)).find();
+  }
+
+  private String joinLines(List<PdfTextLine> lines) {
+    return lines.stream()
+        .map(PdfTextLine::text)
+        .reduce((left, right) -> left + "\n" + right)
+        .orElse("");
   }
 
   private List<PdfTextLine> groupTextChunksIntoLines(List<PdfTextChunk> chunks) {
@@ -457,21 +443,15 @@ public class BangkokBankStatementPdfExtractor implements StatementExtractor {
     return AMOUNT_PATTERN.matcher(remainder).replaceAll("").strip();
   }
 
-  private Transaction toTransaction(PreviewTransaction previewTransaction, FileImport fileImport) {
-    var transaction = new Transaction();
-    transaction.setDate(previewTransaction.date());
-    transaction.setDescription(previewTransaction.description());
-    transaction.setAmount(previewTransaction.amount());
-    transaction.setType(previewTransaction.type());
-    transaction.setBankName(previewTransaction.bankName());
-    transaction.setCurrencyIsoCode(previewTransaction.currencyIsoCode());
-    transaction.setAccountId(previewTransaction.accountId());
-    transaction.setFileImport(fileImport);
-    return transaction;
-  }
-
   private BusinessException parsingError(String message) {
     return new BusinessException(message, BudgetAnalyzerError.PDF_PARSING_ERROR.name());
+  }
+
+  private BusinessException pdfParsingError(Exception exception) {
+    return new BusinessException(
+        "Failed to extract transactions from Bangkok Bank Statement PDF: " + exception.getMessage(),
+        BudgetAnalyzerError.PDF_PARSING_ERROR.name(),
+        exception);
   }
 
   private record TableColumns(

@@ -9,7 +9,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.service.dto.CsvWizardSaveCommand;
 
-/** Request DTO for saving a CSV wizard statement format. */
+/**
+ * Request DTO for saving a CSV wizard statement format.
+ *
+ * <p>API Bean Validation owns request-shape checks. CSV wizard services own mapping semantics,
+ * sample compatibility, persistence scope, and parser-content validation.
+ */
 @Schema(description = "CSV wizard save request")
 public record CsvWizardSaveRequest(
     @Schema(description = "Display name for the saved statement format", example = "Example CSV")

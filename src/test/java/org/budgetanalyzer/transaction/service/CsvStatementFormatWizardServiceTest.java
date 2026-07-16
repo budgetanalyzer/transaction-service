@@ -265,7 +265,7 @@ class CsvStatementFormatWizardServiceTest {
             "Missing Credit",
             null,
             "Missing Category");
-    var command = new CsvWizardMappingPreviewCommand("", "BAD", null, invalidMapping);
+    var command = new CsvWizardMappingPreviewCommand("Example Bank", "BAD", null, invalidMapping);
 
     assertThatThrownBy(
             () ->
@@ -283,7 +283,6 @@ class CsvStatementFormatWizardServiceTest {
                 assertThat(businessException.getFieldErrors())
                     .extracting("field")
                     .contains(
-                        "bankName",
                         "defaultCurrencyIsoCode",
                         "mapping.dateColumn",
                         "mapping.dateFormat",
@@ -371,8 +370,7 @@ class CsvStatementFormatWizardServiceTest {
                 """),
             "sample.csv",
             command,
-            "usr_test123",
-            false);
+            "usr_test123");
 
     assertThat(result).isSameAs(saved);
     var captor = ArgumentCaptor.forClass(StatementFormatCommand.class);

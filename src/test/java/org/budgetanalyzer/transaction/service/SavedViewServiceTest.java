@@ -3,6 +3,7 @@ package org.budgetanalyzer.transaction.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -195,7 +197,7 @@ class SavedViewServiceTest {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+    activeOwnerIds(3L);
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -225,7 +227,7 @@ class SavedViewServiceTest {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2, testTransaction3));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(2L);
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -256,8 +258,7 @@ class SavedViewServiceTest {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(1L, 2L);
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -313,9 +314,7 @@ class SavedViewServiceTest {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(99L))
-        .thenReturn(Optional.empty()); // Soft-deleted
+    activeOwnerIds(1L);
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -345,8 +344,7 @@ class SavedViewServiceTest {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(99L))
-        .thenReturn(Optional.empty()); // Soft-deleted
+    activeOwnerIds();
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
@@ -417,29 +415,15 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(3L, 4L, 5L));
     testView.setExcludedIds(Set.of(1L, 6L));
 
-    var ownedPinnedTransaction =
-        createTransaction(4L, "Owned Pin", LocalDate.of(2024, 12, 15), USER_ID);
-    var foreignPinnedTransaction =
-        createTransaction(5L, "Foreign Pin", LocalDate.of(2024, 12, 18), "usr_foreign");
-    var foreignExcludedTransaction =
-        createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
-
     // findAllNotDeleted spec filters by ownerId, so only owned transactions are returned
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction3));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
-    when(transactionRepository.findByIdNotDeleted(4L))
-        .thenReturn(Optional.of(ownedPinnedTransaction));
-    when(transactionRepository.findByIdNotDeleted(5L))
-        .thenReturn(Optional.of(foreignPinnedTransaction));
-    when(transactionRepository.findByIdNotDeleted(6L))
-        .thenReturn(Optional.of(foreignExcludedTransaction));
+    activeOwnerIds(1L, 3L, 4L);
 
     var result = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
 
-    // Foreign pinned/excluded still filtered at Java level in findTransactionsByIds
+    // Foreign pinned/excluded IDs are hidden by the owner-scoped active ID lookup.
     assertThat(result.matched()).containsExactly(3L);
     assertThat(result.pinned()).containsExactly(4L);
     assertThat(result.excluded()).containsExactly(1L);
@@ -462,23 +446,10 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(4L, 5L));
     testView.setExcludedIds(Set.of(1L, 6L));
 
-    var ownedPinnedTransaction =
-        createTransaction(4L, "Owned Pin", LocalDate.of(2024, 12, 15), USER_ID);
-    var foreignPinnedTransaction =
-        createTransaction(5L, "Foreign Pin", LocalDate.of(2024, 12, 18), "usr_foreign");
-    var foreignExcludedTransaction =
-        createTransaction(6L, "Foreign Excluded", LocalDate.of(2024, 12, 20), "usr_foreign");
-
     // findAllNotDeleted spec filters by ownerId, so only owned transactions are returned
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction3));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(4L))
-        .thenReturn(Optional.of(ownedPinnedTransaction));
-    when(transactionRepository.findByIdNotDeleted(5L))
-        .thenReturn(Optional.of(foreignPinnedTransaction));
-    when(transactionRepository.findByIdNotDeleted(6L))
-        .thenReturn(Optional.of(foreignExcludedTransaction));
+    activeOwnerIds(1L, 4L);
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -506,17 +477,45 @@ class SavedViewServiceTest {
     testView.setPinnedIds(Set.of(100L));
     testView.setExcludedIds(Set.of(2L));
 
-    var pinnedTransaction = createTransaction(100L, "Pinned", LocalDate.of(2024, 12, 15));
-
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2, testTransaction3));
-    when(transactionRepository.findByIdNotDeleted(100L)).thenReturn(Optional.of(pinnedTransaction));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(2L, 100L);
 
     var count = savedViewService.countViewTransactions(testView);
 
     // 3 matching - 1 excluded + 1 pinned = 3
     assertThat(count).isEqualTo(3);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void countViewTransactions_serviceBusinessInvariantMatchesMembershipEffectiveSet() {
+    testView.setCriteria(
+        new org.budgetanalyzer.transaction.domain.ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null));
+    testView.setPinnedIds(Set.of(100L));
+    testView.setExcludedIds(Set.of(2L));
+
+    when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
+        .thenReturn(List.of(testTransaction1, testTransaction2, testTransaction3));
+    activeOwnerIds(2L, 100L);
+
+    var membership = savedViewService.getViewTransactions(VIEW_ID, USER_ID);
+    var count = savedViewService.countViewTransactions(testView);
+
+    assertThat(membership.matched()).containsExactlyInAnyOrder(1L, 3L);
+    assertThat(membership.pinned()).containsExactly(100L);
+    assertThat(membership.excluded()).containsExactly(2L);
+    assertThat(count).isEqualTo(membership.matched().size() + membership.pinned().size());
   }
 
   @Test
@@ -537,8 +536,7 @@ class SavedViewServiceTest {
 
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(99L))
-        .thenReturn(Optional.empty()); // Soft-deleted
+    activeOwnerIds();
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -564,8 +562,7 @@ class SavedViewServiceTest {
 
     when(transactionRepository.findAllNotDeleted(any(Specification.class)))
         .thenReturn(List.of(testTransaction1, testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(99L))
-        .thenReturn(Optional.empty()); // Soft-deleted
+    activeOwnerIds();
 
     var count = savedViewService.countViewTransactions(testView);
 
@@ -646,9 +643,7 @@ class SavedViewServiceTest {
   @Test
   void bulkPinTransactions_allTransactionsFound_pinsAllTransactions() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+    activeOwnerIds(1L, 2L, 3L);
 
     var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 3L));
 
@@ -656,14 +651,16 @@ class SavedViewServiceTest {
     assertThat(result.notFoundIds()).isEmpty();
     assertThat(testView.getPinnedIds()).containsExactlyInAnyOrder(1L, 2L, 3L);
 
+    verify(transactionRepository, times(1))
+        .findActiveIdsByOwnerIdAndIdIn(eq(USER_ID), eq(new LinkedHashSet<>(List.of(1L, 2L, 3L))));
+    verify(transactionRepository, never()).findByIdNotDeleted(any());
     verify(savedViewRepository).save(testView);
   }
 
   @Test
   void bulkPinTransactions_duplicateValidIds_countsUniqueTransactions() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(1L, 2L);
 
     var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
 
@@ -675,9 +672,7 @@ class SavedViewServiceTest {
   @Test
   void bulkPinTransactions_partialSuccess_returnsNotFoundIds() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+    activeOwnerIds(1L, 2L);
 
     var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 999L));
 
@@ -690,8 +685,7 @@ class SavedViewServiceTest {
   void bulkPinTransactions_removesPinnedIdsFromExclusions() {
     testView.setExcludedIds(new HashSet<>(Set.of(1L, 2L)));
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(1L, 2L);
 
     savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
 
@@ -701,11 +695,8 @@ class SavedViewServiceTest {
 
   @Test
   void bulkPinTransactions_nonOwnedTransactions_returnedInNotFoundIds() {
-    var foreignTransaction =
-        createTransaction(2L, "Foreign", LocalDate.of(2024, 12, 2), "usr_other");
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(foreignTransaction));
+    activeOwnerIds(1L);
 
     var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
 
@@ -717,9 +708,7 @@ class SavedViewServiceTest {
   @Test
   void bulkPinTransactions_missingOrSoftDeletedTransactions_returnedInNotFoundIds() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
-    when(transactionRepository.findByIdNotDeleted(1000L)).thenReturn(Optional.empty());
+    activeOwnerIds(1L);
 
     var result = savedViewService.bulkPinTransactions(VIEW_ID, USER_ID, List.of(1L, 999L, 1000L));
 
@@ -744,23 +733,23 @@ class SavedViewServiceTest {
   @Test
   void bulkExcludeTransactions_allTransactionsFound_excludesAllTransactions() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(3L)).thenReturn(Optional.of(testTransaction3));
+    activeOwnerIds(1L, 2L, 3L);
 
     var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 3L));
 
     assertThat(result.updatedCount()).isEqualTo(3);
     assertThat(result.notFoundIds()).isEmpty();
     assertThat(testView.getExcludedIds()).containsExactlyInAnyOrder(1L, 2L, 3L);
+    verify(transactionRepository, times(1))
+        .findActiveIdsByOwnerIdAndIdIn(eq(USER_ID), eq(new LinkedHashSet<>(List.of(1L, 2L, 3L))));
+    verify(transactionRepository, never()).findByIdNotDeleted(any());
     verify(savedViewRepository).save(testView);
   }
 
   @Test
   void bulkExcludeTransactions_duplicateValidIds_countsUniqueTransactions() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(1L, 2L);
 
     var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 1L, 2L));
 
@@ -772,9 +761,7 @@ class SavedViewServiceTest {
   @Test
   void bulkExcludeTransactions_partialSuccess_returnsNotFoundIds() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
-    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
+    activeOwnerIds(1L, 2L);
 
     var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L, 999L));
 
@@ -787,8 +774,7 @@ class SavedViewServiceTest {
   void bulkExcludeTransactions_removesExcludedIdsFromPins() {
     testView.setPinnedIds(new HashSet<>(Set.of(1L, 2L)));
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(testTransaction2));
+    activeOwnerIds(1L, 2L);
 
     savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
 
@@ -798,11 +784,8 @@ class SavedViewServiceTest {
 
   @Test
   void bulkExcludeTransactions_nonOwnedTransactions_returnedInNotFoundIds() {
-    var foreignTransaction =
-        createTransaction(2L, "Foreign", LocalDate.of(2024, 12, 2), "usr_other");
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(2L)).thenReturn(Optional.of(foreignTransaction));
+    activeOwnerIds(1L);
 
     var result = savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 2L));
 
@@ -814,9 +797,7 @@ class SavedViewServiceTest {
   @Test
   void bulkExcludeTransactions_missingOrSoftDeletedTransactions_returnedInNotFoundIds() {
     when(savedViewRepository.findByIdAndUserId(VIEW_ID, USER_ID)).thenReturn(Optional.of(testView));
-    when(transactionRepository.findByIdNotDeleted(1L)).thenReturn(Optional.of(testTransaction1));
-    when(transactionRepository.findByIdNotDeleted(999L)).thenReturn(Optional.empty());
-    when(transactionRepository.findByIdNotDeleted(1000L)).thenReturn(Optional.empty());
+    activeOwnerIds(1L);
 
     var result =
         savedViewService.bulkExcludeTransactions(VIEW_ID, USER_ID, List.of(1L, 999L, 1000L));
@@ -867,5 +848,10 @@ class SavedViewServiceTest {
       // Ignore for testing
     }
     return transaction;
+  }
+
+  private void activeOwnerIds(Long... ids) {
+    when(transactionRepository.findActiveIdsByOwnerIdAndIdIn(eq(USER_ID), any()))
+        .thenReturn(List.of(ids));
   }
 }

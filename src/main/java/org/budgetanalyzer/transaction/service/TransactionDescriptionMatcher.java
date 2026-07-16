@@ -17,8 +17,7 @@ final class TransactionDescriptionMatcher {
   private static final double FUZZY_MATCH_THRESHOLD = 0.90;
   private static final int MINIMUM_FUZZY_MATCH_LENGTH = 8;
 
-  TransactionDescriptionMatchResult match(
-      String incomingDescription, Long candidateId, String candidateDescription) {
+  boolean match(String incomingDescription, String candidateDescription) {
     Objects.requireNonNull(incomingDescription, "incomingDescription");
     Objects.requireNonNull(candidateDescription, "candidateDescription");
 
@@ -26,26 +25,21 @@ final class TransactionDescriptionMatcher {
     var normalizedCandidateDescription = normalize(candidateDescription);
 
     if (normalizedIncomingDescription.equals(normalizedCandidateDescription)) {
-      return TransactionDescriptionMatchResult.match(1.0, candidateId, candidateDescription);
+      return true;
     }
 
     if (!haveCompatibleNumericTokens(incomingDescription, candidateDescription)) {
-      return TransactionDescriptionMatchResult.noMatch();
+      return false;
     }
 
     if (!canFuzzyMatch(normalizedIncomingDescription, normalizedCandidateDescription)) {
-      return TransactionDescriptionMatchResult.noMatch();
+      return false;
     }
 
     var similarityScore =
         calculateNormalizedLevenshteinSimilarity(
             normalizedIncomingDescription, normalizedCandidateDescription);
-    if (similarityScore >= FUZZY_MATCH_THRESHOLD) {
-      return TransactionDescriptionMatchResult.match(
-          similarityScore, candidateId, candidateDescription);
-    }
-
-    return TransactionDescriptionMatchResult.noMatch();
+    return similarityScore >= FUZZY_MATCH_THRESHOLD;
   }
 
   static String normalize(String description) {

@@ -2,8 +2,6 @@ package org.budgetanalyzer.transaction.api.response;
 
 import java.time.Instant;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import org.budgetanalyzer.transaction.domain.FormatType;
@@ -37,8 +35,7 @@ public record StatementFormatResponse(
     StatementFormatScope scope,
     String ownerId,
     boolean enabled,
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-        @Schema(
+    @Schema(
             description =
                 "Whether the current user has hidden this format from normal import selection",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
@@ -72,20 +69,7 @@ public record StatementFormatResponse(
    * @return the response DTO
    */
   public static StatementFormatResponse from(StatementFormat format) {
-    return new StatementFormatResponse(
-        format.getId(),
-        format.getDisplayName(),
-        format.getFormatType(),
-        format.getBankName(),
-        format.getDefaultCurrencyIsoCode(),
-        format.getScope(),
-        format.getOwnerId(),
-        format.isEnabled(),
-        null,
-        format.getCreatedAt(),
-        format.getUpdatedAt(),
-        format.getCreatedBy(),
-        format.getUpdatedBy());
+    return from(format, null);
   }
 
   /**
@@ -95,7 +79,10 @@ public record StatementFormatResponse(
    * @return the response DTO
    */
   public static StatementFormatResponse from(StatementFormatListItem statementFormatListItem) {
-    var format = statementFormatListItem.statementFormat();
+    return from(statementFormatListItem.statementFormat(), statementFormatListItem.hidden());
+  }
+
+  private static StatementFormatResponse from(StatementFormat format, Boolean hidden) {
     return new StatementFormatResponse(
         format.getId(),
         format.getDisplayName(),
@@ -105,7 +92,7 @@ public record StatementFormatResponse(
         format.getScope(),
         format.getOwnerId(),
         format.isEnabled(),
-        statementFormatListItem.hidden(),
+        hidden,
         format.getCreatedAt(),
         format.getUpdatedAt(),
         format.getCreatedBy(),
