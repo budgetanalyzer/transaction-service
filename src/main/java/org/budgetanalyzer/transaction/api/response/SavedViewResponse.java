@@ -29,11 +29,11 @@ public record SavedViewResponse(
             requiredMode = Schema.RequiredMode.REQUIRED)
         boolean openEnded,
     @Schema(
-            description = "Number of active, owner-owned pinned transactions",
+            description = "Number of active pinned transactions",
             requiredMode = Schema.RequiredMode.REQUIRED)
         int pinnedCount,
     @Schema(
-            description = "Number of active, owner-owned excluded transactions",
+            description = "Number of active excluded transactions",
             requiredMode = Schema.RequiredMode.REQUIRED)
         int excludedCount,
     @Schema(
@@ -54,8 +54,8 @@ public record SavedViewResponse(
    *
    * @param view the saved view
    * @param transactionCount the number of effectively visible transactions
-   * @param pinnedCount the number of active, owner-owned stored pins
-   * @param excludedCount the number of active, owner-owned stored exclusions
+   * @param pinnedCount the number of active stored pins
+   * @param excludedCount the number of active stored exclusions
    * @return the saved-view response
    */
   public static SavedViewResponse from(

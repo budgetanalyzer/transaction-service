@@ -62,7 +62,7 @@ public record PreviewTransactionResponse(
         String accountId,
     @Schema(
             description =
-                "Whether this row appears to duplicate an existing active owner-owned "
+                "Whether this row appears to duplicate an existing active "
                     + "transaction or an earlier row in the same preview payload after strict "
                     + "financial identity matching plus normalized exact or conservative fuzzy "
                     + "description matching",

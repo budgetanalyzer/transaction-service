@@ -107,10 +107,10 @@ set:
 
 - `transactionCount` is `matched + pinned`, after active exclusions are
   applied.
-- `pinnedCount` is the number of active, owner-owned stored pin IDs. It includes
+- `pinnedCount` is the number of active stored pin IDs. It includes
   an active pin that also matches the criteria, even though that ID is presented
   only in `matched` membership.
-- `excludedCount` is the number of active, owner-owned stored exclusion IDs,
+- `excludedCount` is the number of active stored exclusion IDs,
   including exclusions that do not currently match the criteria.
 
 Soft-deleted, missing, and foreign-owner transactions are ignored in all three
@@ -130,7 +130,7 @@ The `saved_view` table stores:
 
 The ID arrays retain historical IDs after a transaction is soft-deleted. Their
 stored array sizes therefore are not the `pinnedCount` or `excludedCount`
-returned by the API; response counts include only active, owner-owned IDs.
+returned by the API; response counts include only active IDs.
 
 `criteria`, `pinned_ids`, and `excluded_ids` are required persistence values.
 An empty criteria object (`{}`) and empty ID arrays (`[]`) are valid explicit
