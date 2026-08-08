@@ -20,6 +20,7 @@ import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
+import org.budgetanalyzer.transaction.service.dto.SavedViewResolution;
 import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 import org.budgetanalyzer.transaction.service.dto.ViewMembership;
 
@@ -145,7 +146,43 @@ public class SavedViewService {
    */
   public ViewMembership getViewTransactions(UUID viewId, String userId) {
     var view = getView(viewId, userId);
-    return resolveViewMembership(view);
+    return resolveView(view).membership();
+  }
+
+  /**
+   * Resolves effective membership and active override counts for a saved view.
+   *
+   * <p>Stored pin and exclusion IDs contribute to the override counts only when they identify an
+   * active transaction owned by the view owner.
+   *
+   * @param view the saved view
+   * @return the resolved membership and active override counts
+   */
+  public SavedViewResolution resolveView(SavedView view) {
+    var matchingTransactions = findMatchingTransactions(view);
+    var matchingIds = new HashSet<Long>();
+    for (var transaction : matchingTransactions) {
+      matchingIds.add(transaction.getId());
+    }
+    var storedMembershipIds = resolveStoredMembershipIds(view);
+
+    var matched =
+        matchingIds.stream()
+            .filter(id -> !storedMembershipIds.excludedIds().contains(id))
+            .sorted()
+            .toList();
+    var pinned =
+        storedMembershipIds.pinnedIds().stream()
+            .filter(id -> !matchingIds.contains(id))
+            .sorted()
+            .toList();
+    var excluded = storedMembershipIds.excludedIds().stream().sorted().toList();
+    var membership = new ViewMembership(matched, pinned, excluded);
+
+    return new SavedViewResolution(
+        membership,
+        storedMembershipIds.pinnedIds().size(),
+        storedMembershipIds.excludedIds().size());
   }
 
   /**
@@ -158,8 +195,7 @@ public class SavedViewService {
    * @return the count
    */
   public long countViewTransactions(SavedView view) {
-    var membership = resolveViewMembership(view);
-    return membership.matched().size() + membership.pinned().size();
+    return resolveView(view).transactionCount();
   }
 
   /**
@@ -276,29 +312,6 @@ public class SavedViewService {
         viewId,
         userId);
     return savedViewRepository.save(view);
-  }
-
-  private ViewMembership resolveViewMembership(SavedView view) {
-    var matchingTransactions = findMatchingTransactions(view);
-    var matchingIds = new HashSet<Long>();
-    for (var transaction : matchingTransactions) {
-      matchingIds.add(transaction.getId());
-    }
-    var storedMembershipIds = resolveStoredMembershipIds(view);
-
-    var matched =
-        matchingIds.stream()
-            .filter(id -> !storedMembershipIds.excludedIds().contains(id))
-            .sorted()
-            .toList();
-    var pinned =
-        storedMembershipIds.pinnedIds().stream()
-            .filter(id -> !matchingIds.contains(id))
-            .sorted()
-            .toList();
-    var excluded = storedMembershipIds.excludedIds().stream().sorted().toList();
-
-    return new ViewMembership(matched, pinned, excluded);
   }
 
   private List<Transaction> findMatchingTransactions(SavedView view) {

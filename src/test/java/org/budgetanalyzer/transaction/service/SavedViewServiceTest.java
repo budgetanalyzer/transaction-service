@@ -431,6 +431,46 @@ class SavedViewServiceTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void resolveView_countsActiveOverridesIncludingPinAlreadyPresentedAsMatched() {
+    testView.setPinnedIds(Set.of(1L, 3L));
+    testView.setExcludedIds(Set.of(2L));
+
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
+        .thenReturn(List.of(testTransaction1, testTransaction2));
+    activeOwnerIds(1L, 2L, 3L);
+
+    var resolution = savedViewService.resolveView(testView);
+
+    assertThat(resolution.membership().matched()).containsExactly(1L);
+    assertThat(resolution.membership().pinned()).containsExactly(3L);
+    assertThat(resolution.membership().excluded()).containsExactly(2L);
+    assertThat(resolution.activePinnedCount()).isEqualTo(2);
+    assertThat(resolution.activeExcludedCount()).isEqualTo(1);
+    assertThat(resolution.transactionCount()).isEqualTo(2);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void resolveView_doesNotCountDeletedMissingOrForeignOwnerOverrides() {
+    testView.setPinnedIds(Set.of(4L, 5L, 99L));
+    testView.setExcludedIds(Set.of(6L, 100L));
+
+    when(transactionRepository.findAllNotDeleted(any(Specification.class)))
+        .thenReturn(List.of(testTransaction1));
+    activeOwnerIds();
+
+    var resolution = savedViewService.resolveView(testView);
+
+    assertThat(resolution.membership().matched()).containsExactly(1L);
+    assertThat(resolution.membership().pinned()).isEmpty();
+    assertThat(resolution.membership().excluded()).isEmpty();
+    assertThat(resolution.activePinnedCount()).isZero();
+    assertThat(resolution.activeExcludedCount()).isZero();
+    assertThat(resolution.transactionCount()).isEqualTo(1);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void countViewTransactions_doesNotCountForeignOwnerTransactions() {
     testView.setCriteria(
         new org.budgetanalyzer.transaction.domain.ViewCriteria(

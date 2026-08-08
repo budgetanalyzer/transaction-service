@@ -201,6 +201,12 @@ See [Saved Views](../saved-views.md) for criteria fields, `openEnded`
 behavior, pinned/excluded membership rules, and the current criteria JSON
 contract.
 
+Every `SavedViewResponse` reports resolved active counts. `pinnedCount` and
+`excludedCount` count only active transactions owned by the view owner, while
+`transactionCount` counts effective visible membership (`matched + pinned`).
+Persisted override arrays may retain IDs for soft-deleted transactions, but
+those historical IDs do not contribute to response counts.
+
 **Pin Transaction to View**
 ```
 POST /v1/views/{id}/pin/{txnId}

@@ -103,8 +103,21 @@ set:
 (matching IDs - active excluded IDs) + active pinned IDs
 ```
 
-Soft-deleted transactions are ignored in all three membership groups and in the
-count.
+`SavedViewResponse` derives all three count fields from that same resolution:
+
+- `transactionCount` is `matched + pinned`, after active exclusions are
+  applied.
+- `pinnedCount` is the number of active, owner-owned stored pin IDs. It includes
+  an active pin that also matches the criteria, even though that ID is presented
+  only in `matched` membership.
+- `excludedCount` is the number of active, owner-owned stored exclusion IDs,
+  including exclusions that do not currently match the criteria.
+
+Soft-deleted, missing, and foreign-owner transactions are ignored in all three
+membership groups and counts. Deleting a transaction does not remove its ID
+from the persisted override arrays. If an equivalent transaction is later
+created with a new ID, the historical exclusion does not transfer to it; the
+replacement can enter an open-ended view when it matches the criteria.
 
 ## Storage
 
@@ -114,6 +127,10 @@ The `saved_view` table stores:
 - `open_ended` as a boolean.
 - `pinned_ids` as JSON text.
 - `excluded_ids` as JSON text.
+
+The ID arrays retain historical IDs after a transaction is soft-deleted. Their
+stored array sizes therefore are not the `pinnedCount` or `excludedCount`
+returned by the API; response counts include only active, owner-owned IDs.
 
 `criteria`, `pinned_ids`, and `excluded_ids` are required persistence values.
 An empty criteria object (`{}`) and empty ID arrays (`[]`) are valid explicit

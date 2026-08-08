@@ -44,6 +44,8 @@ class SavedViewServiceIntegrationTest {
 
   @Autowired private SavedViewService savedViewService;
 
+  @Autowired private TransactionService transactionService;
+
   @Autowired private SavedViewRepository savedViewRepository;
 
   @Autowired private TransactionRepository transactionRepository;
@@ -359,6 +361,54 @@ class SavedViewServiceIntegrationTest {
     assertThat(membership.excluded())
         .containsExactlyInAnyOrder(
             excludedMatchTransaction.getId(), excludedNonMatchTransaction.getId());
+  }
+
+  @Test
+  void resolveView_deletedExclusionDoesNotBlockEquivalentReplacementTransaction() {
+    var transactionDate = LocalDate.now();
+    var originalTransaction =
+        transactionRepository.save(
+            createTransaction("Equivalent transaction", transactionDate, TransactionType.DEBIT));
+    var criteria =
+        new ViewCriteria(
+            transactionDate.minusDays(1),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            TransactionType.DEBIT,
+            null);
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Open-ended debits", criteria, true));
+    var excludedView =
+        savedViewService.excludeTransaction(view.getId(), USER_ID, originalTransaction.getId());
+
+    var activeExclusionResolution = savedViewService.resolveView(excludedView);
+
+    assertThat(activeExclusionResolution.membership().matched()).isEmpty();
+    assertThat(activeExclusionResolution.membership().excluded())
+        .containsExactly(originalTransaction.getId());
+    assertThat(activeExclusionResolution.activeExcludedCount()).isEqualTo(1);
+    assertThat(activeExclusionResolution.transactionCount()).isZero();
+
+    transactionService.deleteTransaction(originalTransaction.getId(), USER_ID, false);
+    var replacementTransaction =
+        transactionRepository.save(
+            createTransaction("Equivalent transaction", transactionDate, TransactionType.DEBIT));
+
+    var replacementResolution = savedViewService.resolveView(excludedView);
+
+    assertThat(replacementTransaction.getId()).isNotEqualTo(originalTransaction.getId());
+    assertThat(replacementResolution.membership().matched())
+        .containsExactly(replacementTransaction.getId());
+    assertThat(replacementResolution.membership().excluded()).isEmpty();
+    assertThat(replacementResolution.activeExcludedCount()).isZero();
+    assertThat(replacementResolution.transactionCount()).isEqualTo(1);
+    assertThat(savedViewRepository.findById(view.getId()).orElseThrow().getExcludedIds())
+        .containsExactly(originalTransaction.getId());
   }
 
   private Transaction createTransaction(

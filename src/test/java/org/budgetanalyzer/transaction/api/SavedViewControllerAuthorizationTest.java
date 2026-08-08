@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +30,8 @@ import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.service.SavedViewService;
 import org.budgetanalyzer.transaction.service.SavedViewService.BulkViewUpdateResult;
+import org.budgetanalyzer.transaction.service.dto.SavedViewResolution;
+import org.budgetanalyzer.transaction.service.dto.ViewMembership;
 
 @WebMvcTest(SavedViewController.class)
 @Import({ServletApiExceptionHandler.class, ClaimsHeaderSecurityConfig.class})
@@ -43,7 +46,10 @@ class SavedViewControllerAuthorizationTest {
     var stubView = createStubView();
     when(savedViewService.createView(anyString(), any())).thenReturn(stubView);
     when(savedViewService.getViewsForUser(anyString())).thenReturn(List.of());
-    when(savedViewService.countViewTransactions(any())).thenReturn(0L);
+    when(savedViewService.resolveView(any()))
+        .thenReturn(
+            new SavedViewResolution(
+                new ViewMembership(List.of(10L, 11L), List.of(12L), List.of(13L)), 2, 1));
   }
 
   // ==================== No authentication ====================
@@ -91,7 +97,10 @@ class SavedViewControllerAuthorizationTest {
                     }
                     """))
         .andExpect(status().isCreated())
-        .andExpect(header().exists("Location"));
+        .andExpect(header().exists("Location"))
+        .andExpect(jsonPath("$.pinnedCount").value(2))
+        .andExpect(jsonPath("$.excludedCount").value(1))
+        .andExpect(jsonPath("$.transactionCount").value(3));
   }
 
   @Test
@@ -251,6 +260,8 @@ class SavedViewControllerAuthorizationTest {
     view.setName("Test View");
     view.setUserId("usr_test123");
     view.setCriteria(ViewCriteria.empty());
+    view.setPinnedIds(Set.of(10L, 11L, 12L, 99L));
+    view.setExcludedIds(Set.of(13L, 98L, 97L));
     return view;
   }
 }
