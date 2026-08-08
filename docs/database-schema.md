@@ -305,8 +305,12 @@ Saved-view criteria, open-ended date behavior, and pinned/excluded membership
 rules are documented in [Saved Views](saved-views.md). At read time, the
 service resolves the union of `pinned_ids` and `excluded_ids` with one
 owner-scoped active transaction ID lookup before partitioning the result into
-membership groups. Migration `V16__delete_legacy_saved_views.sql` removes rows
-written with the old `startDate` and `endDate` criteria JSON shape.
+membership groups and computing API counts. Soft deletion does not purge IDs
+from these arrays, so their stored sizes can include historical IDs. Saved-view
+responses count only active overrides; the persisted arrays remain
+the ID-based source of override intent. Migration
+`V16__delete_legacy_saved_views.sql` removes rows written with the old
+`startDate` and `endDate` criteria JSON shape.
 
 ## Migration Strategy
 

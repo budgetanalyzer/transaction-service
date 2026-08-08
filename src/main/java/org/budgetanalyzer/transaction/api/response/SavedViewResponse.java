@@ -29,15 +29,15 @@ public record SavedViewResponse(
             requiredMode = Schema.RequiredMode.REQUIRED)
         boolean openEnded,
     @Schema(
-            description = "Number of pinned transactions",
+            description = "Number of active pinned transactions",
             requiredMode = Schema.RequiredMode.REQUIRED)
         int pinnedCount,
     @Schema(
-            description = "Number of excluded transactions",
+            description = "Number of active excluded transactions",
             requiredMode = Schema.RequiredMode.REQUIRED)
         int excludedCount,
     @Schema(
-            description = "Total number of transactions matching this view",
+            description = "Total number of effectively visible transactions in this view",
             requiredMode = Schema.RequiredMode.REQUIRED)
         long transactionCount,
     @Schema(
@@ -49,15 +49,24 @@ public record SavedViewResponse(
             requiredMode = Schema.RequiredMode.REQUIRED)
         Instant updatedAt) {
 
-  /** Creates a response from a SavedView entity with a transaction count. */
-  public static SavedViewResponse from(SavedView view, long transactionCount) {
+  /**
+   * Creates a response from a saved view and its resolved active counts.
+   *
+   * @param view the saved view
+   * @param transactionCount the number of effectively visible transactions
+   * @param pinnedCount the number of active stored pins
+   * @param excludedCount the number of active stored exclusions
+   * @return the saved-view response
+   */
+  public static SavedViewResponse from(
+      SavedView view, long transactionCount, int pinnedCount, int excludedCount) {
     return new SavedViewResponse(
         view.getId(),
         view.getName(),
         ViewCriteriaApi.from(view.getCriteria()),
         view.isOpenEnded(),
-        view.getPinnedIds().size(),
-        view.getExcludedIds().size(),
+        pinnedCount,
+        excludedCount,
         transactionCount,
         view.getCreatedAt(),
         view.getUpdatedAt());

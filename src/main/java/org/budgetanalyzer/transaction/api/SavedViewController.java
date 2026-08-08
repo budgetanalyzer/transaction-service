@@ -38,6 +38,7 @@ import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.response.BulkViewTransactionResponse;
 import org.budgetanalyzer.transaction.api.response.SavedViewResponse;
 import org.budgetanalyzer.transaction.api.response.ViewMembershipResponse;
+import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.service.SavedViewService;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
@@ -84,7 +85,6 @@ public class SavedViewController {
     var command =
         new SavedViewCommand(request.name(), request.criteria().toDomain(), request.openEnded());
     var view = savedViewService.createView(userId, command);
-    var transactionCount = savedViewService.countViewTransactions(view);
 
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
@@ -92,7 +92,7 @@ public class SavedViewController {
             .buildAndExpand(view.getId())
             .toUri();
 
-    return ResponseEntity.created(location).body(SavedViewResponse.from(view, transactionCount));
+    return ResponseEntity.created(location).body(toResponse(view));
   }
 
   @PreAuthorize("hasAuthority('views:read')")
@@ -115,9 +115,7 @@ public class SavedViewController {
     log.info("Listing saved views for user {}", userId);
 
     var views = savedViewService.getViewsForUser(userId);
-    return views.stream()
-        .map(view -> SavedViewResponse.from(view, savedViewService.countViewTransactions(view)))
-        .toList();
+    return views.stream().map(this::toResponse).toList();
   }
 
   @PreAuthorize("hasAuthority('views:read')")
@@ -143,8 +141,7 @@ public class SavedViewController {
     log.info("Getting saved view {} for user {}", id, userId);
 
     var view = savedViewService.getView(id, userId);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
   }
 
   @PreAuthorize("hasAuthority('views:write')")
@@ -178,8 +175,7 @@ public class SavedViewController {
             request.criteria() != null ? request.criteria().toDomain() : null,
             request.openEnded());
     var view = savedViewService.updateView(id, userId, patch);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
   }
 
   @PreAuthorize("hasAuthority('views:delete')")
@@ -397,8 +393,7 @@ public class SavedViewController {
     log.info("Pinning transaction {} to view {} for user {}", txnId, id, userId);
 
     var view = savedViewService.pinTransaction(id, userId, txnId);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
   }
 
   @PreAuthorize("hasAuthority('views:write')")
@@ -425,8 +420,7 @@ public class SavedViewController {
     log.info("Unpinning transaction {} from view {} for user {}", txnId, id, userId);
 
     var view = savedViewService.unpinTransaction(id, userId, txnId);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
   }
 
   @PreAuthorize("hasAuthority('views:write')")
@@ -455,8 +449,7 @@ public class SavedViewController {
     log.info("Excluding transaction {} from view {} for user {}", txnId, id, userId);
 
     var view = savedViewService.excludeTransaction(id, userId, txnId);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
   }
 
   @PreAuthorize("hasAuthority('views:write')")
@@ -486,8 +479,16 @@ public class SavedViewController {
     log.info("Removing exclusion of transaction {} from view {} for user {}", txnId, id, userId);
 
     var view = savedViewService.unexcludeTransaction(id, userId, txnId);
-    var transactionCount = savedViewService.countViewTransactions(view);
-    return SavedViewResponse.from(view, transactionCount);
+    return toResponse(view);
+  }
+
+  private SavedViewResponse toResponse(SavedView view) {
+    var resolution = savedViewService.resolveView(view);
+    return SavedViewResponse.from(
+        view,
+        resolution.transactionCount(),
+        resolution.activePinnedCount(),
+        resolution.activeExcludedCount());
   }
 
   private String getCurrentUserId() {
