@@ -7,8 +7,9 @@
 
 Duplicate detection applies to the file preview and batch import flow:
 
-1. `POST /v1/transactions/preview` parses a CSV or PDF file and marks likely
-   duplicate rows for user review.
+1. `POST /v1/transactions/preview` parses an ordered, non-empty collection of
+   CSV or PDF files sharing one statement format and optional account, then
+   marks likely duplicate rows for user review.
 2. `POST /v1/transactions/batch` re-checks duplicates before persistence and
    skips matching rows unless the submitted row sets `allowDuplicate=true`.
 
@@ -45,14 +46,10 @@ parameters.
 After the strict financial identity match, descriptions are compared in the
 service layer:
 
-- Normalized exact match removes case, whitespace, punctuation, separators, and
+- Descriptions match only when their normalized forms are equal.
+- Normalization removes case, whitespace, punctuation, separators, and
   diacritic differences.
-- Conservative fuzzy match uses normalized Levenshtein similarity and requires
-  both normalized descriptions to be at least 8 characters.
-- Fuzzy matches require at least 0.90 similarity.
-- If either original description contains numeric tokens, both ordered numeric
-  token lists must match exactly. This prevents fuzzy matching across different
-  references, check numbers, or card suffixes.
+- Descriptions that are merely similar do not match.
 
 ## Preview Behavior
 
@@ -62,14 +59,38 @@ Preview never persists transactions. Each preview row includes:
 - `duplicate=true` and `duplicateReason=EXISTING_TRANSACTION` when the row
   matches an active persisted transaction owned by the authenticated user.
 - `duplicate=true` and `duplicateReason=IN_BATCH` when the row duplicates an
-  earlier row in the same preview response.
+  earlier source file that completed successfully in the same preview request.
 
-The preview endpoint does not return matching transaction IDs.
+Rows are never compared with other rows from their own source file. A source's
+rows enter the earlier-file candidate set only after the entire source has been
+evaluated, so repeated rows faithfully present in one statement remain
+unmarked. When a row matches both a persisted transaction and an earlier file,
+`EXISTING_TRANSACTION` takes precedence. Persisted candidates are loaded once
+for the complete grouped preview.
+
+Multipart order determines response order and earlier-file precedence. The
+preview endpoint stops at the first source failure, names that source in the
+standard error response, and returns no partial preview body. It does not
+return matching transaction IDs.
 
 ## Batch Behavior
 
-Batch import validates the submitted rows, re-runs duplicate detection, and then
-persists the accepted rows in one transaction.
+Batch import accepts an ordered, non-empty collection of source file groups.
+Every group contains its own preview token and reviewed rows. The controller
+verifies every token for the authenticated owner before the persistence service
+is called. All verified tokens must share one statement format ID and account
+ID; parser revision IDs may differ.
+
+The service validates every submitted row before database work, loads persisted
+duplicate candidates once, re-runs duplicate detection, resolves per-file
+provenance, and persists all accepted groups in one transaction. Batch request
+order is authoritative for first-file-wins behavior. Business validation
+errors use nested paths such as `files[1].transactions[4].date`, and their safe
+messages identify the verified source filename.
+
+If any persistence operation fails, all transactions and newly created
+`file_import` rows attempted by the grouped request roll back together;
+pre-existing rows remain unchanged.
 
 Per-row duplicate handling:
 
@@ -77,21 +98,27 @@ Per-row duplicate handling:
   are skipped.
 - Set `allowDuplicate=true` only for a row that should be intentionally
   imported despite matching duplicate detection.
-- Rows skipped because they duplicate existing persisted transactions are not
-  added to the in-batch candidate set for later submitted rows.
-- Rows accepted for creation, including rows accepted with
-  `allowDuplicate=true`, are added to the in-batch candidate set and can cause
-  later rows to be skipped.
+- Rows are never compared with other rows from their own source file, so
+  repeated rows within one faithful statement remain eligible.
+- Rows accepted from a completed file, including rows accepted with
+  `allowDuplicate=true`, are added to the earlier-file candidate set and can
+  cause matching rows in later files to be skipped.
+- Persisted matches are evaluated before earlier-file matches.
 
-Batch responses include:
+Batch responses include aggregate counts plus ordered per-file results. Each
+file result contains its verified source filename, the same three per-file
+counts, and that file's created transactions:
 
+- `created` - Accepted rows created across all files.
 - `duplicatesSkipped` - Rows skipped because they matched duplicate detection
   and `allowDuplicate` was false or omitted.
 - `duplicatesImported` - Rows imported even though they matched duplicate
   detection because `allowDuplicate=true`.
 
-If duplicate filtering leaves no rows to create, batch import fails with
-`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no `file_import` row is recorded.
+A file may return `created=0` when another file creates transactions. That
+zero-created file does not create provenance. If duplicate filtering leaves no
+rows to create across the complete request, batch import fails with
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no new `file_import` row is recorded.
 
 ## File Reupload Tracking
 
@@ -99,7 +126,7 @@ Exact-file reupload status is separate from transaction duplicate detection.
 The service computes a SHA-256 content hash for the uploaded bytes and checks it
 against previous `file_import` records for the authenticated user.
 
-Preview response behavior:
+Per-file preview response behavior:
 
 - `fileImport.alreadyImported=false` when the file bytes have not been recorded
   for the current user.
@@ -115,9 +142,11 @@ duplicate rules remain authoritative.
 
 ## Preview Import Token
 
-Every successful preview returns an opaque `previewImportToken`. Batch import
-requires this token so the service can record file-backed import metadata and
-link created transactions to a `file_import` row.
+Every file in a successful grouped preview has its own opaque
+`previewImportToken`. Tokens are created from that file's hash, filename,
+selected parser revision, and size; there is no combined token or content hash.
+The batch endpoint accepts the ordered preview file results together and keeps
+each token nested with that source's reviewed rows.
 
 Token behavior:
 
@@ -127,13 +156,17 @@ Token behavior:
   account ID, file size, and expiration timestamps.
 - Clients must treat the token as opaque and must not decode it or derive source
   metadata from it.
-- Missing, invalid, expired, incomplete, or wrong-owner tokens fail before
-  service-layer validation, duplicate checks, or persistence.
+- Missing, invalid, expired, incomplete, or wrong-owner tokens fail before the
+  persistence service is called.
+- All tokens are verified before grouped statement-format and account identity
+  checks. Different parser revision IDs remain valid under the same public
+  statement format.
 
-When at least one transaction is created, the service records source-file
-metadata in `file_import`. If the same `(content_hash, imported_by)` already
-exists, the batch links created rows to that existing row instead of creating a
-duplicate file import record.
+For each source group with accepted rows, the service records source-file
+metadata in a separate `file_import`. If the same `(content_hash, imported_by)`
+already exists, that group's created rows link to the existing row instead of
+creating a duplicate file import record. Created rows never link to another
+source group's new provenance.
 
 ## Database Support
 
@@ -149,18 +182,25 @@ token-backed batch transactions to their source import record.
 
 ## Related API Fields
 
-- `PreviewResponse.previewImportToken`
-- `PreviewResponse.fileImport`
+- `PreviewResponse.files`
+- `PreviewFileResponse.previewImportToken`
+- `PreviewFileResponse.fileImport`
 - `PreviewTransactionResponse.duplicate`
 - `PreviewTransactionResponse.duplicateReason`
 - `BatchImportTransactionRequest.allowDuplicate`
+- `BatchImportRequest.files`
+- `BatchImportFileRequest.previewImportToken`
+- `BatchImportResponse.files`
 - `BatchImportResponse.duplicatesSkipped`
 - `BatchImportResponse.duplicatesImported`
 
 ## Related Errors
 
-- `MISSING_ORIGINAL_FILENAME` - Preview upload omitted the multipart filename
-  or supplied only whitespace.
+- `MISSING_ORIGINAL_FILENAME` - A preview upload part omitted the multipart
+  filename or supplied only whitespace; the message identifies its ordered
+  index.
 - `PREVIEW_IMPORT_TOKEN_EXPIRED` - Batch submitted an expired token.
+- `INVALID_REQUEST` - Verified batch tokens did not share one statement format
+  and account identity.
 - `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` - No submitted rows remained after
   duplicate filtering or the request had no importable rows.

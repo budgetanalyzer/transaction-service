@@ -18,41 +18,60 @@ final class TransactionDuplicateMatcher {
   private final TransactionDescriptionMatcher transactionDescriptionMatcher =
       new TransactionDescriptionMatcher();
 
-  List<PreviewTransaction> markDuplicates(
+  List<List<PreviewTransaction>> markGroupedDuplicates(
       TransactionRepository transactionRepository,
-      List<PreviewTransaction> previewTransactions,
+      List<List<PreviewTransaction>> previewTransactionGroups,
       String userId) {
-    if (previewTransactions.isEmpty()) {
-      return previewTransactions;
+    var allPreviewTransactions = previewTransactionGroups.stream().flatMap(List::stream).toList();
+    if (allPreviewTransactions.isEmpty()) {
+      return previewTransactionGroups;
     }
 
     var existingCandidatesByKey =
-        findExistingCandidatesByKey(transactionRepository, previewTransactions, userId);
-    var seenTransactionsByCandidateKey =
+        findExistingCandidatesByKey(transactionRepository, allPreviewTransactions, userId);
+    var earlierFileTransactionsByCandidateKey =
         new HashMap<TransactionDuplicateIdentity, List<PreviewTransaction>>();
-    var markedPreviewTransactions = new ArrayList<PreviewTransaction>(previewTransactions.size());
+    var markedTransactionGroups =
+        new ArrayList<List<PreviewTransaction>>(previewTransactionGroups.size());
 
+    for (var previewTransactionGroup : previewTransactionGroups) {
+      var markedPreviewTransactions =
+          new ArrayList<PreviewTransaction>(previewTransactionGroup.size());
+      for (var previewTransaction : previewTransactionGroup) {
+        var transactionCandidateKey = duplicateIdentity(previewTransaction);
+        if (matchesExistingTransaction(
+            previewTransaction,
+            existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))) {
+          markedPreviewTransactions.add(
+              previewTransaction.withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION));
+        } else if (matchesSeenTransaction(
+            previewTransaction,
+            earlierFileTransactionsByCandidateKey.getOrDefault(
+                transactionCandidateKey, List.of()))) {
+          markedPreviewTransactions.add(
+              previewTransaction.withDuplicate(PreviewDuplicateReason.IN_BATCH));
+        } else {
+          markedPreviewTransactions.add(previewTransaction);
+        }
+      }
+
+      markedTransactionGroups.add(List.copyOf(markedPreviewTransactions));
+      addEarlierFileTransactions(earlierFileTransactionsByCandidateKey, previewTransactionGroup);
+    }
+
+    return List.copyOf(markedTransactionGroups);
+  }
+
+  private void addEarlierFileTransactions(
+      Map<TransactionDuplicateIdentity, List<PreviewTransaction>>
+          earlierFileTransactionsByCandidateKey,
+      List<PreviewTransaction> previewTransactions) {
     for (var previewTransaction : previewTransactions) {
       var transactionCandidateKey = duplicateIdentity(previewTransaction);
-      if (matchesExistingTransaction(
-          previewTransaction,
-          existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))) {
-        markedPreviewTransactions.add(
-            previewTransaction.withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION));
-      } else if (matchesSeenTransaction(
-          previewTransaction,
-          seenTransactionsByCandidateKey.getOrDefault(transactionCandidateKey, List.of()))) {
-        markedPreviewTransactions.add(
-            previewTransaction.withDuplicate(PreviewDuplicateReason.IN_BATCH));
-      } else {
-        markedPreviewTransactions.add(previewTransaction);
-      }
-      seenTransactionsByCandidateKey
+      earlierFileTransactionsByCandidateKey
           .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
           .add(previewTransaction);
     }
-
-    return markedPreviewTransactions;
   }
 
   Map<TransactionDuplicateIdentity, List<TransactionDuplicateCandidate>>

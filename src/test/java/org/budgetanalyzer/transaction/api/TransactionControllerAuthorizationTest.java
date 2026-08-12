@@ -34,7 +34,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.ClaimsHeaderSecurityConfig;
@@ -45,8 +44,9 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
-import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 
@@ -72,8 +72,8 @@ class TransactionControllerAuthorizationTest {
     when(previewImportTokenService.verifyToken(anyString(), anyString()))
         .thenReturn(previewImportToken());
 
-    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
-        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 0));
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenReturn(new BatchImportResult(0, 0, 0, List.of()));
 
     when(transactionService.bulkDeleteTransactions(anyList(), anyString(), anyBoolean()))
         .thenReturn(new TransactionService.BulkDeleteResult(2, List.of()));
@@ -84,15 +84,16 @@ class TransactionControllerAuthorizationTest {
 
     when(transactionService.countNotDeleted(any())).thenReturn(0L);
 
-    when(transactionImportService.previewFile(
-            anyLong(), any(), any(MultipartFile.class), anyString()))
+    when(transactionImportService.previewFiles(anyLong(), any(), anyList(), anyString()))
         .thenReturn(
             new PreviewResult(
-                "test.csv",
-                1L,
-                "preview-token",
-                PreviewFileImportStatus.notPreviouslyImported(),
-                List.of()));
+                List.of(
+                    new PreviewFileResult(
+                        "test.csv",
+                        1L,
+                        "preview-token",
+                        PreviewFileImportStatus.notPreviouslyImported(),
+                        List.of()))));
   }
 
   // ==================== No authentication ====================
@@ -138,15 +139,19 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
-                      "previewImportToken": "preview-token",
-                      "transactions": [
+                      "files": [
                         {
-                          "date": "2024-01-15",
-                          "description": "Coffee",
-                          "amount": 4.50,
-                          "type": "DEBIT",
-                          "bankName": "Test Bank",
-                          "currencyIsoCode": "USD"
+                          "previewImportToken": "preview-token",
+                          "transactions": [
+                            {
+                              "date": "2024-01-15",
+                              "description": "Coffee",
+                              "amount": 4.50,
+                              "type": "DEBIT",
+                              "bankName": "Test Bank",
+                              "currencyIsoCode": "USD"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -186,7 +191,7 @@ class TransactionControllerAuthorizationTest {
   void previewEndpoint_withReadPermission_returns200() throws Exception {
     var csvFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "test.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee,4.50".getBytes());
@@ -206,7 +211,7 @@ class TransactionControllerAuthorizationTest {
   void previewEndpoint_withoutReadPermission_returns403() throws Exception {
     var csvFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "test.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee,4.50".getBytes());
@@ -234,15 +239,19 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
-                      "previewImportToken": "preview-token",
-                      "transactions": [
+                      "files": [
                         {
-                          "date": "2024-01-15",
-                          "description": "Coffee",
-                          "amount": 4.50,
-                          "type": "DEBIT",
-                          "bankName": "Test Bank",
-                          "currencyIsoCode": "USD"
+                          "previewImportToken": "preview-token",
+                          "transactions": [
+                            {
+                              "date": "2024-01-15",
+                              "description": "Coffee",
+                              "amount": 4.50,
+                              "type": "DEBIT",
+                              "bankName": "Test Bank",
+                              "currencyIsoCode": "USD"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -269,15 +278,19 @@ class TransactionControllerAuthorizationTest {
                 .content(
                     """
                     {
-                      "previewImportToken": "preview-token",
-                      "transactions": [
+                      "files": [
                         {
-                          "date": "2024-01-15",
-                          "description": "Coffee",
-                          "amount": 4.50,
-                          "type": "DEBIT",
-                          "bankName": "Test Bank",
-                          "currencyIsoCode": "USD"
+                          "previewImportToken": "preview-token",
+                          "transactions": [
+                            {
+                              "date": "2024-01-15",
+                              "description": "Coffee",
+                              "amount": 4.50,
+                              "type": "DEBIT",
+                              "bankName": "Test Bank",
+                              "currencyIsoCode": "USD"
+                            }
+                          ]
                         }
                       ]
                     }

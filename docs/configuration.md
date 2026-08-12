@@ -24,17 +24,22 @@ This service has no RabbitMQ dependency in the Phase 1 local baseline.
 ## Statement Import Uploads
 
 Statement preview uses multipart upload limits from Spring Boot. The service
-defaults to `25MB` for both the uploaded file and full multipart request.
+defaults to `25MB` for both each uploaded file part and the full multipart
+request. `max-file-size` is evaluated separately for every repeated `files`
+part; `max-request-size` applies to the combined body containing all files and
+form fields.
 
 | Environment variable | Property | Required | Default |
 | --- | --- | --- | --- |
 | `TRANSACTION_IMPORT_MAX_FILE_SIZE` | `spring.servlet.multipart.max-file-size` | No | `25MB` |
 | `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` | `spring.servlet.multipart.max-request-size` | No | `25MB` |
 
-Set both values when importing larger bank statement PDFs. When requests go
-through the gateway, the gateway body-size limit must be at least as large as
-these service limits or the client will receive `413 Request Entity Too Large`
-before the request reaches transaction-service.
+Set both values when importing larger bank statement PDFs or grouped previews.
+For example, multiple files that are each below `25MB` can still exceed the
+default combined `25MB` request limit. When requests go through the gateway,
+the gateway body-size limit must be at least as large as the intended combined
+request or the client will receive `413 Request Entity Too Large` before the
+request reaches transaction-service.
 
 ## Preview Import Tokens
 

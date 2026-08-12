@@ -28,13 +28,16 @@ managed via the Statement Format API. Hidden `parser_revision` rows store the
 deterministic parser configuration or static extractor handler selected during
 preview. The public import identity is always `statement_format.id`.
 
-During import preview, the service loads the selected `statement_format.id` and
-tries every enabled parser revision for that format in priority and revision
-order. Each revision produces an in-memory parser attempt: not applicable,
-matched, or failed. The first matched attempt in deterministic order supplies
-the preview rows, and the preview token records both the selected
-`statementFormatId` and the winning `parserRevisionId`. Batch import then
-persists the same provenance on `file_import`.
+During grouped import preview, the service loads the selected
+`statement_format.id` once, then processes the ordered uploads with that shared
+format and optional account. For each file it tries every enabled parser
+revision in priority and revision order. Each revision produces an in-memory
+parser attempt: not applicable, matched, or failed. The first matched attempt
+in deterministic order supplies that file's preview rows, and its distinct
+preview token records both the selected `statementFormatId` and the winning
+`parserRevisionId`. Different files can select different revisions of the same
+public format. Batch import then persists the token's provenance on
+`file_import`.
 
 Parser attempts are single-pass. A configurable CSV revision parses the CSV
 once with the shared CSV parser, validates mapped headers from that parsed
@@ -700,46 +703,52 @@ No restart required - formats are loaded from database.
 ### Step 4: Preview Import
 
 Use the preview endpoint with the statement format ID returned by the create or
-list API. Preview parses the file, returns editable transactions, includes
-advisory duplicate indicators, and reports whether the exact file bytes match a
-previous import record for the current user without persisting anything. It also
-returns an encrypted, time-limited `previewImportToken` for token-backed batch
-import recording:
+list API. Preview parses one or more ordered files using the shared format and
+optional account. It returns one result per source with editable transactions,
+advisory duplicate indicators, exact-file reupload status, and a distinct
+encrypted, time-limited `previewImportToken`. No preview data is persisted:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
-  -F "file=@sample.csv" \
+  -F "files=@january.csv" \
+  -F "files=@february.csv" \
   -F "statementFormatId=123" \
   -F "accountId=test-account"
 ```
 
-Review the returned `transactions` array. Rows with `duplicate=true` are likely
-duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
-`IN_BATCH`. The preview response no longer contains a top-level `warnings`
-array; exact-file reupload status is represented by `fileImport`, and
-transaction duplicate status is represented on each transaction row. See
+Review each item in the returned `files` array. Rows with `duplicate=true` are
+likely duplicates and include `duplicateReason` of `EXISTING_TRANSACTION` or
+`IN_BATCH`. `IN_BATCH` means a match in a completed earlier source file;
+repeated rows within the same source are not compared. Persisted matches take
+precedence. The preview response has no top-level `warnings` array; exact-file
+reupload status is represented by each file's `fileImport`, and transaction
+duplicate status is represented on each transaction row. See
 [Transaction Duplicate Detection](duplicate-detection.md) for matching rules and
 file reupload behavior.
 
-Review the returned `fileImport` object before batch import. If
+Review each returned `fileImport` object before batch import. If
 `alreadyImported=true`, the exact uploaded bytes match a previous `file_import`
 record for the current user and `warningCode` is `FILE_ALREADY_IMPORTED`. Keep
-`previewImportToken` as opaque client state and send it back with the reviewed
-batch request.
-The multipart `file` part must include a non-blank filename. Preview rejects
-uploads with a missing or whitespace-only original filename before parsing the
-file or returning `previewImportToken`.
+each `previewImportToken` as opaque client state and keep it nested with that
+source's reviewed transactions for the grouped batch request.
+
+Every multipart `files` part must include a non-blank filename. Preview stops
+at the first failed source and returns one standard filename-bearing error with
+no partial preview body. A missing or blank filename is identified by its
+ordered part index.
 
 ### Step 5: Batch Import
 
 Submit the reviewed transactions to the batch endpoint. Omit `allowDuplicate`
 or set it to `false` for normal imports. Set it to `true` only for duplicate
-rows that should be intentionally imported. Include the `previewImportToken`
-from the preview response so the service can record `file_import` metadata,
-including `statement_format_id` and `parser_revision_id`, and link newly
-created transactions to that import:
+rows that should be intentionally imported. Submit every accepted preview file
+as one ordered `files` item containing its `previewImportToken` and reviewed
+transactions. All tokens must share the same statement format and account, but
+may identify different parser revisions. The service verifies all tokens before
+persistence and links each source's created transactions to that source's
+separate `file_import` metadata:
 
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/batch \
@@ -747,18 +756,37 @@ curl -X POST http://localhost:8082/v1/transactions/batch \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:write" \
   -d '{
-    "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
-    "transactions": [
+    "files": [
       {
-        "date": "2026-04-28",
-        "description": "Coffee Shop",
-        "amount": 150.00,
-        "type": "DEBIT",
-        "category": null,
-        "bankName": "New Bank Name",
-        "currencyIsoCode": "USD",
-        "accountId": "test-account",
-        "allowDuplicate": false
+        "previewImportToken": "v2.january-token",
+        "transactions": [
+          {
+            "date": "2026-04-28",
+            "description": "Coffee Shop",
+            "amount": 150.00,
+            "type": "DEBIT",
+            "category": null,
+            "bankName": "New Bank Name",
+            "currencyIsoCode": "USD",
+            "accountId": "test-account",
+            "allowDuplicate": false
+          }
+        ]
+      },
+      {
+        "previewImportToken": "v2.february-token",
+        "transactions": [
+          {
+            "date": "2026-05-02",
+            "description": "Grocery Store",
+            "amount": 42.30,
+            "type": "DEBIT",
+            "bankName": "New Bank Name",
+            "currencyIsoCode": "USD",
+            "accountId": "test-account",
+            "allowDuplicate": false
+          }
+        ]
       }
     ]
   }'
@@ -788,25 +816,27 @@ Verify:
 **POST** `/v1/transactions/preview`
 
 **Parameters:**
-- `file` (multipart file, required) - CSV or PDF file to parse; must include a
-  non-blank multipart filename
+- `files` (multipart files, required and non-empty) - Repeat this part for each
+  ordered CSV or PDF source; every part must include a non-blank filename
 - `statementFormatId` (number, required) - Statement format ID selected from
   `GET /v1/statement-formats`
 - `accountId` (string, optional) - Account to associate with previewed
   transactions; not used for duplicate detection
 
-The service accepts statement preview uploads up to `25MB` by default. Override
-`TRANSACTION_IMPORT_MAX_FILE_SIZE` and `TRANSACTION_IMPORT_MAX_REQUEST_SIZE` for
-larger files, and keep any gateway body-size limit aligned with those values to
-avoid `413 Request Entity Too Large` responses before the service handles the
-request.
+The service accepts each statement file part up to `25MB` by default, while the
+full multipart request also defaults to `25MB`. Override
+`TRANSACTION_IMPORT_MAX_FILE_SIZE` for the per-part limit and
+`TRANSACTION_IMPORT_MAX_REQUEST_SIZE` for the combined files and form fields.
+Keep any gateway body-size limit aligned with the intended combined request to
+avoid `413 Request Entity Too Large` responses before the service handles it.
 
 **Example:**
 ```bash
 curl -X POST http://localhost:8082/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
-  -F "file=@statement.csv" \
+  -F "files=@january.csv" \
+  -F "files=@february.csv" \
   -F "statementFormatId=123" \
   -F "accountId=checking-001"
 ```
@@ -814,22 +844,47 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 **Response:** `200 OK`
 ```json
 {
-  "sourceFile": "statement.csv",
-  "statementFormatId": 123,
-  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
-  "fileImport": {
-    "alreadyImported": false
-  },
-  "transactions": [
+  "files": [
     {
-      "date": "2026-04-28",
-      "description": "Coffee Shop",
-      "amount": 4.50,
-      "type": "DEBIT",
-      "bankName": "Bangkok Bank",
-      "currencyIsoCode": "THB",
-      "accountId": "checking-001",
-      "duplicate": false
+      "sourceFile": "january.csv",
+      "statementFormatId": 123,
+      "previewImportToken": "v2.january-token",
+      "fileImport": {
+        "alreadyImported": false
+      },
+      "transactions": [
+        {
+          "date": "2026-01-28",
+          "description": "Coffee Shop",
+          "amount": 4.50,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-001",
+          "duplicate": false
+        }
+      ]
+    },
+    {
+      "sourceFile": "february.csv",
+      "statementFormatId": 123,
+      "previewImportToken": "v2.february-token",
+      "fileImport": {
+        "alreadyImported": false
+      },
+      "transactions": [
+        {
+          "date": "2026-01-28",
+          "description": "Coffee Shop",
+          "amount": 4.50,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-001",
+          "duplicate": true,
+          "duplicateReason": "IN_BATCH"
+        }
+      ]
     }
   ]
 }
@@ -839,7 +894,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 ```json
 {
   "type": "APPLICATION_ERROR",
-  "message": "Uploaded file must include an original filename.",
+  "message": "Uploaded file part at index 0 must include an original filename.",
   "code": "MISSING_ORIGINAL_FILENAME"
 }
 ```
@@ -848,7 +903,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 ```json
 {
   "type": "APPLICATION_ERROR",
-  "message": "CSV parsing error in file 'statement.csv' at line 12: Invalid date format",
+  "message": "Failed to preview file 'february.csv': Invalid date format at line 12",
   "code": "CSV_PARSING_ERROR"
 }
 ```
@@ -858,33 +913,70 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 **POST** `/v1/transactions/batch`
 
 **Request Body:**
-- `previewImportToken` (string, required) - Opaque token returned by preview
-- `transactions` (array, required) - Reviewed transactions from preview
-- `allowDuplicate` (boolean, optional per row) - Defaults to `false`
+- `files` (array, required and non-empty) - Ordered source file groups
+- `files[].previewImportToken` (string, required) - Opaque token returned for
+  that preview file
+- `files[].transactions` (array, required and non-empty) - Reviewed rows from
+  that source
+- `files[].transactions[].allowDuplicate` (boolean, optional) - Defaults to
+  `false`
 
 The batch endpoint is token-backed. There is no manual no-file batch import
-path for file preview results: clients must submit the `previewImportToken`
-returned by the preview endpoint.
+path for file preview results. Every token is owner-verified before the service
+transaction begins. Mixed statement format IDs or account IDs are rejected;
+different parser revision IDs are accepted. Request-shape and business
+validation paths retain both indexes, for example
+`files[1].transactions[4].date`; business validation messages also identify
+the verified source filename.
 
 **Response:** `200 OK`
 ```json
 {
-  "created": 1,
-  "duplicatesSkipped": 0,
+  "created": 2,
+  "duplicatesSkipped": 1,
   "duplicatesImported": 0,
-  "transactions": [
+  "files": [
     {
-      "id": 101,
-      "ownerId": "usr_test123",
-      "accountId": "checking-001",
-      "bankName": "Capital One",
-      "date": "2026-04-28",
-      "currencyIsoCode": "USD",
-      "amount": 4.50,
-      "type": "DEBIT",
-      "description": "Coffee Shop",
-      "createdAt": "2026-04-28T18:30:00Z",
-      "updatedAt": "2026-04-28T18:30:00Z"
+      "sourceFile": "january.csv",
+      "created": 1,
+      "duplicatesSkipped": 0,
+      "duplicatesImported": 0,
+      "transactions": [
+        {
+          "id": 101,
+          "ownerId": "usr_test123",
+          "accountId": "test-account",
+          "bankName": "New Bank Name",
+          "date": "2026-04-28",
+          "currencyIsoCode": "USD",
+          "amount": 150.00,
+          "type": "DEBIT",
+          "description": "Coffee Shop",
+          "createdAt": "2026-04-28T18:30:00Z",
+          "updatedAt": "2026-04-28T18:30:00Z"
+        }
+      ]
+    },
+    {
+      "sourceFile": "february.csv",
+      "created": 1,
+      "duplicatesSkipped": 1,
+      "duplicatesImported": 0,
+      "transactions": [
+        {
+          "id": 102,
+          "ownerId": "usr_test123",
+          "accountId": "test-account",
+          "bankName": "New Bank Name",
+          "date": "2026-05-02",
+          "currencyIsoCode": "USD",
+          "amount": 42.30,
+          "type": "DEBIT",
+          "description": "Grocery Store",
+          "createdAt": "2026-05-02T18:30:00Z",
+          "updatedAt": "2026-05-02T18:30:00Z"
+        }
+      ]
     }
   ]
 }
@@ -905,32 +997,46 @@ authoritative matching rules, `duplicateReason` values, file reupload tracking,
 
 ### Parser Flow
 
-1. **File Validation** - Check file format, size limits
-2. **Configuration Lookup** - Retrieve the visible statement format by ID and
-   load enabled parser revisions in priority and revision order
-3. **Single-Pass Parser Attempts** - Try each revision against the same upload:
-   extension or signature mismatches are not applicable; a matched parser with
-   malformed content or invalid persisted config is failed; a parser with
-   nonempty valid rows is matched
-4. **Selected Row Parsing** - For the winning matched attempt:
+1. **Request Validation** - Require a non-empty ordered `files` collection and
+   enforce per-part plus combined multipart size limits
+2. **Configuration Lookup** - Retrieve the shared visible statement format by
+   ID once
+3. **Ordered File Processing** - Read, hash, check exact-import history, and
+   load enabled parser revisions for each source in multipart order
+4. **Single-Pass Parser Attempts** - Try each revision against the current
+   upload: extension or signature mismatches are not applicable; a matched
+   parser with malformed content or invalid persisted config is failed; a
+   parser with nonempty valid rows is matched
+5. **Selected Row Parsing** - For each winning matched attempt:
    - Parse date using configured format
    - Extract amount (from single column or credit/debit columns)
    - Determine transaction type
    - Extract description
-5. **Preview Response** - Return editable transactions with duplicate metadata
-6. **Batch Import** - Persist reviewed transactions in a single transaction
-7. **Error Handling** - Roll back on any parsing error
+6. **Grouped Duplicate Detection** - Load persisted candidates once, leave
+   same-file repeats unmarked, and compare later files with completed earlier
+   files
+7. **Preview Response** - Return ordered per-file transactions, import status,
+   and distinct tokens only after every source succeeds
+8. **Batch Import** - Verify all source tokens, then validate, duplicate-check,
+   resolve per-file provenance, and persist the complete ordered group in one
+   transaction
+9. **Error Handling** - Stop at the first file failure and return no partial
+   preview body
 
 ### Error Handling
 
 Batch imports are transactional:
-- Success: All non-skipped transactions from the request are saved
-- Failure: No transactions saved, detailed error message returned
+- Success: All non-skipped transactions from every source group are saved and
+  linked to their own file provenance; a zero-created source creates no new
+  `file_import`
+- Failure: No transactions or newly attempted `file_import` rows are saved,
+  including writes attempted for sources before the source that failed; a
+  detailed error response is returned
 
-Error messages include:
-- Filename where error occurred
-- Line number
-- Specific parsing error
+Preview parsing error messages include the failing filename (or ordered part
+index when the filename is missing) and retain the parser's machine-readable
+error code. Safe line or column details may also be included; file contents,
+hashes, and stack details are never returned.
 
 ### Key Classes
 

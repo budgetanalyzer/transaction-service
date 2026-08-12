@@ -119,7 +119,7 @@ public interface TransactionRepository
   /**
    * Finds active duplicate candidates for a specific owner using description-free identities.
    *
-   * <p>Used by fuzzy duplicate detection to retrieve candidate descriptions after strict financial
+   * <p>Used by duplicate detection to retrieve candidate descriptions after strict financial
    * identity fields have matched.
    *
    * @param duplicateIdentities set of structured description-free duplicate identities

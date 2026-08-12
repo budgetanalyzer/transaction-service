@@ -1,9 +1,11 @@
 package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
@@ -26,17 +28,21 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableNegativeMeans;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableYearSource;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.PdfWizardSaveCommand;
+import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 
 @SpringBootTest
 @Testcontainers
@@ -88,6 +94,88 @@ class TransactionImportServiceIntegrationTest {
   }
 
   @Test
+  void previewFilesPreservesOrderAndMarksOnlyLaterFileDuplicates() {
+    var statementFormat = bangkokStatementCsvFormat();
+    var repeatedRows =
+        """
+        Date,Particulars,Withdrawal,Deposit
+        10/01/25,COFFEE SHOP,4.50,
+        10/01/25,COFFEE SHOP,4.50,
+        """;
+    var laterRows =
+        """
+        Date,Particulars,Withdrawal,Deposit
+        10/01/25,COFFEE SHOP,4.50,
+        """;
+    var firstFile =
+        new MockMultipartFile(
+            "files", "first.csv", "text/csv", repeatedRows.getBytes(StandardCharsets.UTF_8));
+    var laterFile =
+        new MockMultipartFile(
+            "files", "later.csv", "text/csv", laterRows.getBytes(StandardCharsets.UTF_8));
+
+    var previewResult =
+        transactionImportService.previewFiles(
+            statementFormat.getId(), "checking-001", List.of(firstFile, laterFile), USER_ID);
+
+    assertThat(previewResult.files())
+        .extracting(fileResult -> fileResult.sourceFile())
+        .containsExactly("first.csv", "later.csv");
+    assertThat(previewResult.files().getFirst().transactions())
+        .hasSize(2)
+        .allSatisfy(
+            transaction -> {
+              assertThat(transaction.duplicate()).isFalse();
+              assertThat(transaction.duplicateReason()).isNull();
+            });
+    assertThat(previewResult.files().get(1).transactions())
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.duplicate()).isTrue();
+              assertThat(transaction.duplicateReason()).isEqualTo(PreviewDuplicateReason.IN_BATCH);
+            });
+    assertThat(transactionRepository.findAll()).isEmpty();
+    assertThat(fileImportRepository.findAll()).isEmpty();
+  }
+
+  @Test
+  void previewFilesFailsWholeRequestWhenLaterFileHasParserFailure() {
+    var statementFormat = bangkokStatementCsvFormat();
+    var validFile =
+        new MockMultipartFile(
+            "files",
+            "valid-first.csv",
+            "text/csv",
+            "Date,Particulars,Withdrawal,Deposit\n10/01/25,COFFEE SHOP,4.50,"
+                .getBytes(StandardCharsets.UTF_8));
+    var invalidFile =
+        new MockMultipartFile(
+            "files",
+            "invalid-later.csv",
+            "text/csv",
+            "Date,Particulars,Withdrawal,Deposit\nnot-a-date,GROCERIES,42.30,"
+                .getBytes(StandardCharsets.UTF_8));
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFiles(
+                    statementFormat.getId(),
+                    "checking-001",
+                    List.of(validFile, invalidFile),
+                    USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+            });
+    assertThat(transactionRepository.findAll()).isEmpty();
+    assertThat(fileImportRepository.findAll()).isEmpty();
+  }
+
+  @Test
   void previewFile_capitalOneMonthlyCreditPdfRecordsWinningParserRevisionInToken()
       throws IOException {
     var statementFormat =
@@ -111,13 +199,14 @@ class TransactionImportServiceIntegrationTest {
                 Paths.get("src/test/resources/fixtures/cap-one-credit-monthly-sample.pdf")));
 
     var previewResult =
-        transactionImportService.previewFile(
-            statementFormat.getId(), "capital-one-card", multipartFile, USER_ID);
+        transactionImportService.previewFiles(
+            statementFormat.getId(), "capital-one-card", List.of(multipartFile), USER_ID);
+    var previewFileResult = previewResult.files().getFirst();
     var previewImportToken =
-        previewImportTokenService.verifyToken(previewResult.previewImportToken(), USER_ID);
+        previewImportTokenService.verifyToken(previewFileResult.previewImportToken(), USER_ID);
 
-    assertThat(previewResult.statementFormatId()).isEqualTo(statementFormat.getId());
-    assertThat(previewResult.transactions()).hasSizeGreaterThan(10);
+    assertThat(previewFileResult.statementFormatId()).isEqualTo(statementFormat.getId());
+    assertThat(previewFileResult.transactions()).hasSizeGreaterThan(10);
     assertThat(previewImportToken.statementFormatId()).isEqualTo(statementFormat.getId());
     assertThat(previewImportToken.parserRevisionId()).isEqualTo(parserRevision.getId());
   }
@@ -142,19 +231,24 @@ class TransactionImportServiceIntegrationTest {
         new MockMultipartFile("file", "example-statement.pdf", "application/pdf", pdfContent);
 
     var previewResult =
-        transactionImportService.previewFile(
-            statementFormat.getId(), "checking-001", multipartFile, USER_ID);
+        transactionImportService.previewFiles(
+            statementFormat.getId(), "checking-001", List.of(multipartFile), USER_ID);
+    var previewFileResult = previewResult.files().getFirst();
     var previewImportToken =
-        previewImportTokenService.verifyToken(previewResult.previewImportToken(), USER_ID);
+        previewImportTokenService.verifyToken(previewFileResult.previewImportToken(), USER_ID);
 
-    assertThat(previewResult.statementFormatId()).isEqualTo(statementFormat.getId());
-    assertThat(previewResult.transactions()).hasSize(2);
-    assertThat(previewResult.transactions().getFirst().description()).isEqualTo("Coffee Shop");
+    assertThat(previewFileResult.statementFormatId()).isEqualTo(statementFormat.getId());
+    assertThat(previewFileResult.transactions()).hasSize(2);
+    assertThat(previewFileResult.transactions().getFirst().description()).isEqualTo("Coffee Shop");
     assertThat(previewImportToken.parserRevisionId()).isEqualTo(parserRevision.getId());
 
     var batchImportResult =
         transactionService.batchImport(
-            previewResult.transactions(), USER_ID, BatchFileImportSource.from(previewImportToken));
+            List.of(
+                new BatchImportFile(
+                    BatchFileImportSource.from(previewImportToken),
+                    previewFileResult.transactions())),
+            USER_ID);
 
     assertThat(batchImportResult.createdTransactions()).hasSize(2);
     assertThat(transactionRepository.findAll())
@@ -182,6 +276,15 @@ class TransactionImportServiceIntegrationTest {
             null,
             null,
             PdfTextTableNegativeMeans.CREDIT));
+  }
+
+  private StatementFormat bangkokStatementCsvFormat() {
+    return statementFormatRepository.findAll().stream()
+        .filter(statementFormat -> statementFormat.isEnabled())
+        .filter(
+            statementFormat -> statementFormat.getDisplayName().equals("Bangkok Bank - Statement"))
+        .findFirst()
+        .orElseThrow();
   }
 
   private byte[] pdfWithRows(List<List<String>> rows) throws IOException {

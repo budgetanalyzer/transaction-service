@@ -103,19 +103,21 @@ IDs are deleted once; later duplicate occurrences are reported as notFoundIds.
 ```
 POST /v1/transactions/preview
 Content-Type: multipart/form-data
-Params: statementFormatId (required), accountId (optional), file (required)
+Params: statementFormatId (required), accountId (optional), files (required, repeat for each ordered source)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses a CSV or PDF file and returns extracted transactions for review. No data is persisted. Use GET /v1/statement-formats to list available statement format IDs. The multipart file part must include a non-blank filename. Uploads are limited by TRANSACTION_IMPORT_MAX_FILE_SIZE and TRANSACTION_IMPORT_MAX_REQUEST_SIZE, both defaulting to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
+Notes: Parses one or more ordered CSV or PDF files with one shared statement format and optional account, returning one result and token per source. No data is persisted. Processing stops at the first failed source and returns no partial preview. Each multipart files part must include a non-blank filename. TRANSACTION_IMPORT_MAX_FILE_SIZE applies per part and TRANSACTION_IMPORT_MAX_REQUEST_SIZE applies to the combined multipart body; both default to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
 ```
 
 **Batch Import Transactions**
 ```
 POST /v1/transactions/batch
-Body: BatchImportRequest (required previewImportToken, list of BatchImportTransactionRequest objects, optional allowDuplicate per row)
+Body: BatchImportRequest (ordered non-empty files list; each item has one previewImportToken and a non-empty reviewed transactions list)
 Response: BatchImportResponse (200 OK)
 Permission: transactions:write
-Notes: Imports reviewed transactions from the preview endpoint. The previewImportToken is required and verified before batch import processing starts. The request validates all rows upfront and persists accepted rows transactionally. Import duplicate and file import recording behavior is documented in Transaction Duplicate Detection.
+Notes: Imports all reviewed preview file results atomically. Every token is verified for the authenticated owner before the service call. Verified statement format and account IDs must match, while parser revision IDs may differ. The response contains aggregate counts plus ordered per-file counts, verified filenames, and created transactions. Import duplicate and file import recording behavior is documented in Transaction Duplicate Detection.
+On any persistence failure, transactions and newly attempted file-import
+provenance from every source group roll back together.
 ```
 
 See [Transaction Duplicate Detection](../duplicate-detection.md) for the
@@ -471,59 +473,83 @@ Notes: Validates the confirmed mapping against the uploaded sample, then creates
 ### PreviewResponse
 
 Fields:
+- `files` - Ordered, non-empty list with one result per repeated multipart
+  `files` part.
+
+Each file result contains:
+
 - `sourceFile` - Original uploaded filename.
-- `statementFormatId` - Statement format ID used for parsing.
-- `previewImportToken` - Opaque encrypted source-file token required by `/batch`.
+- `statementFormatId` - Shared public statement format ID used for parsing.
+- `previewImportToken` - Distinct opaque source-file token accepted by the
+  grouped `/batch` contract when nested with that file's reviewed rows.
 - `fileImport` - Exact-file reupload status for the authenticated user.
-- `transactions` - Editable preview rows with advisory duplicate metadata.
+- `transactions` - Editable rows extracted from that source with advisory
+  duplicate metadata.
 
 ```json
 {
-  "sourceFile": "statement.csv",
-  "statementFormatId": 123,
-  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
-  "fileImport": {
-    "alreadyImported": true,
-    "warningCode": "FILE_ALREADY_IMPORTED",
-    "previousImport": {
-      "originalFilename": "statement.csv",
-      "importedAt": "2026-05-01T12:34:56Z",
-      "statementFormatId": 123,
-      "accountId": "checking-12345",
-      "transactionCount": 42
-    }
-  },
-  "transactions": [
+  "files": [
     {
-      "date": "2026-04-28",
-      "description": "COFFEE SHOP",
-      "amount": 150.00,
-      "type": "DEBIT",
-      "bankName": "Bangkok Bank",
-      "currencyIsoCode": "THB",
-      "accountId": "checking-12345",
-      "duplicate": true,
-      "duplicateReason": "EXISTING_TRANSACTION"
+      "sourceFile": "january.csv",
+      "statementFormatId": 123,
+      "previewImportToken": "v2.january-token",
+      "fileImport": {
+        "alreadyImported": true,
+        "warningCode": "FILE_ALREADY_IMPORTED",
+        "previousImport": {
+          "originalFilename": "january.csv",
+          "importedAt": "2026-05-01T12:34:56Z",
+          "statementFormatId": 123,
+          "accountId": "checking-12345",
+          "transactionCount": 42
+        }
+      },
+      "transactions": [
+        {
+          "date": "2026-01-28",
+          "description": "COFFEE SHOP",
+          "amount": 150.00,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-12345",
+          "duplicate": true,
+          "duplicateReason": "EXISTING_TRANSACTION"
+        }
+      ]
     },
     {
-      "date": "2026-04-29",
-      "description": "SALARY TRANSFER",
-      "amount": 5000.00,
-      "type": "CREDIT",
-      "bankName": "Bangkok Bank",
-      "currencyIsoCode": "THB",
-      "accountId": "checking-12345",
-      "duplicate": false
+      "sourceFile": "february.csv",
+      "statementFormatId": 123,
+      "previewImportToken": "v2.february-token",
+      "fileImport": {
+        "alreadyImported": false
+      },
+      "transactions": [
+        {
+          "date": "2026-01-28",
+          "description": "COFFEE SHOP",
+          "amount": 150.00,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-12345",
+          "duplicate": true,
+          "duplicateReason": "IN_BATCH"
+        }
+      ]
     }
   ]
 }
 ```
 
 `duplicateReason` is `EXISTING_TRANSACTION` for active persisted matches and
-`IN_BATCH` for matches against earlier rows in the same preview response. It is
-omitted when `duplicate=false`. `fileImport` is file-level metadata, separate
-from per-row transaction duplicate detection, and `previewImportToken` is the
-opaque source-file token required by `/batch`. See
+`IN_BATCH` for matches against completed earlier files in multipart order. Rows
+are not compared with other rows in their own source file. It is omitted when
+`duplicate=false`. `fileImport` and `previewImportToken` belong to their source
+file; the API exposes no combined hash or token. Submit each file result's token
+and reviewed transactions as one item in the ordered
+`/batch` `files` array. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for details.
 Preview and batch rows still carry `accountId`, but duplicate detection does
 not require account IDs to match.
@@ -616,23 +642,44 @@ PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
 ### BatchImportRequest
 
 Fields:
-- `previewImportToken` - Required opaque token returned by the preview endpoint.
-- `transactions` - Reviewed transaction rows to import.
-- `allowDuplicate` - Optional per-row override, defaulting to `false`.
+- `files` - Required, non-empty ordered source file groups.
+- `files[].previewImportToken` - Required opaque token returned for that source.
+- `files[].transactions` - Required, non-empty reviewed rows from that source.
+- `files[].transactions[].allowDuplicate` - Optional per-row override,
+  defaulting to `false`.
 
 ```json
 {
-  "previewImportToken": "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg",
-  "transactions": [
+  "files": [
     {
-      "date": "2026-04-28",
-      "description": "COFFEE SHOP",
-      "amount": 150.00,
-      "type": "DEBIT",
-      "bankName": "Bangkok Bank",
-      "currencyIsoCode": "THB",
-      "accountId": "checking-12345",
-      "allowDuplicate": true
+      "previewImportToken": "v2.january-token",
+      "transactions": [
+        {
+          "date": "2026-04-28",
+          "description": "COFFEE SHOP",
+          "amount": 150.00,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-12345",
+          "allowDuplicate": true
+        }
+      ]
+    },
+    {
+      "previewImportToken": "v2.february-token",
+      "transactions": [
+        {
+          "date": "2026-05-02",
+          "description": "GROCERY STORE",
+          "amount": 42.30,
+          "type": "DEBIT",
+          "bankName": "Bangkok Bank",
+          "currencyIsoCode": "THB",
+          "accountId": "checking-12345",
+          "allowDuplicate": false
+        }
+      ]
     }
   ]
 }
@@ -640,9 +687,10 @@ Fields:
 
 Omit `allowDuplicate` or set it to `false` to skip rows that match duplicate
 detection. Set it to `true` only for rows that should be intentionally imported
-despite matching an existing transaction or an earlier row in the same batch.
-`previewImportToken` is required and must be valid, unexpired, and owned by the
-authenticated user. See
+despite matching an existing transaction or a completed earlier file. Rows are
+not compared with other rows in their own file. Every `previewImportToken` must
+be valid, unexpired, and owned by the authenticated user. Tokens must share one
+statement format and account, but parser revisions may differ. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for matching rules,
 token verification order, and empty-import behavior.
 
@@ -650,22 +698,51 @@ token verification order, and empty-import behavior.
 
 ```json
 {
-  "created": 1,
+  "created": 2,
   "duplicatesSkipped": 0,
   "duplicatesImported": 1,
-  "transactions": [
+  "files": [
     {
-      "id": 102,
-      "ownerId": "usr_test123",
-      "accountId": "checking-12345",
-      "bankName": "Capital One",
-      "date": "2026-04-28",
-      "currencyIsoCode": "USD",
-      "amount": 55.12,
-      "type": "DEBIT",
-      "description": "TAQUERIA DEL SOL #3",
-      "createdAt": "2026-04-28T18:30:00Z",
-      "updatedAt": "2026-04-28T18:30:00Z"
+      "sourceFile": "january.csv",
+      "created": 1,
+      "duplicatesSkipped": 0,
+      "duplicatesImported": 1,
+      "transactions": [
+        {
+          "id": 102,
+          "ownerId": "usr_test123",
+          "accountId": "checking-12345",
+          "bankName": "Bangkok Bank",
+          "date": "2026-04-28",
+          "currencyIsoCode": "THB",
+          "amount": 150.00,
+          "type": "DEBIT",
+          "description": "COFFEE SHOP",
+          "createdAt": "2026-04-28T18:30:00Z",
+          "updatedAt": "2026-04-28T18:30:00Z"
+        }
+      ]
+    },
+    {
+      "sourceFile": "february.csv",
+      "created": 1,
+      "duplicatesSkipped": 0,
+      "duplicatesImported": 0,
+      "transactions": [
+        {
+          "id": 103,
+          "ownerId": "usr_test123",
+          "accountId": "checking-12345",
+          "bankName": "Bangkok Bank",
+          "date": "2026-05-02",
+          "currencyIsoCode": "THB",
+          "amount": 42.30,
+          "type": "DEBIT",
+          "description": "GROCERY STORE",
+          "createdAt": "2026-05-02T18:30:00Z",
+          "updatedAt": "2026-05-02T18:30:00Z"
+        }
+      ]
     }
   ]
 }
@@ -686,10 +763,13 @@ token verification order, and empty-import behavior.
 ```json
 {
   "type": "APPLICATION_ERROR",
-  "message": "Uploaded file must include an original filename.",
+  "message": "Uploaded file part at index 0 must include an original filename.",
   "code": "MISSING_ORIGINAL_FILENAME"
 }
 ```
+
+If a later file fails parsing, the same standard error shape names that file
+and no `files` preview payload is returned.
 
 **Validation error:**
 ```json
@@ -697,8 +777,8 @@ token verification order, and empty-import behavior.
   "type": "VALIDATION_ERROR",
   "message": "Validation failed for 2 field(s)",
   "fieldErrors": [
-    { "field": "transactions[0].amount", "message": "must not be null" },
-    { "field": "transactions[1].date", "message": "must not be null" }
+    { "field": "files[0].transactions[0].amount", "message": "must not be null" },
+    { "field": "files[1].transactions[1].date", "message": "must not be null" }
   ]
 }
 ```
@@ -813,6 +893,9 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 
 ### Batch Import (PreviewTransaction)
 
+- `files` - Required, non-empty ordered source groups
+- `files[].previewImportToken` - Required, non-blank
+- `files[].transactions` - Required, non-empty
 - `date` - Required
 - `description` - Required, non-blank
 - `amount` - Required

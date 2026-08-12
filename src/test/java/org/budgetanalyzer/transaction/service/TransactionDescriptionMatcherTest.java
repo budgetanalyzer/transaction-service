@@ -11,7 +11,7 @@ class TransactionDescriptionMatcherTest {
       new TransactionDescriptionMatcher();
 
   @Test
-  void match_matchesObservedMerchantYearlyAndMonthlyDescriptions() {
+  void match_matchesDescriptionsWithEqualNormalizedForms() {
     assertThat(
             transactionDescriptionMatcher.match(
                 "X CORP. PAID FEATURESBASTROPTX", "X CORP. PAID FEATURES BASTROP     TX"))
@@ -33,15 +33,15 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_matchesHighSimilarityLongDescriptions() {
+  void match_doesNotMatchMerelySimilarLongDescriptions() {
     assertThat(
             transactionDescriptionMatcher.match(
                 "PAYPAL DIGITAL SERVICES", "PAYPAL DIGITAL SERVICE"))
-        .isTrue();
+        .isFalse();
   }
 
   @Test
-  void match_doesNotFuzzyMatchDifferentNumericReferences() {
+  void match_doesNotMatchDifferentNumericReferences() {
     assertThat(transactionDescriptionMatcher.match("TRANSFER 1234567890", "TRANSFER 1234567891"))
         .isFalse();
   }
@@ -55,38 +55,20 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_allowsFuzzyMatchWhenNumericReferencesMatch() {
+  void match_doesNotMatchSimilarDescriptionsWithTheSameNumericReference() {
     assertThat(
             transactionDescriptionMatcher.match(
                 "PAYPAL DIGITAL SERVICES REF 1234567890 MONTHLY",
                 "PAYPAL DIGITAL SERVICE REF 1234567890 MONTHLY"))
-        .isTrue();
-  }
-
-  @Test
-  void match_requiresMultipleNumericTokensToMatchInOrder() {
-    assertThat(
-            transactionDescriptionMatcher.match(
-                "SUBSCRIPTION SERVICE PLAN REF 1 AUTH 2 MONTHLY PAYMENT",
-                "SUBSCRIPTION SERVICE PLAN REF 2 AUTH 1 MONTHLY PAYMENT"))
         .isFalse();
   }
 
   @Test
-  void match_matchesMultipleNumericTokensInSameOrder() {
+  void match_doesNotMatchWhenNormalizedDescriptionsDifferByOneCharacter() {
     assertThat(
             transactionDescriptionMatcher.match(
                 "BILL PAY REF 100 AUTH 55 MONTHLY PAYMENT",
                 "BILLPAY REF 100 AUTH 55 MONTHLY PAYMENTS"))
-        .isTrue();
-  }
-
-  @Test
-  void match_requiresNumericTokensOnBothDescriptionsForFuzzyMatch() {
-    assertThat(
-            transactionDescriptionMatcher.match(
-                "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE 42",
-                "PAYPAL DIGITAL SERVICES MONTHLY SUBSCRIPTION REFERENCE"))
         .isFalse();
   }
 
@@ -97,12 +79,12 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_doesNotFuzzyMatchVeryShortDescriptions() {
+  void match_doesNotMatchDifferentVeryShortDescriptions() {
     assertThat(transactionDescriptionMatcher.match("ABC", "ABD")).isFalse();
   }
 
   @Test
-  void match_matchesVeryShortDescriptionsOnlyAfterNormalizedExactMatch() {
+  void match_matchesVeryShortDescriptionsWithEqualNormalizedForms() {
     assertThat(transactionDescriptionMatcher.match("A.B.", "ab")).isTrue();
   }
 

@@ -1,10 +1,13 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
@@ -24,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,7 +42,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
@@ -52,9 +55,12 @@ import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
-import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFileResult;
+import org.budgetanalyzer.transaction.service.dto.BatchImportResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewDuplicateReason;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileWarningCode;
 import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
@@ -354,45 +360,67 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/preview ====================
 
   @Test
-  void previewTransactions_csvFile_returns200WithPreviewResponse() throws Exception {
-    // Given: a CSV file to preview
-    var previewTransaction =
+  void previewTransactions_twoFiles_returnsOrderedGroupedResponseWithDistinctTokens()
+      throws Exception {
+    var januaryTransaction =
         createPreviewTransaction(
             LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
-    var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
-    when(transactionImportService.previewFile(
-            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
+    var februaryTransaction =
+        createPreviewTransaction(LocalDate.of(2024, 2, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
+            .withDuplicate(PreviewDuplicateReason.IN_BATCH);
+    var previewResponse =
+        new PreviewResult(
+            List.of(
+                previewFileResult(
+                    "january.csv", 1L, "preview-token-january", List.of(januaryTransaction)),
+                previewFileResult(
+                    "february.csv", 1L, "preview-token-february", List.of(februaryTransaction))));
+    when(transactionImportService.previewFiles(eq(1L), isNull(), anyList(), eq("test-user")))
         .thenReturn(previewResponse);
 
-    var csvFile =
+    var januaryFile =
         new MockMultipartFile(
-            "file",
-            "transactions.csv",
+            "files",
+            "january.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
+    var februaryFile =
+        new MockMultipartFile(
+            "files",
+            "february.csv",
+            "text/csv",
+            "Date,Description,Amount\n2024-02-15,Coffee Shop,4.50".getBytes());
 
-    // When/Then: POST returns 200 with preview response
     mockMvc
         .perform(
             multipart("/v1/transactions/preview")
-                .file(csvFile)
+                .file(januaryFile)
+                .file(februaryFile)
                 .param("statementFormatId", "1")
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.sourceFile").value("transactions.csv"))
-        .andExpect(jsonPath("$.statementFormatId").value(1))
-        .andExpect(jsonPath("$.fileImport.alreadyImported").value(false))
-        .andExpect(jsonPath("$.fileImport.warningCode").doesNotExist())
-        .andExpect(jsonPath("$.fileImport.previousImport").doesNotExist())
-        .andExpect(jsonPath("$.transactions.length()").value(1))
-        .andExpect(jsonPath("$.transactions[0].description").value("Coffee Shop"))
-        .andExpect(jsonPath("$.transactions[0].duplicate").value(false))
-        .andExpect(jsonPath("$.transactions[0].duplicateReason").doesNotExist())
+        .andExpect(jsonPath("$.files.length()").value(2))
+        .andExpect(jsonPath("$.files[0].sourceFile").value("january.csv"))
+        .andExpect(jsonPath("$.files[0].previewImportToken").value("preview-token-january"))
+        .andExpect(jsonPath("$.files[0].transactions[0].duplicate").value(false))
+        .andExpect(jsonPath("$.files[1].sourceFile").value("february.csv"))
+        .andExpect(jsonPath("$.files[1].previewImportToken").value("preview-token-february"))
+        .andExpect(jsonPath("$.files[1].transactions[0].duplicate").value(true))
+        .andExpect(jsonPath("$.files[1].transactions[0].duplicateReason").value("IN_BATCH"))
+        .andExpect(jsonPath("$.sourceFile").doesNotExist())
         .andExpect(jsonPath("$.warnings").doesNotExist());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq(1L), isNull(), any(MultipartFile.class), eq("test-user"));
+        .previewFiles(
+            eq(1L),
+            isNull(),
+            argThat(
+                files ->
+                    files.size() == 2
+                        && "january.csv".equals(files.get(0).getOriginalFilename())
+                        && "february.csv".equals(files.get(1).getOriginalFilename())),
+            eq("test-user"));
   }
 
   @Test
@@ -402,13 +430,13 @@ class TransactionControllerTest {
         createPreviewTransaction(
             LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50));
     var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
-    when(transactionImportService.previewFile(
-            eq(1L), eq("checking-123"), any(MultipartFile.class), eq("test-user")))
+    when(transactionImportService.previewFiles(
+            eq(1L), eq("checking-123"), anyList(), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "transactions.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
@@ -425,7 +453,7 @@ class TransactionControllerTest {
         .andExpect(status().isOk());
 
     verify(transactionImportService, times(1))
-        .previewFile(eq(1L), eq("checking-123"), any(MultipartFile.class), eq("test-user"));
+        .previewFiles(eq(1L), eq("checking-123"), anyList(), eq("test-user"));
   }
 
   @Test
@@ -434,13 +462,12 @@ class TransactionControllerTest {
         createPreviewTransaction(LocalDate.of(2024, 1, 15), "Coffee Shop", BigDecimal.valueOf(4.50))
             .withDuplicate(PreviewDuplicateReason.EXISTING_TRANSACTION);
     var previewResponse = previewResult("transactions.csv", 1L, List.of(previewTransaction));
-    when(transactionImportService.previewFile(
-            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
+    when(transactionImportService.previewFiles(eq(1L), isNull(), anyList(), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "transactions.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
@@ -453,8 +480,9 @@ class TransactionControllerTest {
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.transactions[0].duplicate").value(true))
-        .andExpect(jsonPath("$.transactions[0].duplicateReason").value("EXISTING_TRANSACTION"));
+        .andExpect(jsonPath("$.files[0].transactions[0].duplicate").value(true))
+        .andExpect(
+            jsonPath("$.files[0].transactions[0].duplicateReason").value("EXISTING_TRANSACTION"));
   }
 
   @Test
@@ -464,13 +492,12 @@ class TransactionControllerTest {
         createPreviewTransaction(
             LocalDate.of(2024, 4, 12), "TAQUERIA DEL SOL", BigDecimal.valueOf(55.12));
     var previewResponse = previewResult("statement.pdf", 2L, List.of(previewTransaction));
-    when(transactionImportService.previewFile(
-            eq(2L), isNull(), any(MultipartFile.class), eq("test-user")))
+    when(transactionImportService.previewFiles(eq(2L), isNull(), anyList(), eq("test-user")))
         .thenReturn(previewResponse);
 
     var pdfFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "statement.pdf",
             "application/pdf",
             new byte[] {0x25, 0x50, 0x44, 0x46}); // PDF magic bytes
@@ -484,12 +511,12 @@ class TransactionControllerTest {
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.sourceFile").value("statement.pdf"))
-        .andExpect(jsonPath("$.statementFormatId").value(2))
-        .andExpect(jsonPath("$.transactions.length()").value(1));
+        .andExpect(jsonPath("$.files[0].sourceFile").value("statement.pdf"))
+        .andExpect(jsonPath("$.files[0].statementFormatId").value(2))
+        .andExpect(jsonPath("$.files[0].transactions.length()").value(1));
 
     verify(transactionImportService, times(1))
-        .previewFile(eq(2L), isNull(), any(MultipartFile.class), eq("test-user"));
+        .previewFiles(eq(2L), isNull(), anyList(), eq("test-user"));
   }
 
   @Test
@@ -501,14 +528,16 @@ class TransactionControllerTest {
         new PreviewFileImportStatus(
             true, PreviewFileWarningCode.FILE_ALREADY_IMPORTED, previousFileImport);
     var previewResponse =
-        new PreviewResult("statement.csv", 1L, "preview-token", fileImportStatus, List.of());
-    when(transactionImportService.previewFile(
-            eq(1L), isNull(), any(MultipartFile.class), eq("test-user")))
+        new PreviewResult(
+            List.of(
+                new PreviewFileResult(
+                    "statement.csv", 1L, "preview-token", fileImportStatus, List.of())));
+    when(transactionImportService.previewFiles(eq(1L), isNull(), anyList(), eq("test-user")))
         .thenReturn(previewResponse);
 
     var csvFile =
         new MockMultipartFile(
-            "file",
+            "files",
             "statement.csv",
             "text/csv",
             "Date,Description,Amount\n2024-01-15,Coffee Shop,4.50".getBytes());
@@ -521,14 +550,68 @@ class TransactionControllerTest {
                 .with(
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.previewImportToken").value("preview-token"))
-        .andExpect(jsonPath("$.fileImport.alreadyImported").value(true))
-        .andExpect(jsonPath("$.fileImport.warningCode").value("FILE_ALREADY_IMPORTED"))
-        .andExpect(jsonPath("$.fileImport.previousImport.originalFilename").value("statement.csv"))
-        .andExpect(jsonPath("$.fileImport.previousImport.importedAt").value("2026-05-01T12:34:56Z"))
-        .andExpect(jsonPath("$.fileImport.previousImport.statementFormatId").value(1))
-        .andExpect(jsonPath("$.fileImport.previousImport.accountId").value("checking-12345"))
-        .andExpect(jsonPath("$.fileImport.previousImport.transactionCount").value(42));
+        .andExpect(jsonPath("$.files[0].previewImportToken").value("preview-token"))
+        .andExpect(jsonPath("$.files[0].fileImport.alreadyImported").value(true))
+        .andExpect(jsonPath("$.files[0].fileImport.warningCode").value("FILE_ALREADY_IMPORTED"))
+        .andExpect(
+            jsonPath("$.files[0].fileImport.previousImport.originalFilename")
+                .value("statement.csv"))
+        .andExpect(
+            jsonPath("$.files[0].fileImport.previousImport.importedAt")
+                .value("2026-05-01T12:34:56Z"))
+        .andExpect(jsonPath("$.files[0].fileImport.previousImport.statementFormatId").value(1))
+        .andExpect(
+            jsonPath("$.files[0].fileImport.previousImport.accountId").value("checking-12345"))
+        .andExpect(jsonPath("$.files[0].fileImport.previousImport.transactionCount").value(42));
+  }
+
+  @Test
+  void previewTransactions_secondFileFailure_returnsNamedStandardErrorWithoutPartialPreview()
+      throws Exception {
+    var parserFailure = new IllegalArgumentException("invalid row");
+    when(transactionImportService.previewFiles(eq(1L), isNull(), anyList(), eq("test-user")))
+        .thenThrow(
+            new BusinessException(
+                "Failed to preview file 'february.csv': Required column is missing.",
+                BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+                parserFailure));
+    var januaryFile =
+        new MockMultipartFile(
+            "files", "january.csv", "text/csv", "valid january content".getBytes());
+    var februaryFile =
+        new MockMultipartFile(
+            "files", "february.csv", "text/csv", "invalid february content".getBytes());
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(januaryFile)
+                .file(februaryFile)
+                .param("statementFormatId", "1")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("CSV_PARSING_ERROR"))
+        .andExpect(jsonPath("$.message").value(containsString("february.csv")))
+        .andExpect(jsonPath("$.files").doesNotExist());
+  }
+
+  @Test
+  void previewTransactions_legacyFilePart_returns400WithoutCallingService() throws Exception {
+    var legacyFile =
+        new MockMultipartFile("file", "legacy.csv", "text/csv", "legacy content".getBytes());
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(legacyFile)
+                .param("statementFormatId", "1")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:read")))
+        .andExpect(status().isBadRequest());
+
+    verify(transactionImportService, never()).previewFiles(any(), any(), anyList(), anyString());
   }
 
   // ==================== POST /v1/transactions/batch ====================
@@ -540,32 +623,35 @@ class TransactionControllerTest {
         List.of(
             createTransaction(1L, "Transaction 1", BigDecimal.valueOf(10.00)),
             createTransaction(2L, "Transaction 2", BigDecimal.valueOf(20.00)));
-    var result = new TransactionService.BatchImportResult(createdTransactions, 0, 0);
+    var result = batchImportResult("statement.csv", createdTransactions, 0, 0);
     when(previewImportTokenService.verifyToken("preview-token", "test-user"))
         .thenReturn(previewImportToken());
-    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
-        .thenReturn(result);
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
 
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": [
+          "files": [
             {
-              "date": "2024-01-15",
-              "description": "Transaction 1",
-              "amount": 10.00,
-              "type": "DEBIT",
-              "bankName": "Test Bank",
-              "currencyIsoCode": "USD"
-            },
-            {
-              "date": "2024-01-16",
-              "description": "Transaction 2",
-              "amount": 20.00,
-              "type": "DEBIT",
-              "bankName": "Test Bank",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "preview-token",
+              "transactions": [
+                {
+                  "date": "2024-01-15",
+                  "description": "Transaction 1",
+                  "amount": 10.00,
+                  "type": "DEBIT",
+                  "bankName": "Test Bank",
+                  "currencyIsoCode": "USD"
+                },
+                {
+                  "date": "2024-01-16",
+                  "description": "Transaction 2",
+                  "amount": 20.00,
+                  "type": "DEBIT",
+                  "bankName": "Test Bank",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -583,10 +669,103 @@ class TransactionControllerTest {
         .andExpect(jsonPath("$.created").value(2))
         .andExpect(jsonPath("$.duplicatesSkipped").value(0))
         .andExpect(jsonPath("$.duplicatesImported").value(0))
-        .andExpect(jsonPath("$.transactions.length()").value(2));
+        .andExpect(jsonPath("$.files[0].sourceFile").value("statement.csv"))
+        .andExpect(jsonPath("$.files[0].transactions.length()").value(2));
 
-    verify(transactionService, times(1))
-        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+    verify(transactionService, times(1)).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  void batchImport_twoFilesVerifiesAllTokensAndAcceptsDifferentParserRevisions() throws Exception {
+    var januaryTransaction =
+        createTransaction(1L, "January Transaction", BigDecimal.valueOf(10.00));
+    var februaryTransaction =
+        createTransaction(2L, "February Transaction", BigDecimal.valueOf(20.00));
+    var result =
+        new BatchImportResult(
+            2,
+            1,
+            1,
+            List.of(
+                new BatchImportFileResult("january.csv", List.of(januaryTransaction), 0, 0),
+                new BatchImportFileResult("february.csv", List.of(februaryTransaction), 1, 1)));
+    when(previewImportTokenService.verifyToken("january-token", "test-user"))
+        .thenReturn(previewImportToken("january.csv", 1L, 10L, "checking-12345"));
+    when(previewImportTokenService.verifyToken("february-token", "test-user"))
+        .thenReturn(previewImportToken("february.csv", 1L, 20L, "checking-12345"));
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(groupedBatchRequest("january-token", "february-token")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.created").value(2))
+        .andExpect(jsonPath("$.duplicatesSkipped").value(1))
+        .andExpect(jsonPath("$.duplicatesImported").value(1))
+        .andExpect(jsonPath("$.files[0].sourceFile").value("january.csv"))
+        .andExpect(jsonPath("$.files[0].created").value(1))
+        .andExpect(jsonPath("$.files[1].sourceFile").value("february.csv"))
+        .andExpect(jsonPath("$.files[1].duplicatesSkipped").value(1))
+        .andExpect(jsonPath("$.files[1].duplicatesImported").value(1));
+
+    verify(previewImportTokenService).verifyToken("january-token", "test-user");
+    verify(previewImportTokenService).verifyToken("february-token", "test-user");
+    verify(transactionService)
+        .batchImport(
+            argThat(
+                files ->
+                    files.size() == 2
+                        && files.get(0).source().parserRevisionId().equals(10L)
+                        && files.get(1).source().parserRevisionId().equals(20L)),
+            eq("test-user"));
+  }
+
+  @Test
+  void batchImport_statementFormatMismatchVerifiesAllTokensBeforeRejecting() throws Exception {
+    when(previewImportTokenService.verifyToken("january-token", "test-user"))
+        .thenReturn(previewImportToken("january.csv", 1L, 10L, "checking-12345"));
+    when(previewImportTokenService.verifyToken("february-token", "test-user"))
+        .thenReturn(previewImportToken("february.csv", 2L, 20L, "checking-12345"));
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(groupedBatchRequest("january-token", "february-token")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
+
+    verify(previewImportTokenService).verifyToken("january-token", "test-user");
+    verify(previewImportTokenService).verifyToken("february-token", "test-user");
+    verify(transactionService, never()).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  void batchImport_accountMismatchRejectsBeforeService() throws Exception {
+    when(previewImportTokenService.verifyToken("january-token", "test-user"))
+        .thenReturn(previewImportToken("january.csv", 1L, 10L, "checking-12345"));
+    when(previewImportTokenService.verifyToken("february-token", "test-user"))
+        .thenReturn(previewImportToken("february.csv", 1L, 20L, "savings-67890"));
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(groupedBatchRequest("january-token", "february-token")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
+
+    verify(previewImportTokenService).verifyToken("january-token", "test-user");
+    verify(previewImportTokenService).verifyToken("february-token", "test-user");
+    verify(transactionService, never()).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -594,7 +773,7 @@ class TransactionControllerTest {
     // Given: a batch import request where every submitted transaction is a duplicate
     when(previewImportTokenService.verifyToken("preview-token", "test-user"))
         .thenReturn(previewImportToken());
-    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
+    when(transactionService.batchImport(anyList(), anyString()))
         .thenThrow(
             new BusinessException(
                 "All submitted rows were skipped as duplicates.",
@@ -603,23 +782,19 @@ class TransactionControllerTest {
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
-            },
-            {
-              "date": "2025-11-19",
-              "description": "GROCERY STORE",
-              "amount": 42.30,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "preview-token",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -636,8 +811,7 @@ class TransactionControllerTest {
         .andExpect(status().isUnprocessableEntity())
         .andExpect(jsonPath("$.code").value("BATCH_IMPORT_NO_TRANSACTIONS_CREATED"));
 
-    verify(transactionService, times(1))
-        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+    verify(transactionService, times(1)).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -646,22 +820,26 @@ class TransactionControllerTest {
     // Given: a batch import request with a duplicate override
     when(previewImportTokenService.verifyToken("preview-token", "test-user"))
         .thenReturn(previewImportToken());
-    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
-        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 1));
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenReturn(batchImportResult("statement.csv", List.of(), 0, 1));
 
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD",
-              "allowDuplicate": true
+              "previewImportToken": "preview-token",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD",
+                  "allowDuplicate": true
+                }
+              ]
             }
           ]
         }
@@ -678,13 +856,11 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.duplicatesImported").value(1));
 
-    ArgumentCaptor<List<PreviewTransaction>> transactionsCaptor =
-        ArgumentCaptor.forClass(List.class);
-    verify(transactionService)
-        .batchImport(
-            transactionsCaptor.capture(), eq("test-user"), any(BatchFileImportSource.class));
+    ArgumentCaptor<List<BatchImportFile>> transactionsCaptor = ArgumentCaptor.forClass(List.class);
+    verify(transactionService).batchImport(transactionsCaptor.capture(), eq("test-user"));
     assertThat(transactionsCaptor.getValue()).hasSize(1);
-    assertThat(transactionsCaptor.getValue().get(0).allowDuplicate()).isTrue();
+    assertThat(transactionsCaptor.getValue().getFirst().transactions().getFirst().allowDuplicate())
+        .isTrue();
   }
 
   @Test
@@ -701,21 +877,25 @@ class TransactionControllerTest {
                 1024L,
                 Instant.parse("2026-05-01T12:00:00Z"),
                 Instant.parse("2026-05-01T12:30:00Z")));
-    when(transactionService.batchImport(anyList(), anyString(), any(BatchFileImportSource.class)))
-        .thenReturn(new TransactionService.BatchImportResult(List.of(), 0, 0));
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenReturn(batchImportResult("statement.csv", List.of(), 0, 0));
 
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "preview-token",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -730,17 +910,23 @@ class TransactionControllerTest {
                 .content(requestBody))
         .andExpect(status().isOk());
 
-    ArgumentCaptor<BatchFileImportSource> fileImportSourceCaptor =
-        ArgumentCaptor.forClass(BatchFileImportSource.class);
+    var capturedBatchImportFile = new AtomicReference<BatchImportFile>();
     verify(transactionService)
-        .batchImport(anyList(), eq("test-user"), fileImportSourceCaptor.capture());
-    assertThat(fileImportSourceCaptor.getValue().contentHash())
+        .batchImport(
+            argThat(
+                files -> {
+                  capturedBatchImportFile.set(files.getFirst());
+                  return true;
+                }),
+            eq("test-user"));
+    var fileImportSource = capturedBatchImportFile.get().source();
+    assertThat(fileImportSource.contentHash())
         .isEqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    assertThat(fileImportSourceCaptor.getValue().originalFilename()).isEqualTo("statement.csv");
-    assertThat(fileImportSourceCaptor.getValue().statementFormatId()).isEqualTo(1L);
-    assertThat(fileImportSourceCaptor.getValue().parserRevisionId()).isEqualTo(1L);
-    assertThat(fileImportSourceCaptor.getValue().accountId()).isEqualTo("checking-12345");
-    assertThat(fileImportSourceCaptor.getValue().fileSizeBytes()).isEqualTo(1024L);
+    assertThat(fileImportSource.originalFilename()).isEqualTo("statement.csv");
+    assertThat(fileImportSource.statementFormatId()).isEqualTo(1L);
+    assertThat(fileImportSource.parserRevisionId()).isEqualTo(1L);
+    assertThat(fileImportSource.accountId()).isEqualTo("checking-12345");
+    assertThat(fileImportSource.fileSizeBytes()).isEqualTo(1024L);
   }
 
   @Test
@@ -748,14 +934,18 @@ class TransactionControllerTest {
     var requestBody =
         """
         {
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -770,11 +960,10 @@ class TransactionControllerTest {
                 .content(requestBody))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.fieldErrors[0].field").value("previewImportToken"));
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("files[0].previewImportToken"));
 
     verify(previewImportTokenService, never()).verifyToken(any(), anyString());
-    verify(transactionService, never())
-        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+    verify(transactionService, never()).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -783,15 +972,19 @@ class TransactionControllerTest {
     var requestBody =
         """
         {
-          "previewImportToken": "   ",
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "   ",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -806,11 +999,10 @@ class TransactionControllerTest {
                 .content(requestBody))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.fieldErrors[0].field").value("previewImportToken"));
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("files[0].previewImportToken"));
 
     verify(previewImportTokenService, never()).verifyToken(any(), anyString());
-    verify(transactionService, never())
-        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+    verify(transactionService, never()).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -824,15 +1016,19 @@ class TransactionControllerTest {
     var requestBody =
         """
         {
-          "previewImportToken": "bad-token",
-          "transactions": [
+          "files": [
             {
-              "date": "2025-11-18",
-              "description": "COFFEE SHOP",
-              "amount": 9.97,
-              "type": "DEBIT",
-              "bankName": "Capital One",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "bad-token",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -848,8 +1044,7 @@ class TransactionControllerTest {
         .andExpect(status().isUnprocessableEntity())
         .andExpect(jsonPath("$.code").value("PREVIEW_IMPORT_TOKEN_INVALID"));
 
-    verify(transactionService, never())
-        .batchImport(anyList(), anyString(), any(BatchFileImportSource.class));
+    verify(transactionService, never()).batchImport(anyList(), anyString());
   }
 
   @Test
@@ -858,13 +1053,17 @@ class TransactionControllerTest {
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": [
+          "files": [
             {
-              "description": "Transaction 1",
-              "type": "DEBIT",
-              "bankName": "Test Bank",
-              "currencyIsoCode": "USD"
+              "previewImportToken": "preview-token",
+              "transactions": [
+                {
+                  "description": "Transaction 1",
+                  "type": "DEBIT",
+                  "bankName": "Test Bank",
+                  "currencyIsoCode": "USD"
+                }
+              ]
             }
           ]
         }
@@ -881,17 +1080,20 @@ class TransactionControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
         .andExpect(jsonPath("$.fieldErrors").isArray())
-        .andExpect(jsonPath("$.fieldErrors.length()").value(2));
+        .andExpect(jsonPath("$.fieldErrors.length()").value(2))
+        .andExpect(
+            jsonPath("$.fieldErrors[*].field")
+                .value(
+                    hasItems("files[0].transactions[0].date", "files[0].transactions[0].amount")));
   }
 
   @Test
-  void batchImport_emptyTransactionsList_returns400() throws Exception {
-    // Given: empty transactions list
+  void batchImport_emptyFilesList_returns400() throws Exception {
+    // Given: empty files list
     var requestBody =
         """
         {
-          "previewImportToken": "preview-token",
-          "transactions": []
+          "files": []
         }
         """;
 
@@ -1294,23 +1496,85 @@ class TransactionControllerTest {
   private PreviewResult previewResult(
       String sourceFile, Long statementFormatId, List<PreviewTransaction> transactions) {
     return new PreviewResult(
+        List.of(previewFileResult(sourceFile, statementFormatId, "preview-token", transactions)));
+  }
+
+  private PreviewFileResult previewFileResult(
+      String sourceFile,
+      Long statementFormatId,
+      String previewImportToken,
+      List<PreviewTransaction> transactions) {
+    return new PreviewFileResult(
         sourceFile,
         statementFormatId,
-        "preview-token",
+        previewImportToken,
         PreviewFileImportStatus.notPreviouslyImported(),
         transactions);
   }
 
   private PreviewImportToken previewImportToken() {
+    return previewImportToken("statement.csv", 1L, 1L, "checking-12345");
+  }
+
+  private PreviewImportToken previewImportToken(
+      String sourceFile, Long statementFormatId, Long parserRevisionId, String accountId) {
     return new PreviewImportToken(
         "test-user",
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        "statement.csv",
-        1L,
-        1L,
-        "checking-12345",
+        sourceFile,
+        statementFormatId,
+        parserRevisionId,
+        accountId,
         1024L,
         Instant.parse("2026-05-01T12:00:00Z"),
         Instant.parse("2026-05-01T12:30:00Z"));
+  }
+
+  private String groupedBatchRequest(String firstToken, String secondToken) {
+    return """
+        {
+          "files": [
+            {
+              "previewImportToken": "%s",
+              "transactions": [
+                {
+                  "date": "2025-11-18",
+                  "description": "COFFEE SHOP",
+                  "amount": 9.97,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
+            },
+            {
+              "previewImportToken": "%s",
+              "transactions": [
+                {
+                  "date": "2025-11-19",
+                  "description": "GROCERY STORE",
+                  "amount": 42.30,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
+            }
+          ]
+        }
+        """
+        .formatted(firstToken, secondToken);
+  }
+
+  private BatchImportResult batchImportResult(
+      String sourceFile,
+      List<Transaction> createdTransactions,
+      int duplicatesSkipped,
+      int duplicatesImported) {
+    var fileResult =
+        new BatchImportFileResult(
+            sourceFile, createdTransactions, duplicatesSkipped, duplicatesImported);
+    return new BatchImportResult(
+        createdTransactions.size(), duplicatesSkipped, duplicatesImported, List.of(fileResult));
   }
 }

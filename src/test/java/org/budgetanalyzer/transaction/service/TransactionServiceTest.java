@@ -34,6 +34,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 
+import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.transaction.domain.FileImport;
@@ -43,6 +44,9 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository.TransactionDuplicateCandidate;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFileResult;
+import org.budgetanalyzer.transaction.service.dto.BatchImportResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @ExtendWith(MockitoExtension.class)
@@ -672,7 +676,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_existingFuzzyDuplicate_skipsMatchingTransaction() {
+  void batchImport_existingNormalizedDescriptionDuplicate_skipsMatchingTransaction() {
     var duplicateDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -711,12 +715,12 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_skippedExistingDuplicateDoesNotBecomeIntraBatchCandidate() {
-    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+  void batchImport_skippedExistingDuplicateDoesNotBlockMerelySimilarTransaction() {
+    var existingCandidateDescription = "STORE PAYMENT A-A-A";
     var skippedDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "STORE PAYMENT BBAAAAAAAAAAAA",
+            "store payment aaa",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -726,7 +730,7 @@ class TransactionServiceTest {
     var laterDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "STORE PAYMENT BBBBAAAAAAAAAA",
+            "STORE PAYMENT AAB",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -744,13 +748,13 @@ class TransactionServiceTest {
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().getFirst().getDescription())
-        .isEqualTo("STORE PAYMENT BBBBAAAAAAAAAA");
+        .isEqualTo("STORE PAYMENT AAB");
     assertThat(result.duplicatesSkipped()).isEqualTo(1);
     assertThat(result.duplicatesImported()).isZero();
   }
 
   @Test
-  void batchImport_existingFuzzyDuplicateAllowed_importsMatchingTransaction() {
+  void batchImport_existingNormalizedDescriptionDuplicateAllowed_importsMatchingTransaction() {
     var dto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -780,12 +784,12 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_allowedExistingDuplicateBecomesIntraBatchCandidate() {
-    var existingCandidateDescription = "STORE PAYMENT AAAAAAAAAAAAAA";
+  void batchImport_allowedExistingDuplicateDoesNotPreventLaterDuplicateDetection() {
+    var existingCandidateDescription = "STORE PAYMENT A-A-A";
     var allowedDuplicateDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "STORE PAYMENT BBAAAAAAAAAAAA",
+            "store payment aaa",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -796,7 +800,7 @@ class TransactionServiceTest {
     var laterDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "STORE PAYMENT BBBBAAAAAAAAAA",
+            "STORE  PAYMENT AAA",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -814,17 +818,17 @@ class TransactionServiceTest {
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().getFirst().getDescription())
-        .isEqualTo("STORE PAYMENT BBAAAAAAAAAAAA");
+        .isEqualTo("store payment aaa");
     assertThat(result.duplicatesSkipped()).isEqualTo(1);
     assertThat(result.duplicatesImported()).isEqualTo(1);
   }
 
   @Test
-  void batchImport_existingCandidateWithDifferentDescription_importsTransaction() {
+  void batchImport_existingCandidateWithMerelySimilarDescription_importsTransaction() {
     var dto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "Rent Payment May",
+            "PAYPAL DIGITAL SERVICES",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -834,7 +838,7 @@ class TransactionServiceTest {
     var existingCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
 
     when(transactionRepository.findDuplicateCandidates(any(), any()))
-        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, "Starbucks Store 1234")));
+        .thenReturn(List.of(duplicateCandidate(existingCandidateKey, "PAYPAL DIGITAL SERVICE")));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
     var result = batchImport(List.of(dto));
@@ -845,8 +849,8 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_withIntraBatchDuplicates_skipsSecondOccurrence() {
-    // Given: two identical transactions in the same batch
+  void batchImport_withSameFileRepeatedRows_createsBothOccurrences() {
+    // Given: two identical transactions from the same faithful source file
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -882,15 +886,15 @@ class TransactionServiceTest {
     // When: batch import is called
     var result = batchImport(List.of(dto1, dto2));
 
-    // Then: only first transaction is created, second is skipped as intra-batch duplicate
-    assertThat(result.createdTransactions()).hasSize(1);
-    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    // Then: rows from the same file are not compared with each other
+    assertThat(result.createdTransactions()).hasSize(2);
+    assertThat(result.duplicatesSkipped()).isZero();
     assertThat(result.duplicatesImported()).isEqualTo(0);
   }
 
   @Test
-  void batchImport_intraBatchDuplicateAllowed_importsSecondOccurrence() {
-    // Given: the second identical transaction has an explicit duplicate override
+  void batchImport_laterFileDuplicateAllowed_importsWarnedOccurrence() {
+    // Given: the second identical transaction belongs to a later source file
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -924,17 +928,28 @@ class TransactionServiceTest {
               return transactions;
             });
 
-    // When: batch import is called
-    var result = batchImport(List.of(dto1, dto2));
+    var firstFile = batchImportFile(fileImportSource(), List.of(dto1));
+    var secondFile = batchImportFile(fileImportSource("later.csv", "abcdef"), List.of(dto2));
+    stubExistingFileImport(firstFile.source());
+    stubExistingFileImport(secondFile.source());
+
+    // When: grouped batch import is called
+    var result = transactionService.batchImport(List.of(firstFile, secondFile), USER_ID);
 
     // Then: both transactions are created and the duplicate import is counted
     assertThat(result.createdTransactions()).hasSize(2);
     assertThat(result.duplicatesSkipped()).isZero();
     assertThat(result.duplicatesImported()).isEqualTo(1);
+    assertThat(result.files())
+        .extracting(BatchImportFileResult::sourceFile)
+        .containsExactly("statement.csv", "later.csv");
+    assertThat(result.files())
+        .extracting(BatchImportFileResult::duplicatesImported)
+        .containsExactly(0, 1);
   }
 
   @Test
-  void batchImport_intraBatchFuzzyDuplicate_skipsSecondOccurrence() {
+  void batchImport_laterFileNormalizedDescriptionDuplicate_skipsSecondOccurrence() {
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -959,21 +974,33 @@ class TransactionServiceTest {
     when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    var result = batchImport(List.of(dto1, dto2));
+    var firstFile = batchImportFile(fileImportSource(), List.of(dto1));
+    var secondFile = batchImportFile(fileImportSource("later.csv", "abcdef"), List.of(dto2));
+    stubExistingFileImport(firstFile.source());
+
+    var result = transactionService.batchImport(List.of(firstFile, secondFile), USER_ID);
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().getFirst().getDescription())
         .isEqualTo("X CORP. PAID FEATURES BASTROP     TX");
     assertThat(result.duplicatesSkipped()).isEqualTo(1);
     assertThat(result.duplicatesImported()).isZero();
+    assertThat(result.files())
+        .extracting(BatchImportFileResult::sourceFile)
+        .containsExactly("statement.csv", "later.csv");
+    assertThat(result.files())
+        .extracting(file -> file.createdTransactions().size())
+        .containsExactly(1, 0);
+    verify(fileImportTrackingService, never())
+        .checkHash(secondFile.source().contentHash(), USER_ID);
   }
 
   @Test
-  void batchImport_intraBatchCandidateWithDifferentDescription_importsBothTransactions() {
+  void batchImport_intraBatchMerelySimilarDescriptions_importsBothTransactions() {
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "Rent Payment May",
+            "PAYPAL DIGITAL SERVICES",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -983,7 +1010,7 @@ class TransactionServiceTest {
     var dto2 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
-            "Starbucks Store 1234",
+            "PAYPAL DIGITAL SERVICE",
             BigDecimal.valueOf(100.00),
             TransactionType.DEBIT,
             null,
@@ -1003,7 +1030,7 @@ class TransactionServiceTest {
 
   @Test
   void batchImport_emptyList_throwsNoTransactionsCreated() {
-    assertThatThrownBy(() -> transactionService.batchImport(List.of(), USER_ID, fileImportSource()))
+    assertThatThrownBy(() -> transactionService.batchImport(List.of(), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -1031,15 +1058,17 @@ class TransactionServiceTest {
 
     // When/Then: batch import throws BatchValidationException
     assertThatThrownBy(
-            () -> transactionService.batchImport(List.of(dto), USER_ID, fileImportSource()))
+            () ->
+                transactionService.batchImport(
+                    List.of(batchImportFile(fileImportSource(), List.of(dto))), USER_ID))
         .isInstanceOf(BatchValidationException.class)
         .satisfies(
             ex -> {
               var bve = (BatchValidationException) ex;
               assertThat(bve.getFieldErrors()).hasSize(1);
-              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
-              assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
-              assertThat(bve.getFieldErrors().get(0).getMessage()).contains("before year 2000");
+              assertThat(bve.getFieldErrors().get(0).getIndex()).isNull();
+              assertThat(bve.getFieldErrors().get(0).getField())
+                  .isEqualTo("files[0].transactions[0].date");
             });
   }
 
@@ -1059,15 +1088,17 @@ class TransactionServiceTest {
 
     // When/Then: batch import throws BatchValidationException
     assertThatThrownBy(
-            () -> transactionService.batchImport(List.of(dto), USER_ID, fileImportSource()))
+            () ->
+                transactionService.batchImport(
+                    List.of(batchImportFile(fileImportSource(), List.of(dto))), USER_ID))
         .isInstanceOf(BatchValidationException.class)
         .satisfies(
             ex -> {
               var bve = (BatchValidationException) ex;
               assertThat(bve.getFieldErrors()).hasSize(1);
-              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
-              assertThat(bve.getFieldErrors().get(0).getField()).isEqualTo("date");
-              assertThat(bve.getFieldErrors().get(0).getMessage()).contains("in the future");
+              assertThat(bve.getFieldErrors().get(0).getIndex()).isNull();
+              assertThat(bve.getFieldErrors().get(0).getField())
+                  .isEqualTo("files[0].transactions[0].date");
             });
   }
 
@@ -1127,14 +1158,18 @@ class TransactionServiceTest {
 
     // When/Then: batch import throws with all errors aggregated
     assertThatThrownBy(
-            () -> transactionService.batchImport(List.of(dto1, dto2), USER_ID, fileImportSource()))
+            () ->
+                transactionService.batchImport(
+                    List.of(batchImportFile(fileImportSource(), List.of(dto1, dto2))), USER_ID))
         .isInstanceOf(BatchValidationException.class)
         .satisfies(
             ex -> {
               var bve = (BatchValidationException) ex;
               assertThat(bve.getFieldErrors()).hasSize(2);
-              assertThat(bve.getFieldErrors().get(0).getIndex()).isEqualTo(0);
-              assertThat(bve.getFieldErrors().get(1).getIndex()).isEqualTo(1);
+              assertThat(bve.getFieldErrors())
+                  .extracting(FieldError::getField)
+                  .containsExactly(
+                      "files[0].transactions[0].date", "files[0].transactions[1].date");
             });
   }
 
@@ -1180,7 +1215,9 @@ class TransactionServiceTest {
         .thenReturn(fileImport);
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    var result = transactionService.batchImport(List.of(dto), USER_ID, fileImportSource);
+    var result =
+        transactionService.batchImport(
+            List.of(batchImportFile(fileImportSource, List.of(dto))), USER_ID);
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().get(0).getFileImport()).isSameAs(fileImport);
@@ -1220,13 +1257,92 @@ class TransactionServiceTest {
                 fileImportSource.contentHash(), Optional.of(existingFileImport)));
     when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    var result = transactionService.batchImport(List.of(dto), USER_ID, fileImportSource);
+    var result =
+        transactionService.batchImport(
+            List.of(batchImportFile(fileImportSource, List.of(dto))), USER_ID);
 
     assertThat(result.createdTransactions()).hasSize(1);
     assertThat(result.createdTransactions().get(0).getFileImport()).isSameAs(existingFileImport);
     verify(fileImportTrackingService, never())
         .recordImport(
             anyString(), anyString(), anyLong(), anyLong(), any(), any(), any(), anyString());
+  }
+
+  @Test
+  void batchImport_multipleCreatedFilesLinksEachTransactionToItsOwnProvenance() {
+    var januaryTransaction =
+        new PreviewTransaction(
+            LocalDate.of(2024, 1, 15),
+            "January Transaction",
+            BigDecimal.valueOf(100.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            "account-123");
+    var februaryTransaction =
+        new PreviewTransaction(
+            LocalDate.of(2024, 2, 15),
+            "February Transaction",
+            BigDecimal.valueOf(200.00),
+            TransactionType.DEBIT,
+            null,
+            "Test Bank",
+            "USD",
+            "account-123");
+    var januarySource = fileImportSource("january.csv", "abc");
+    var februarySource = fileImportSource("february.csv", "def");
+    var januaryFileImport = fileImport(januarySource, 1);
+    var februaryFileImport = fileImport(februarySource, 1);
+
+    when(transactionRepository.findDuplicateCandidates(any(), any())).thenReturn(List.of());
+    when(fileImportTrackingService.checkHash(januarySource.contentHash(), USER_ID))
+        .thenReturn(
+            new FileImportTrackingService.FileCheckResult(
+                januarySource.contentHash(), Optional.empty()));
+    when(fileImportTrackingService.checkHash(februarySource.contentHash(), USER_ID))
+        .thenReturn(
+            new FileImportTrackingService.FileCheckResult(
+                februarySource.contentHash(), Optional.empty()));
+    when(fileImportTrackingService.recordImport(
+            januarySource.contentHash(),
+            januarySource.originalFilename(),
+            januarySource.statementFormatId(),
+            januarySource.parserRevisionId(),
+            januarySource.accountId(),
+            januarySource.fileSizeBytes(),
+            1,
+            USER_ID))
+        .thenReturn(januaryFileImport);
+    when(fileImportTrackingService.recordImport(
+            februarySource.contentHash(),
+            februarySource.originalFilename(),
+            februarySource.statementFormatId(),
+            februarySource.parserRevisionId(),
+            februarySource.accountId(),
+            februarySource.fileSizeBytes(),
+            1,
+            USER_ID))
+        .thenReturn(februaryFileImport);
+    when(transactionRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var result =
+        transactionService.batchImport(
+            List.of(
+                batchImportFile(januarySource, List.of(januaryTransaction)),
+                batchImportFile(februarySource, List.of(februaryTransaction))),
+            USER_ID);
+
+    assertThat(result.created()).isEqualTo(2);
+    assertThat(result.files())
+        .extracting(BatchImportFileResult::sourceFile)
+        .containsExactly("january.csv", "february.csv");
+    assertThat(result.files().get(0).createdTransactions().getFirst().getFileImport())
+        .isSameAs(januaryFileImport);
+    assertThat(result.files().get(1).createdTransactions().getFirst().getFileImport())
+        .isSameAs(februaryFileImport);
+    verify(transactionRepository, times(1)).findDuplicateCandidates(any(), eq(USER_ID));
+    verify(transactionRepository, times(1)).saveAll(any());
   }
 
   @Test
@@ -1246,7 +1362,9 @@ class TransactionServiceTest {
         .thenReturn(List.of(duplicateCandidate(existingCandidateKey, dto.description())));
 
     assertThatThrownBy(
-            () -> transactionService.batchImport(List.of(dto), USER_ID, fileImportSource()))
+            () ->
+                transactionService.batchImport(
+                    List.of(batchImportFile(fileImportSource(), List.of(dto))), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -1282,7 +1400,7 @@ class TransactionServiceTest {
         null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 
-  private TransactionService.BatchImportResult batchImport(List<PreviewTransaction> transactions) {
+  private BatchImportResult batchImport(List<PreviewTransaction> transactions) {
     var fileImportSource = fileImportSource();
     var existingFileImport =
         FileImport.create(
@@ -1298,7 +1416,13 @@ class TransactionServiceTest {
         .thenReturn(
             new FileImportTrackingService.FileCheckResult(
                 fileImportSource.contentHash(), Optional.of(existingFileImport)));
-    return transactionService.batchImport(transactions, USER_ID, fileImportSource);
+    return transactionService.batchImport(
+        List.of(batchImportFile(fileImportSource, transactions)), USER_ID);
+  }
+
+  private BatchImportFile batchImportFile(
+      BatchFileImportSource fileImportSource, List<PreviewTransaction> transactions) {
+    return new BatchImportFile(fileImportSource, transactions);
   }
 
   private BatchFileImportSource fileImportSource() {
@@ -1309,6 +1433,36 @@ class TransactionServiceTest {
         1L,
         "account-123",
         1024L);
+  }
+
+  private BatchFileImportSource fileImportSource(String originalFilename, String hashPrefix) {
+    return new BatchFileImportSource(
+        hashPrefix + "0".repeat(64 - hashPrefix.length()),
+        originalFilename,
+        1L,
+        2L,
+        "account-123",
+        2048L);
+  }
+
+  private void stubExistingFileImport(BatchFileImportSource fileImportSource) {
+    var existingFileImport = fileImport(fileImportSource, 1);
+    when(fileImportTrackingService.checkHash(fileImportSource.contentHash(), USER_ID))
+        .thenReturn(
+            new FileImportTrackingService.FileCheckResult(
+                fileImportSource.contentHash(), Optional.of(existingFileImport)));
+  }
+
+  private FileImport fileImport(BatchFileImportSource fileImportSource, int transactionCount) {
+    return FileImport.create(
+        fileImportSource.contentHash(),
+        fileImportSource.originalFilename(),
+        fileImportSource.statementFormatId(),
+        fileImportSource.parserRevisionId(),
+        fileImportSource.accountId(),
+        fileImportSource.fileSizeBytes(),
+        transactionCount,
+        USER_ID);
   }
 
   private static TransactionDuplicateCandidate duplicateCandidate(

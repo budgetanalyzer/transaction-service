@@ -117,23 +117,51 @@ class TransactionOpenApiIntegrationTest {
     var previewOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1preview/post");
     var batchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1batch/post");
     assertThat(previewOperationJsonNode.path("description").asText())
-        .contains("advisory duplicate metadata");
+        .contains("ordered", "advisory duplicate metadata", "completed earlier files");
     assertThat(batchOperationJsonNode.path("description").asText())
-        .contains("allowDuplicate", "duplicates intentionally imported");
+        .contains(
+            "different parser revisions",
+            "share one statement format and account",
+            "allowDuplicate",
+            "separate file provenance",
+            "zero-created source creates none",
+            "roll back together",
+            "duplicates intentionally imported");
 
     var previewTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/PreviewTransactionResponse");
     var previewResponseSchemaJsonNode = openApiJsonNode.at("/components/schemas/PreviewResponse");
-    assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode())
-        .isFalse();
+    assertThat(previewResponseSchemaJsonNode.at("/properties/files/type").asText())
+        .isEqualTo("array");
+    assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode()).isTrue();
     assertThat(previewResponseSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
-        .isFalse();
-    assertThat(previewResponseSchemaJsonNode.at("/properties/contentHash").isMissingNode())
         .isTrue();
+    assertThat(requiredPropertyNames(previewResponseSchemaJsonNode)).containsExactly("files");
+
+    var previewFileSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, previewResponseSchemaJsonNode.at("/properties/files/items"));
+    assertThat(previewFileSchemaJsonNode.at("/properties/fileImport").isMissingNode()).isFalse();
+    assertThat(previewFileSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
+        .isFalse();
+    assertThat(previewFileSchemaJsonNode.at("/properties/contentHash").isMissingNode()).isTrue();
+    assertThat(requiredPropertyNames(previewFileSchemaJsonNode))
+        .contains(
+            "sourceFile", "statementFormatId", "previewImportToken", "fileImport", "transactions");
+
+    var previewRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            previewOperationJsonNode.at("/requestBody/content/multipart~1form-data/schema"));
+    assertThat(previewRequestSchemaJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(previewRequestSchemaJsonNode.at("/items/format").asText()).isEqualTo("binary");
+    assertThat(previewRequestSchemaJsonNode.path("minItems").asInt()).isEqualTo(1);
+    assertThat(previewRequestSchemaJsonNode.path("description").asText())
+        .contains("Repeat the files multipart part");
+    assertThat(previewOperationJsonNode.at("/requestBody/required").asBoolean()).isTrue();
 
     var fileImportStatusSchemaJsonNode =
-        resolveSchemaNode(
-            openApiJsonNode, previewResponseSchemaJsonNode.at("/properties/fileImport"));
+        resolveSchemaNode(openApiJsonNode, previewFileSchemaJsonNode.at("/properties/fileImport"));
     assertThat(fileImportStatusSchemaJsonNode.at("/properties/alreadyImported").isMissingNode())
         .isFalse();
     assertThat(fileImportStatusSchemaJsonNode.at("/properties/warningCode").isMissingNode())
@@ -177,7 +205,7 @@ class TransactionOpenApiIntegrationTest {
                 .at("/properties/duplicate")
                 .path("description")
                 .asText())
-        .contains("existing", "same preview payload");
+        .contains("existing", "completed earlier source file", "not compared with each other");
     var duplicateReasonSchemaJsonNode =
         resolveSchemaNode(
             openApiJsonNode, previewTransactionSchemaJsonNode.at("/properties/duplicateReason"));
@@ -189,13 +217,28 @@ class TransactionOpenApiIntegrationTest {
         openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
     var batchImportRequestSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/BatchImportRequest");
+    assertThat(batchImportRequestSchemaJsonNode.at("/properties/files/type").asText())
+        .isEqualTo("array");
+    assertThat(batchImportRequestSchemaJsonNode.at("/properties/files/minItems").asInt())
+        .isEqualTo(1);
+    assertThat(requiredPropertyNames(batchImportRequestSchemaJsonNode)).containsExactly("files");
     assertThat(
             batchImportRequestSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
-        .isFalse();
-    assertThat(batchImportRequestSchemaJsonNode.at("/required").toString())
-        .contains("previewImportToken");
+        .isTrue();
     assertThat(batchImportRequestSchemaJsonNode.at("/properties/contentHash").isMissingNode())
         .isTrue();
+    var batchImportFileRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, batchImportRequestSchemaJsonNode.at("/properties/files/items"));
+    assertThat(requiredPropertyNames(batchImportFileRequestSchemaJsonNode))
+        .contains("previewImportToken", "transactions");
+    assertThat(batchImportFileRequestSchemaJsonNode.at("/properties/transactions/minItems").asInt())
+        .isEqualTo(1);
+    assertThat(
+            batchImportFileRequestSchemaJsonNode
+                .at("/properties/previewImportToken")
+                .isMissingNode())
+        .isFalse();
     assertThat(
             batchImportTransactionSchemaJsonNode.at("/properties/allowDuplicate").isMissingNode())
         .isFalse();
@@ -204,7 +247,7 @@ class TransactionOpenApiIntegrationTest {
                 .at("/properties/allowDuplicate")
                 .path("description")
                 .asText())
-        .contains("existing transaction", "same batch");
+        .contains("existing transaction", "completed earlier file");
 
     var batchImportResponseSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/BatchImportResponse");
@@ -214,6 +257,16 @@ class TransactionOpenApiIntegrationTest {
     assertThat(
             batchImportResponseSchemaJsonNode.at("/properties/duplicatesImported").isMissingNode())
         .isFalse();
+    assertThat(batchImportResponseSchemaJsonNode.at("/properties/files/type").asText())
+        .isEqualTo("array");
+    assertThat(requiredPropertyNames(batchImportResponseSchemaJsonNode))
+        .contains("created", "duplicatesSkipped", "duplicatesImported", "files");
+    var batchImportFileResponseSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, batchImportResponseSchemaJsonNode.at("/properties/files/items"));
+    assertThat(requiredPropertyNames(batchImportFileResponseSchemaJsonNode))
+        .contains(
+            "sourceFile", "created", "duplicatesSkipped", "duplicatesImported", "transactions");
   }
 
   private JsonNode readOpenApiDocument() throws Exception {
