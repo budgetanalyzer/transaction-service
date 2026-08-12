@@ -93,7 +93,7 @@ final class TransactionDuplicateMatcher {
       PreviewTransaction previewTransaction,
       List<TransactionDuplicateCandidate> transactionDuplicateCandidates) {
     for (var transactionDuplicateCandidate : transactionDuplicateCandidates) {
-      if (transactionDescriptionMatcher.match(
+      if (transactionDescriptionMatcher.matches(
           previewTransaction.description(), transactionDuplicateCandidate.getDescription())) {
         return true;
       }
@@ -104,7 +104,7 @@ final class TransactionDuplicateMatcher {
   boolean matchesSeenTransaction(
       PreviewTransaction previewTransaction, List<PreviewTransaction> seenTransactions) {
     for (var seenTransaction : seenTransactions) {
-      if (transactionDescriptionMatcher.match(
+      if (transactionDescriptionMatcher.matches(
           previewTransaction.description(), seenTransaction.description())) {
         return true;
       }

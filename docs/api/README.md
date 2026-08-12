@@ -112,10 +112,10 @@ Notes: Parses one or more ordered CSV or PDF files with one shared statement for
 **Batch Import Transactions**
 ```
 POST /v1/transactions/batch
-Body: BatchImportRequest (ordered non-empty files list; each item has one previewImportToken and a non-empty reviewed transactions list)
+Body: BatchImportRequest (required, non-empty ordered files list; each non-null item has one previewImportToken and a required reviewed transactions list that may be empty but cannot contain null elements)
 Response: BatchImportResponse (200 OK)
 Permission: transactions:write
-Notes: Imports all reviewed preview file results atomically. Every token is verified for the authenticated owner before the service call. Verified statement format and account IDs must match, while parser revision IDs may differ. The response contains aggregate counts plus ordered per-file counts, verified filenames, and created transactions. Import duplicate and file import recording behavior is documented in Transaction Duplicate Detection.
+Notes: Imports all reviewed preview file results atomically. Every token is verified for the authenticated owner before the service call. A statement-format or account mismatch returns 422 APPLICATION_ERROR with code BATCH_IMPORT_SOURCE_MISMATCH; parser revision IDs may differ. An empty source can retain an ordered zero-count result when another source creates a transaction, but creates no provenance. If the aggregate request creates nothing, the service returns 422 APPLICATION_ERROR with code BATCH_IMPORT_NO_TRANSACTIONS_CREATED. The response contains aggregate counts plus ordered per-file counts, verified filenames, and created transactions. Import duplicate and file import recording behavior is documented in Transaction Duplicate Detection.
 On any persistence failure, transactions and newly attempted file-import
 provenance from every source group roll back together.
 ```
@@ -644,7 +644,9 @@ PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
 Fields:
 - `files` - Required, non-empty ordered source file groups.
 - `files[].previewImportToken` - Required opaque token returned for that source.
-- `files[].transactions` - Required, non-empty reviewed rows from that source.
+- `files[].transactions` - Required reviewed rows from that source; may be empty.
+- `files[]` and `files[].transactions[]` elements - Required and must not be
+  `null`.
 - `files[].transactions[].allowDuplicate` - Optional per-row override,
   defaulting to `false`.
 
@@ -690,7 +692,13 @@ detection. Set it to `true` only for rows that should be intentionally imported
 despite matching an existing transaction or a completed earlier file. Rows are
 not compared with other rows in their own file. Every `previewImportToken` must
 be valid, unexpired, and owned by the authenticated user. Tokens must share one
-statement format and account, but parser revisions may differ. See
+statement format and account. A mismatch returns `422 Unprocessable Entity`
+with type `APPLICATION_ERROR` and code `BATCH_IMPORT_SOURCE_MISMATCH`; parser
+revisions may differ. An empty file group retains its ordered zero-count result
+and creates no provenance when another group creates a transaction. If no rows
+are created across the aggregate request, including an all-empty request, the
+service returns `422 Unprocessable Entity` with type `APPLICATION_ERROR` and
+code `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for matching rules,
 token verification order, and empty-import behavior.
 
@@ -894,8 +902,10 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 ### Batch Import (PreviewTransaction)
 
 - `files` - Required, non-empty ordered source groups
+- `files[]` - Elements are required and must not be `null`
 - `files[].previewImportToken` - Required, non-blank
-- `files[].transactions` - Required, non-empty
+- `files[].transactions` - Required; may be empty
+- `files[].transactions[]` - Elements are required and must not be `null`
 - `date` - Required
 - `description` - Required, non-blank
 - `amount` - Required
@@ -906,6 +916,11 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 - `category` - Optional
 - `allowDuplicate` - Optional, defaults to false. When true, imports the row
   even if duplicate detection matches it.
+
+An individual empty `transactions` array passes request validation. The batch
+still must create at least one transaction in aggregate; otherwise it returns
+`422 Unprocessable Entity`, type `APPLICATION_ERROR`, and code
+`BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
 
 ### Transaction Update (TransactionUpdateRequest)
 

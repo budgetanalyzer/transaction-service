@@ -4,6 +4,7 @@ import java.util.List;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -16,7 +17,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "Request for batch importing transactions")
 public record BatchImportRequest(
-    @Schema(description = "Ordered source files and reviewed transactions to import")
+    @Schema(
+            description = "Required, non-empty ordered source file groups",
+            requiredMode = Schema.RequiredMode.REQUIRED)
         @NotEmpty(message = "files list cannot be empty")
-        @Valid
-        List<BatchImportFileRequest> files) {}
+        List<@NotNull(message = "file is required") @Valid BatchImportFileRequest> files) {}

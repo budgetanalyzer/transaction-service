@@ -41,6 +41,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.PagedResponse;
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
@@ -51,6 +52,7 @@ import org.budgetanalyzer.transaction.api.response.BatchImportResponse;
 import org.budgetanalyzer.transaction.api.response.BulkDeleteResponse;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
+import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
@@ -253,6 +255,17 @@ public class TransactionController {
                         "message": "All submitted rows were skipped as duplicates.",
                         "code": "BATCH_IMPORT_NO_TRANSACTIONS_CREATED"
                       }
+                      """),
+                      @ExampleObject(
+                          name = "Source Identity Mismatch",
+                          summary = "Verified tokens identify different formats or accounts",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Preview import token sources do not match.",
+                        "code": "BATCH_IMPORT_SOURCE_MISMATCH"
+                      }
                       """)
                     }))
       })
@@ -288,9 +301,10 @@ public class TransactionController {
     for (var previewImportToken : previewImportTokens) {
       if (!firstToken.statementFormatId().equals(previewImportToken.statementFormatId())
           || !Objects.equals(firstToken.accountId(), previewImportToken.accountId())) {
-        throw new InvalidRequestException(
+        throw new BusinessException(
             "All preview import tokens in one batch must use the same statement format and "
-                + "account.");
+                + "account.",
+            BudgetAnalyzerError.BATCH_IMPORT_SOURCE_MISMATCH.name());
       }
     }
   }

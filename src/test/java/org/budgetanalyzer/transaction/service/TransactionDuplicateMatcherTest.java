@@ -33,7 +33,7 @@ class TransactionDuplicateMatcherTest {
       new TransactionDuplicateMatcher();
 
   @Test
-  void markGroupedDuplicates_sameFileRepeatsRemainUnmarkedAndLaterFileWins() {
+  void shouldLeaveSameFileRepeatsUnmarkedAndMarkLaterFileAsDuplicate() {
     var firstTransaction = previewTransaction("Coffee Shop");
     var repeatedTransaction = previewTransaction("COFFEE-SHOP");
     var laterFileTransaction = previewTransaction("coffee shop");
@@ -61,7 +61,7 @@ class TransactionDuplicateMatcherTest {
   }
 
   @Test
-  void markGroupedDuplicates_persistedMatchTakesPrecedenceOverEarlierFile() {
+  void shouldPreferPersistedMatchOverEarlierFileMatch() {
     var firstTransaction = previewTransaction("Coffee Shop");
     var laterFileTransaction = previewTransaction("COFFEE SHOP");
     var duplicateIdentity = TransactionDuplicateMatcher.duplicateIdentity(firstTransaction);
@@ -79,7 +79,7 @@ class TransactionDuplicateMatcherTest {
   }
 
   @Test
-  void markGroupedDuplicates_allEmptyFilesDoNotQueryRepository() {
+  void shouldNotQueryRepositoryWhenAllFilesAreEmpty() {
     var result =
         transactionDuplicateMatcher.markGroupedDuplicates(
             transactionRepository, List.of(List.of(), List.of()), USER_ID);

@@ -7,7 +7,7 @@ import java.util.Objects;
 /** Matches transaction descriptions using normalized equality. */
 final class TransactionDescriptionMatcher {
 
-  boolean match(String incomingDescription, String candidateDescription) {
+  boolean matches(String incomingDescription, String candidateDescription) {
     Objects.requireNonNull(incomingDescription, "incomingDescription");
     Objects.requireNonNull(candidateDescription, "candidateDescription");
 
@@ -32,7 +32,6 @@ final class TransactionDescriptionMatcher {
   }
 
   private static boolean isComparableCodePoint(int codePoint) {
-    return Character.isLetterOrDigit(codePoint)
-        && Character.getType(codePoint) != Character.NON_SPACING_MARK;
+    return Character.isLetterOrDigit(codePoint);
   }
 }

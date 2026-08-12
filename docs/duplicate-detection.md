@@ -76,10 +76,11 @@ return matching transaction IDs.
 ## Batch Behavior
 
 Batch import accepts an ordered, non-empty collection of source file groups.
-Every group contains its own preview token and reviewed rows. The controller
-verifies every token for the authenticated owner before the persistence service
-is called. All verified tokens must share one statement format ID and account
-ID; parser revision IDs may differ.
+Every group contains its own preview token and a required reviewed-row array,
+which may contain zero reviewed rows. The controller verifies every token for
+the authenticated owner before the persistence service is called. All verified
+tokens must share one statement format ID and account ID; parser revision IDs
+may differ.
 
 The service validates every submitted row before database work, loads persisted
 duplicate candidates once, re-runs duplicate detection, resolves per-file
@@ -115,9 +116,10 @@ counts, and that file's created transactions:
 - `duplicatesImported` - Rows imported even though they matched duplicate
   detection because `allowDuplicate=true`.
 
-A file may return `created=0` when another file creates transactions. That
-zero-created file does not create provenance. If duplicate filtering leaves no
-rows to create across the complete request, batch import fails with
+A file with an empty reviewed-row array, or one whose rows are all skipped, may
+return `created=0` when another file creates transactions. That zero-created
+file retains its ordered response position but does not create provenance. If
+no rows are created across the complete request, batch import fails with
 `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` and no new `file_import` row is recorded.
 
 ## File Reupload Tracking
@@ -200,7 +202,10 @@ token-backed batch transactions to their source import record.
   filename or supplied only whitespace; the message identifies its ordered
   index.
 - `PREVIEW_IMPORT_TOKEN_EXPIRED` - Batch submitted an expired token.
-- `INVALID_REQUEST` - Verified batch tokens did not share one statement format
-  and account identity.
-- `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` - No submitted rows remained after
-  duplicate filtering or the request had no importable rows.
+- `BATCH_IMPORT_SOURCE_MISMATCH` - `422 APPLICATION_ERROR`; verified batch
+  tokens did not share one statement format and account identity. Different
+  parser revision IDs are valid under that shared identity.
+- `BATCH_IMPORT_NO_TRANSACTIONS_CREATED` - `422 APPLICATION_ERROR`; the
+  aggregate request created no rows because every group was empty or no
+  reviewed row remained eligible. An empty group may retain an ordered
+  zero-count result only when another group creates a transaction.

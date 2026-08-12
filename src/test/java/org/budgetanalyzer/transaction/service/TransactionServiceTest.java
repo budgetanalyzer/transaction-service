@@ -676,7 +676,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_existingNormalizedDescriptionDuplicate_skipsMatchingTransaction() {
+  void shouldSkipMatchingTransactionWhenExistingNormalizedDescriptionIsDuplicate() {
     var duplicateDto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -715,7 +715,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_skippedExistingDuplicateDoesNotBlockMerelySimilarTransaction() {
+  void shouldNotBlockMerelySimilarTransactionWhenExistingDuplicateIsSkipped() {
     var existingCandidateDescription = "STORE PAYMENT A-A-A";
     var skippedDto =
         new PreviewTransaction(
@@ -754,7 +754,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_existingNormalizedDescriptionDuplicateAllowed_importsMatchingTransaction() {
+  void shouldImportMatchingTransactionWhenExistingNormalizedDuplicateIsAllowed() {
     var dto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -784,7 +784,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_allowedExistingDuplicateDoesNotPreventLaterDuplicateDetection() {
+  void shouldDetectLaterDuplicateWhenExistingDuplicateIsAllowed() {
     var existingCandidateDescription = "STORE PAYMENT A-A-A";
     var allowedDuplicateDto =
         new PreviewTransaction(
@@ -824,7 +824,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_existingCandidateWithMerelySimilarDescription_importsTransaction() {
+  void shouldImportTransactionWhenExistingDescriptionIsMerelySimilar() {
     var dto =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -849,7 +849,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_withSameFileRepeatedRows_createsBothOccurrences() {
+  void shouldCreateBothOccurrencesWhenSameFileContainsRepeatedRows() {
     // Given: two identical transactions from the same faithful source file
     var dto1 =
         new PreviewTransaction(
@@ -893,7 +893,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_laterFileDuplicateAllowed_importsWarnedOccurrence() {
+  void shouldImportWarnedOccurrenceWhenLaterFileDuplicateIsAllowed() {
     // Given: the second identical transaction belongs to a later source file
     var dto1 =
         new PreviewTransaction(
@@ -949,7 +949,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_laterFileNormalizedDescriptionDuplicate_skipsSecondOccurrence() {
+  void shouldSkipSecondOccurrenceWhenLaterFileDescriptionNormalizesAsDuplicate() {
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -996,7 +996,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_intraBatchMerelySimilarDescriptions_importsBothTransactions() {
+  void shouldImportBothTransactionsWhenBatchDescriptionsAreMerelySimilar() {
     var dto1 =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -1269,7 +1269,7 @@ class TransactionServiceTest {
   }
 
   @Test
-  void batchImport_multipleCreatedFilesLinksEachTransactionToItsOwnProvenance() {
+  void shouldLinkEachTransactionToItsOwnProvenanceWhenMultipleFilesAreCreated() {
     var januaryTransaction =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),

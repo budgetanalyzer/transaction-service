@@ -775,22 +775,16 @@ curl -X POST http://localhost:8082/v1/transactions/batch \
       },
       {
         "previewImportToken": "v2.february-token",
-        "transactions": [
-          {
-            "date": "2026-05-02",
-            "description": "Grocery Store",
-            "amount": 42.30,
-            "type": "DEBIT",
-            "bankName": "New Bank Name",
-            "currencyIsoCode": "USD",
-            "accountId": "test-account",
-            "allowDuplicate": false
-          }
-        ]
+        "transactions": []
       }
     ]
   }'
 ```
+
+This mixed request is valid: the January group can create transactions, while
+the empty February group keeps its ordered zero-count response entry and
+creates no `file_import` provenance. An empty group does not succeed in
+isolation because the complete batch must create at least one transaction.
 
 ### Step 6: Validate Results
 
@@ -914,20 +908,28 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 
 **Request Body:**
 - `files` (array, required and non-empty) - Ordered source file groups
+- `files[]` elements are required and must not be `null`
 - `files[].previewImportToken` (string, required) - Opaque token returned for
   that preview file
-- `files[].transactions` (array, required and non-empty) - Reviewed rows from
+- `files[].transactions` (array, required, may be empty) - Reviewed rows from
   that source
+- `files[].transactions[]` elements are required and must not be `null`
 - `files[].transactions[].allowDuplicate` (boolean, optional) - Defaults to
   `false`
 
 The batch endpoint is token-backed. There is no manual no-file batch import
 path for file preview results. Every token is owner-verified before the service
 transaction begins. Mixed statement format IDs or account IDs are rejected;
-different parser revision IDs are accepted. Request-shape and business
-validation paths retain both indexes, for example
-`files[1].transactions[4].date`; business validation messages also identify
-the verified source filename.
+the response is `422 Unprocessable Entity` with type `APPLICATION_ERROR` and
+code `BATCH_IMPORT_SOURCE_MISMATCH`. Different parser revision IDs are
+accepted. Request-shape and business validation paths retain both indexes, for
+example `files[1].transactions[4].date`; business validation messages also
+identify the verified source filename. An empty source group retains its
+verified source and ordered zero-count response position, but creates no
+provenance when another group creates a transaction. If the aggregate request
+creates no rows, whether because every group is empty or no reviewed row
+survives duplicate filtering, the response is `422 Unprocessable Entity` with
+type `APPLICATION_ERROR` and code `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
 
 **Response:** `200 OK`
 ```json
@@ -1037,6 +1039,16 @@ Preview parsing error messages include the failing filename (or ordered part
 index when the filename is missing) and retain the parser's machine-readable
 error code. Safe line or column details may also be included; file contents,
 hashes, and stack details are never returned.
+
+File-read failures use a safe, generic filename-bearing client message. The
+service retains the original read or parser failure in its internal exception
+cause chain for diagnostics without returning those internal details.
+
+Batch source identity mismatches return `422 Unprocessable Entity`, type
+`APPLICATION_ERROR`, and code `BATCH_IMPORT_SOURCE_MISMATCH`. Different parser
+revision IDs remain valid when the statement format and account match. A batch
+that creates no transactions in aggregate returns the same status and type
+with code `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
 
 ### Key Classes
 

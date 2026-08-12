@@ -124,7 +124,14 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 - API: `GET /v1/statement-formats` to list visible formats, `POST` to create new user-scoped formats, `GET/PUT /v1/statement-formats/{id}` for item access
 - Endpoints: `POST /v1/transactions/preview` with repeated `files` parts and one `statementFormatId`, then `POST /v1/transactions/batch`
 - Ordered grouped preview with one result/token per file; batch accepts those file groups in one ordered, atomic request
-- Every batch token must verify to the same statement format and account; parser revision IDs may differ
+- Batch requires a non-empty `files` array; each `transactions` array is
+  required but may be empty. An empty group can retain an ordered zero-count
+  result only when the aggregate request creates at least one transaction; an
+  aggregate zero-created result returns 422
+  `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`
+- Every batch token must verify to the same statement format and account; a
+  mismatch returns 422 `BATCH_IMPORT_SOURCE_MISMATCH`, while parser revision
+  IDs may differ
 - Batch duplicate precedence is first-file-wins, while repeated rows within one source file remain eligible
 - Each non-empty accepted file group creates or reuses its own `FileImport` provenance
 - No code changes needed for new CSV banks

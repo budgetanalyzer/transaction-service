@@ -179,14 +179,12 @@ class TransactionServiceIntegrationTest {
   }
 
   @Test
-  void batchImportSkipsProvenanceForZeroCreatedGroupWhenAnotherGroupSucceeds() {
+  void batchImportPreservesEmptyGroupWithoutProvenanceWhenAnotherGroupSucceeds() {
     var statementFormat = enabledStatementFormat();
     var parserRevision = parserRevision(statementFormat);
-    var duplicate = previewTransaction(LocalDate.of(2025, 4, 10), "PERSISTED DUPLICATE", "8.75");
-    transactionRepository.save(transaction(duplicate));
-    var skippedSource =
+    var emptySource =
         fileImportSource(
-            FIRST_CONTENT_HASH, "skipped.csv", statementFormat, parserRevision, ACCOUNT_ID);
+            FIRST_CONTENT_HASH, "empty.csv", statementFormat, parserRevision, ACCOUNT_ID);
     var acceptedSource =
         fileImportSource(
             SECOND_CONTENT_HASH, "accepted.csv", statementFormat, parserRevision, ACCOUNT_ID);
@@ -194,7 +192,7 @@ class TransactionServiceIntegrationTest {
     var result =
         transactionService.batchImport(
             List.of(
-                new BatchImportFile(skippedSource, List.of(duplicate)),
+                new BatchImportFile(emptySource, List.of()),
                 new BatchImportFile(
                     acceptedSource,
                     List.of(
@@ -206,27 +204,29 @@ class TransactionServiceIntegrationTest {
         .extracting(
             fileResult -> fileResult.sourceFile(),
             fileResult -> fileResult.createdTransactions().size(),
-            fileResult -> fileResult.duplicatesSkipped())
-        .containsExactly(tuple("skipped.csv", 0, 1), tuple("accepted.csv", 1, 0));
+            fileResult -> fileResult.duplicatesSkipped(),
+            fileResult -> fileResult.duplicatesImported())
+        .containsExactly(tuple("empty.csv", 0, 0, 0), tuple("accepted.csv", 1, 0, 0));
+    assertThat(result.created()).isEqualTo(1);
+    assertThat(result.duplicatesSkipped()).isZero();
+    assertThat(result.duplicatesImported()).isZero();
     assertThat(fileImportRepository.findAll())
         .extracting(FileImport::getContentHash)
         .containsExactly(SECOND_CONTENT_HASH);
   }
 
   @Test
-  void batchImportRejectsAllZeroRequestWithoutCreatingProvenance() {
+  void batchImportRejectsAllEmptyRequestWithoutCreatingProvenance() {
     var statementFormat = enabledStatementFormat();
     var parserRevision = parserRevision(statementFormat);
-    var duplicate = previewTransaction(LocalDate.of(2025, 5, 10), "ONLY DUPLICATE", "7.50");
-    var existingTransaction = transactionRepository.save(transaction(duplicate));
     var source =
         fileImportSource(
-            FIRST_CONTENT_HASH, "all-zero.csv", statementFormat, parserRevision, ACCOUNT_ID);
+            FIRST_CONTENT_HASH, "all-empty.csv", statementFormat, parserRevision, ACCOUNT_ID);
 
     assertThatThrownBy(
             () ->
                 transactionService.batchImport(
-                    List.of(new BatchImportFile(source, List.of(duplicate))), USER_ID))
+                    List.of(new BatchImportFile(source, List.of())), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -234,9 +234,7 @@ class TransactionServiceIntegrationTest {
               assertThat(businessException.getCode())
                   .isEqualTo(BudgetAnalyzerError.BATCH_IMPORT_NO_TRANSACTIONS_CREATED.name());
             });
-    assertThat(transactionRepository.findAll())
-        .extracting(Transaction::getId)
-        .containsExactly(existingTransaction.getId());
+    assertThat(transactionRepository.findAll()).isEmpty();
     assertThat(fileImportRepository.findAll()).isEmpty();
   }
 

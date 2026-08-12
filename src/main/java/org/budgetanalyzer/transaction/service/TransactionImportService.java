@@ -32,7 +32,7 @@ public class TransactionImportService {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionImportService.class);
 
-  private final StatementExtractorRegistry extractorRegistry;
+  private final StatementExtractorRegistry statementExtractorRegistry;
   private final StatementFormatService statementFormatService;
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
@@ -43,19 +43,19 @@ public class TransactionImportService {
   /**
    * Constructs a new TransactionImportService.
    *
-   * @param extractorRegistry the registry for looking up statement extractors
+   * @param statementExtractorRegistry the registry for looking up statement extractors
    * @param statementFormatService the service for visible statement format lookup
    * @param transactionRepository the repository for owner-scoped duplicate lookup
    * @param fileImportTrackingService the service for file import history lookup
    * @param previewImportTokenService the service for preview import token creation
    */
   public TransactionImportService(
-      StatementExtractorRegistry extractorRegistry,
+      StatementExtractorRegistry statementExtractorRegistry,
       StatementFormatService statementFormatService,
       TransactionRepository transactionRepository,
       FileImportTrackingService fileImportTrackingService,
       PreviewImportTokenService previewImportTokenService) {
-    this.extractorRegistry = extractorRegistry;
+    this.statementExtractorRegistry = statementExtractorRegistry;
     this.statementFormatService = statementFormatService;
     this.transactionRepository = transactionRepository;
     this.fileImportTrackingService = fileImportTrackingService;
@@ -157,13 +157,14 @@ public class TransactionImportService {
       String accountId) {
     try {
       var parserAttempts =
-          extractorRegistry.attemptParse(statementFormat, fileContent, originalFilename, accountId);
+          statementExtractorRegistry.attemptParse(
+              statementFormat, fileContent, originalFilename, accountId);
       return selectParserAttempt(statementFormat.getId(), parserAttempts);
     } catch (BusinessException businessException) {
       throw new BusinessException(
           "Failed to preview file '" + originalFilename + "': " + businessException.getMessage(),
           businessException.getCode(),
-          businessException.getCause());
+          businessException);
     }
   }
 

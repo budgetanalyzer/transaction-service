@@ -232,8 +232,11 @@ class TransactionOpenApiIntegrationTest {
             openApiJsonNode, batchImportRequestSchemaJsonNode.at("/properties/files/items"));
     assertThat(requiredPropertyNames(batchImportFileRequestSchemaJsonNode))
         .contains("previewImportToken", "transactions");
-    assertThat(batchImportFileRequestSchemaJsonNode.at("/properties/transactions/minItems").asInt())
-        .isEqualTo(1);
+    assertThat(
+            batchImportFileRequestSchemaJsonNode
+                .at("/properties/transactions/minItems")
+                .isMissingNode())
+        .isTrue();
     assertThat(
             batchImportFileRequestSchemaJsonNode
                 .at("/properties/previewImportToken")

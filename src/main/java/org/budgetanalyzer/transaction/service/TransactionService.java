@@ -428,7 +428,7 @@ public class TransactionService {
 
     for (int fileIndex = 0; fileIndex < batchImportFiles.size(); fileIndex++) {
       var batchImportFile = batchImportFiles.get(fileIndex);
-      for (int transactionIndex = 0;
+      for (var transactionIndex = 0;
           transactionIndex < batchImportFile.transactions().size();
           transactionIndex++) {
         var previewTransaction = batchImportFile.transactions().get(transactionIndex);
@@ -482,21 +482,21 @@ public class TransactionService {
   }
 
   /**
-   * Maps a preview DTO to a transaction entity.
+   * Maps a preview transaction to a transaction entity.
    *
-   * @param dto the preview DTO
+   * @param previewTransaction the preview transaction
    * @return the transaction entity
    */
-  private Transaction mapToEntity(PreviewTransaction dto) {
+  private Transaction mapToEntity(PreviewTransaction previewTransaction) {
     var transaction = new Transaction();
-    transaction.setDate(dto.date());
-    transaction.setDescription(dto.description());
-    transaction.setAmount(dto.amount());
-    transaction.setType(dto.type());
-    transaction.setBankName(dto.bankName());
-    transaction.setCurrencyIsoCode(dto.currencyIsoCode());
-    transaction.setAccountId(dto.accountId());
-    // Note: category from preview DTO is not stored (Transaction entity doesn't have this field)
+    transaction.setDate(previewTransaction.date());
+    transaction.setDescription(previewTransaction.description());
+    transaction.setAmount(previewTransaction.amount());
+    transaction.setType(previewTransaction.type());
+    transaction.setBankName(previewTransaction.bankName());
+    transaction.setCurrencyIsoCode(previewTransaction.currencyIsoCode());
+    transaction.setAccountId(previewTransaction.accountId());
+    // PreviewTransaction category is not stored because Transaction has no category field.
     return transaction;
   }
 

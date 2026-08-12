@@ -1,7 +1,6 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -360,7 +359,7 @@ class TransactionControllerTest {
   // ==================== POST /v1/transactions/preview ====================
 
   @Test
-  void previewTransactions_twoFiles_returnsOrderedGroupedResponseWithDistinctTokens()
+  void shouldReturnOrderedGroupedResponseWithDistinctTokensWhenPreviewingTwoFiles()
       throws Exception {
     var januaryTransaction =
         createPreviewTransaction(
@@ -566,8 +565,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  void previewTransactions_secondFileFailure_returnsNamedStandardErrorWithoutPartialPreview()
-      throws Exception {
+  void shouldReturnStandardErrorWithoutPartialPreviewWhenSecondFileFails() throws Exception {
     var parserFailure = new IllegalArgumentException("invalid row");
     when(transactionImportService.previewFiles(eq(1L), isNull(), anyList(), eq("test-user")))
         .thenThrow(
@@ -593,12 +591,11 @@ class TransactionControllerTest {
         .andExpect(status().isUnprocessableEntity())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("CSV_PARSING_ERROR"))
-        .andExpect(jsonPath("$.message").value(containsString("february.csv")))
         .andExpect(jsonPath("$.files").doesNotExist());
   }
 
   @Test
-  void previewTransactions_legacyFilePart_returns400WithoutCallingService() throws Exception {
+  void shouldRejectLegacyFilePartWithoutCallingService() throws Exception {
     var legacyFile =
         new MockMultipartFile("file", "legacy.csv", "text/csv", "legacy content".getBytes());
 
@@ -615,6 +612,160 @@ class TransactionControllerTest {
   }
 
   // ==================== POST /v1/transactions/batch ====================
+
+  @Test
+  void batchImportRejectsNullFileElementBeforeControllerDereference() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"files\":[null]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("files[0]"));
+
+    verify(previewImportTokenService, never()).verifyToken(any(), anyString());
+    verify(transactionService, never()).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  void batchImportRejectsNullTransactionElementBeforeControllerDereference() throws Exception {
+    var requestBody =
+        """
+        {
+          "files": [
+            {
+              "previewImportToken": "preview-token",
+              "transactions": [null]
+            }
+          ]
+        }
+        """;
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("files[0].transactions[0]"));
+
+    verify(previewImportTokenService, never()).verifyToken(any(), anyString());
+    verify(transactionService, never()).batchImport(anyList(), anyString());
+  }
+
+  @Test
+  void batchImportMapsEmptyGroupWhenAnotherGroupCreatesTransactions() throws Exception {
+    var createdTransaction =
+        createTransaction(1L, "Accepted Transaction", BigDecimal.valueOf(9.25));
+    var result =
+        new BatchImportResult(
+            1,
+            0,
+            0,
+            List.of(
+                new BatchImportFileResult("empty.csv", List.of(), 0, 0),
+                new BatchImportFileResult("accepted.csv", List.of(createdTransaction), 0, 0)));
+    when(previewImportTokenService.verifyToken("empty-token", "test-user"))
+        .thenReturn(previewImportToken("empty.csv", 1L, 10L, "checking-12345"));
+    when(previewImportTokenService.verifyToken("accepted-token", "test-user"))
+        .thenReturn(previewImportToken("accepted.csv", 1L, 20L, "checking-12345"));
+    when(transactionService.batchImport(anyList(), anyString())).thenReturn(result);
+
+    var requestBody =
+        """
+        {
+          "files": [
+            {
+              "previewImportToken": "empty-token",
+              "transactions": []
+            },
+            {
+              "previewImportToken": "accepted-token",
+              "transactions": [
+                {
+                  "date": "2025-04-11",
+                  "description": "ACCEPTED TRANSACTION",
+                  "amount": 9.25,
+                  "type": "DEBIT",
+                  "bankName": "Capital One",
+                  "currencyIsoCode": "USD"
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.files[0].sourceFile").value("empty.csv"))
+        .andExpect(jsonPath("$.files[0].created").value(0))
+        .andExpect(jsonPath("$.files[1].sourceFile").value("accepted.csv"))
+        .andExpect(jsonPath("$.files[1].created").value(1));
+
+    verify(previewImportTokenService).verifyToken("empty-token", "test-user");
+    verify(previewImportTokenService).verifyToken("accepted-token", "test-user");
+    verify(transactionService)
+        .batchImport(
+            argThat(
+                files ->
+                    files.size() == 2
+                        && files.get(0).transactions().isEmpty()
+                        && files.get(1).transactions().size() == 1),
+            eq("test-user"));
+  }
+
+  @Test
+  void batchImportReturnsCodedBusinessErrorWhenAllGroupsAreEmpty() throws Exception {
+    when(previewImportTokenService.verifyToken("empty-token", "test-user"))
+        .thenReturn(previewImportToken("empty.csv", 1L, 10L, "checking-12345"));
+    when(transactionService.batchImport(anyList(), anyString()))
+        .thenThrow(
+            new BusinessException(
+                "No transactions were available to import.",
+                BudgetAnalyzerError.BATCH_IMPORT_NO_TRANSACTIONS_CREATED.name()));
+
+    var requestBody =
+        """
+        {
+          "files": [
+            {
+              "previewImportToken": "empty-token",
+              "transactions": []
+            }
+          ]
+        }
+        """;
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(
+                    ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("BATCH_IMPORT_NO_TRANSACTIONS_CREATED"));
+
+    verify(previewImportTokenService).verifyToken("empty-token", "test-user");
+    verify(transactionService)
+        .batchImport(
+            argThat(files -> files.size() == 1 && files.getFirst().transactions().isEmpty()),
+            eq("test-user"));
+  }
 
   @Test
   void batchImport_validTransactions_returns200WithCreatedTransactions() throws Exception {
@@ -676,7 +827,8 @@ class TransactionControllerTest {
   }
 
   @Test
-  void batchImport_twoFilesVerifiesAllTokensAndAcceptsDifferentParserRevisions() throws Exception {
+  void shouldVerifyAllTokensAndAcceptDifferentParserRevisionsWhenBatchHasTwoFiles()
+      throws Exception {
     var januaryTransaction =
         createTransaction(1L, "January Transaction", BigDecimal.valueOf(10.00));
     var februaryTransaction =
@@ -725,7 +877,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  void batchImport_statementFormatMismatchVerifiesAllTokensBeforeRejecting() throws Exception {
+  void shouldVerifyAllTokensBeforeRejectingWhenStatementFormatsDiffer() throws Exception {
     when(previewImportTokenService.verifyToken("january-token", "test-user"))
         .thenReturn(previewImportToken("january.csv", 1L, 10L, "checking-12345"));
     when(previewImportTokenService.verifyToken("february-token", "test-user"))
@@ -738,8 +890,9 @@ class TransactionControllerTest {
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(groupedBatchRequest("january-token", "february-token")))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("BATCH_IMPORT_SOURCE_MISMATCH"));
 
     verify(previewImportTokenService).verifyToken("january-token", "test-user");
     verify(previewImportTokenService).verifyToken("february-token", "test-user");
@@ -747,7 +900,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  void batchImport_accountMismatchRejectsBeforeService() throws Exception {
+  void shouldRejectBeforeServiceWhenAccountsDiffer() throws Exception {
     when(previewImportTokenService.verifyToken("january-token", "test-user"))
         .thenReturn(previewImportToken("january.csv", 1L, 10L, "checking-12345"));
     when(previewImportTokenService.verifyToken("february-token", "test-user"))
@@ -760,8 +913,9 @@ class TransactionControllerTest {
                     ClaimsHeaderTestBuilder.user("test-user").withPermissions("transactions:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(groupedBatchRequest("january-token", "february-token")))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("BATCH_IMPORT_SOURCE_MISMATCH"));
 
     verify(previewImportTokenService).verifyToken("january-token", "test-user");
     verify(previewImportTokenService).verifyToken("february-token", "test-user");
@@ -815,8 +969,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
-  void batchImport_allowDuplicate_mapsFlagToServiceDto() throws Exception {
+  void shouldMapAllowDuplicateFlagToServiceRequestWhenBatchImportRequested() throws Exception {
     // Given: a batch import request with a duplicate override
     when(previewImportTokenService.verifyToken("preview-token", "test-user"))
         .thenReturn(previewImportToken());
@@ -856,11 +1009,16 @@ class TransactionControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.duplicatesImported").value(1));
 
-    ArgumentCaptor<List<BatchImportFile>> transactionsCaptor = ArgumentCaptor.forClass(List.class);
-    verify(transactionService).batchImport(transactionsCaptor.capture(), eq("test-user"));
-    assertThat(transactionsCaptor.getValue()).hasSize(1);
-    assertThat(transactionsCaptor.getValue().getFirst().transactions().getFirst().allowDuplicate())
-        .isTrue();
+    var capturedBatchImportFile = new AtomicReference<BatchImportFile>();
+    verify(transactionService)
+        .batchImport(
+            argThat(
+                files -> {
+                  capturedBatchImportFile.set(files.getFirst());
+                  return files.size() == 1;
+                }),
+            eq("test-user"));
+    assertThat(capturedBatchImportFile.get().transactions().getFirst().allowDuplicate()).isTrue();
   }
 
   @Test
@@ -1088,7 +1246,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  void batchImport_emptyFilesList_returns400() throws Exception {
+  void shouldReturnBadRequestWhenBatchFilesListIsEmpty() throws Exception {
     // Given: empty files list
     var requestBody =
         """

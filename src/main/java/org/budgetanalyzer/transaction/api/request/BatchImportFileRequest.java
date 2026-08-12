@@ -4,7 +4,7 @@ import java.util.List;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -21,10 +21,13 @@ public record BatchImportFileRequest(
             example = "v2.dGVzdGl2MTIzNDU.Kc4WwTqfh1sFD8pxVq7Hxg")
         @NotBlank(message = "previewImportToken is required")
         String previewImportToken,
-    @Schema(description = "Reviewed transactions from this source file")
-        @NotEmpty(message = "transactions list cannot be empty")
-        @Valid
-        List<BatchImportTransactionRequest> transactions) {
+    @Schema(
+            description =
+                "Required reviewed transactions from this source file; the list may be empty",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "transactions list is required")
+        List<@NotNull(message = "transaction is required") @Valid BatchImportTransactionRequest>
+            transactions) {
 
   /** Converts this request and its verified token to a service-layer file group. */
   public BatchImportFile toServiceFile(PreviewImportToken previewImportToken) {
