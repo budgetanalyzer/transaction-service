@@ -153,10 +153,13 @@ class TransactionOpenApiIntegrationTest {
         resolveSchemaNode(
             openApiJsonNode,
             previewOperationJsonNode.at("/requestBody/content/multipart~1form-data/schema"));
-    assertThat(previewRequestSchemaJsonNode.path("type").asText()).isEqualTo("array");
-    assertThat(previewRequestSchemaJsonNode.at("/items/format").asText()).isEqualTo("binary");
-    assertThat(previewRequestSchemaJsonNode.path("minItems").asInt()).isEqualTo(1);
-    assertThat(previewRequestSchemaJsonNode.path("description").asText())
+    assertThat(previewRequestSchemaJsonNode.path("type").asText()).isEqualTo("object");
+    assertThat(requiredPropertyNames(previewRequestSchemaJsonNode)).containsExactly("files");
+    var previewFilesSchemaJsonNode = previewRequestSchemaJsonNode.at("/properties/files");
+    assertThat(previewFilesSchemaJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(previewFilesSchemaJsonNode.at("/items/format").asText()).isEqualTo("binary");
+    assertThat(previewFilesSchemaJsonNode.path("minItems").asInt()).isEqualTo(1);
+    assertThat(previewFilesSchemaJsonNode.path("description").asText())
         .contains("Repeat the files multipart part");
     assertThat(previewOperationJsonNode.at("/requestBody/required").asBoolean()).isTrue();
 

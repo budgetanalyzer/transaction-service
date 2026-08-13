@@ -106,7 +106,7 @@ Content-Type: multipart/form-data
 Params: statementFormatId (required), accountId (optional), files (required, repeat for each ordered source)
 Response: PreviewResponse
 Permission: transactions:read
-Notes: Parses one or more ordered CSV or PDF files with one shared statement format and optional account, returning one result and token per source. No data is persisted. Processing stops at the first failed source and returns no partial preview. Each multipart files part must include a non-blank filename. TRANSACTION_IMPORT_MAX_FILE_SIZE applies per part and TRANSACTION_IMPORT_MAX_REQUEST_SIZE applies to the combined multipart body; both default to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
+Notes: The OpenAPI multipart body is an object with a required, non-empty files array; send each array item as a repeated files part in source order. Parses one or more ordered CSV or PDF files with one shared statement format and optional account, returning one result and token per source. No data is persisted. Processing stops at the first failed source and returns no partial preview. Each multipart files part must include a non-blank filename. TRANSACTION_IMPORT_MAX_FILE_SIZE applies per part and TRANSACTION_IMPORT_MAX_REQUEST_SIZE applies to the combined multipart body; both default to 25MB. Import duplicate and file reupload behavior is documented in Transaction Duplicate Detection.
 ```
 
 **Batch Import Transactions**
