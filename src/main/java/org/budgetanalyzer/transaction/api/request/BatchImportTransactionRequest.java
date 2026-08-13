@@ -71,15 +71,16 @@ public record BatchImportTransactionRequest(
     @Schema(
             description =
                 "Whether to import this row even when it duplicates an existing transaction or "
-                    + "earlier row in the same batch under the strict financial identity plus "
-                    + "normalized exact or conservative fuzzy description rule",
+                    + "a row from a completed earlier file under the strict financial identity "
+                    + "plus "
+                    + "normalized description equality rule",
             requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             example = "false",
             defaultValue = "false")
         Boolean allowDuplicate) {
 
   /** Converts this request payload to the service-layer preview DTO. */
-  public PreviewTransaction toServiceDto() {
+  public PreviewTransaction toServiceTransaction() {
     return new PreviewTransaction(
         date,
         description,

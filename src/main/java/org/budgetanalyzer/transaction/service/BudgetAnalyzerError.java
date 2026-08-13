@@ -46,6 +46,9 @@ public enum BudgetAnalyzerError {
   @Schema(description = "The preview import token has expired")
   PREVIEW_IMPORT_TOKEN_EXPIRED,
   @Schema(
+      description = "Verified grouped preview tokens must share one statement format and account")
+  BATCH_IMPORT_SOURCE_MISMATCH,
+  @Schema(
       description =
           "Batch import completed validation and duplicate filtering without any rows to create")
   BATCH_IMPORT_NO_TRANSACTIONS_CREATED

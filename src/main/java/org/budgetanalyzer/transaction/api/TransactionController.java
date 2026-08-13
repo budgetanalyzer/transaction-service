@@ -1,9 +1,12 @@
 package org.budgetanalyzer.transaction.api;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import org.slf4j.Logger;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,10 +42,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.PagedResponse;
+import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
-import org.budgetanalyzer.transaction.api.request.BatchImportTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
@@ -49,10 +53,12 @@ import org.budgetanalyzer.transaction.api.response.BatchImportResponse;
 import org.budgetanalyzer.transaction.api.response.BulkDeleteResponse;
 import org.budgetanalyzer.transaction.api.response.PreviewResponse;
 import org.budgetanalyzer.transaction.api.response.TransactionResponse;
+import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
-import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
 @RestController
@@ -89,16 +95,17 @@ public class TransactionController {
 
   @PreAuthorize("hasAuthority('transactions:read')")
   @Operation(
-      summary = "Preview transactions from a file before import",
+      summary = "Preview transactions from ordered files before import",
       description =
-          "Parses a CSV or PDF file and returns the extracted transactions for review and editing "
-              + "before batch import. No data is persisted. The statementFormatId parameter is "
-              + "required and determines which parser to use. The response includes advisory "
-              + "duplicate "
+          "Parses one or more ordered CSV or PDF files using one shared statement format and "
+              + "returns one result and preview token per file for review before batch import. "
+              + "No data is persisted. Processing stops at the first failed file and returns no "
+              + "partial preview response. The response includes advisory duplicate "
               + "metadata using strict owner-scoped financial identity fields plus normalized "
-              + "exact or conservative fuzzy description matching against existing transactions "
-              + "or earlier rows in the same preview payload, plus file-level import history "
-              + "status for exact reuploads by the authenticated user.")
+              + "description equality against existing transactions "
+              + "or completed earlier files, plus per-file import history status for exact "
+              + "reuploads by the authenticated user. Repeated rows within one file are not "
+              + "compared with each other.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -127,12 +134,12 @@ public class TransactionController {
                       """),
                       @ExampleObject(
                           name = "Parsing Error",
-                          summary = "Missing required column",
+                          summary = "Missing required column in the second file",
                           value =
                               """
                       {
                         "type": "APPLICATION_ERROR",
-                        "message": "Missing value for required column 'Description' at line 1",
+                        "message": "Failed to preview file 'may.csv': Missing value for required column 'Description' at line 1",
                         "code": "CSV_PARSING_ERROR"
                       }
                       """),
@@ -143,7 +150,7 @@ public class TransactionController {
                               """
                       {
                         "type": "APPLICATION_ERROR",
-                        "message": "Uploaded file must include an original filename.",
+                        "message": "Uploaded file part at index 0 must include an original filename.",
                         "code": "MISSING_ORIGINAL_FILENAME"
                       }
                       """)
@@ -161,35 +168,47 @@ public class TransactionController {
           @RequestParam(name = "statementFormatId")
           Long statementFormatId,
       @Parameter(
-              description = "Account ID to pre-fill for all transactions",
+              description = "Account ID to pre-fill for transactions from every file",
               example = "checking-12345")
           @RequestParam(name = "accountId", required = false)
           Optional<String> accountId,
-      @Parameter(description = "CSV or PDF file to preview", required = true)
-          @NotNull
-          @RequestParam("file")
-          MultipartFile file) {
-    log.info("Received preview request format: {}", statementFormatId);
+      @Parameter(
+              description =
+                  "Ordered CSV or PDF files to preview. Repeat the files multipart part for each "
+                      + "source.",
+              required = true,
+              array =
+                  @ArraySchema(minItems = 1, schema = @Schema(type = "string", format = "binary")))
+          @NotEmpty
+          @RequestPart("files")
+          List<MultipartFile> files) {
+    log.info("Received preview request format: {} files: {}", statementFormatId, files.size());
 
     var userId = getCurrentUserId();
     return PreviewResponse.from(
-        transactionImportService.previewFile(
-            statementFormatId, accountId.orElse(null), file, userId));
+        transactionImportService.previewFiles(
+            statementFormatId, accountId.orElse(null), files, userId));
   }
 
   @PreAuthorize("hasAuthority('transactions:write')")
   @Operation(
       summary = "Import a batch of transactions",
       description =
-          "Imports transactions from a batch request (typically from the preview endpoint after "
-              + "user edits). Validates all transactions upfront and rejects the entire batch if "
-              + "any fail. Duplicate filtering uses strict owner-scoped financial identity fields "
-              + "plus normalized exact or conservative fuzzy description matching. Duplicates are "
-              + "skipped unless allowDuplicate is true on the row. The response reports skipped "
-              + "duplicates and duplicates intentionally imported. previewImportToken from the "
-              + "preview response is required and is verified before batch import processing "
-              + "starts. If duplicate filtering leaves no rows to create, the request fails with "
-              + "BATCH_IMPORT_NO_TRANSACTIONS_CREATED.")
+          "Imports one ordered group of reviewed source files from the preview endpoint. Every "
+              + "previewImportToken is verified for the authenticated owner before the persistence "
+              + "service is called. Verified tokens must share one statement format and account, "
+              + "but may use different parser revisions. All rows are validated before database "
+              + "work, and every accepted file group is persisted atomically. Duplicate filtering "
+              + "uses strict owner-scoped financial identity fields plus normalized description "
+              + "equality against persisted rows and completed earlier files. Rows within their "
+              + "own file are not compared. Duplicates are skipped unless allowDuplicate is true. "
+              + "Each source that creates rows creates or reuses separate file provenance; a "
+              + "zero-created source creates none. Transaction and newly created provenance "
+              + "writes roll back together on failure. "
+              + "The response reports aggregate and ordered per-file counts, including duplicates "
+              + "intentionally imported, and created rows. If "
+              + "duplicate filtering leaves no rows to create across all files, the request fails "
+              + "with BATCH_IMPORT_NO_TRANSACTIONS_CREATED.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -214,8 +233,8 @@ public class TransactionController {
                         "type": "VALIDATION_ERROR",
                         "message": "Validation failed for 2 field(s)",
                         "fieldErrors": [
-                          { "field": "transactions[44].amount", "message": "must not be null" },
-                          { "field": "transactions[89].date", "message": "must not be null" }
+                          { "field": "files[0].transactions[44].amount", "message": "must not be null" },
+                          { "field": "files[1].transactions[89].date", "message": "must not be null" }
                         ]
                       }
                       """)
@@ -237,27 +256,58 @@ public class TransactionController {
                         "message": "All submitted rows were skipped as duplicates.",
                         "code": "BATCH_IMPORT_NO_TRANSACTIONS_CREATED"
                       }
+                      """),
+                      @ExampleObject(
+                          name = "Source Identity Mismatch",
+                          summary = "Verified tokens identify different formats or accounts",
+                          value =
+                              """
+                      {
+                        "type": "APPLICATION_ERROR",
+                        "message": "Preview import token sources do not match.",
+                        "code": "BATCH_IMPORT_SOURCE_MISMATCH"
+                      }
                       """)
                     }))
       })
   @PostMapping(path = "/batch", consumes = "application/json", produces = "application/json")
   public BatchImportResponse batchImportTransactions(
       @Valid @RequestBody BatchImportRequest request) {
-    log.info("Received batch import request with {} transactions", request.transactions().size());
+    var transactionCount =
+        request.files().stream().mapToInt(file -> file.transactions().size()).sum();
+    log.info(
+        "Received grouped batch import request with {} files and {} transactions",
+        request.files().size(),
+        transactionCount);
 
     var userId = getCurrentUserId();
-    var fileImportSource =
-        BatchFileImportSource.from(
-            previewImportTokenService.verifyToken(request.previewImportToken(), userId));
-    var previewTransactions =
-        request.transactions().stream().map(BatchImportTransactionRequest::toServiceDto).toList();
-    var result = transactionService.batchImport(previewTransactions, userId, fileImportSource);
+    var previewImportTokens = new ArrayList<PreviewImportToken>(request.files().size());
+    for (var file : request.files()) {
+      previewImportTokens.add(
+          previewImportTokenService.verifyToken(file.previewImportToken(), userId));
+    }
+    validateBatchSourceIdentities(previewImportTokens);
 
-    return new BatchImportResponse(
-        result.createdTransactions().size(),
-        result.duplicatesSkipped(),
-        result.duplicatesImported(),
-        result.createdTransactions().stream().map(TransactionResponse::from).toList());
+    var batchImportFiles = new ArrayList<BatchImportFile>(request.files().size());
+    for (int fileIndex = 0; fileIndex < request.files().size(); fileIndex++) {
+      batchImportFiles.add(
+          request.files().get(fileIndex).toServiceFile(previewImportTokens.get(fileIndex)));
+    }
+
+    return BatchImportResponse.from(transactionService.batchImport(batchImportFiles, userId));
+  }
+
+  private void validateBatchSourceIdentities(List<PreviewImportToken> previewImportTokens) {
+    var firstToken = previewImportTokens.getFirst();
+    for (var previewImportToken : previewImportTokens) {
+      if (!firstToken.statementFormatId().equals(previewImportToken.statementFormatId())
+          || !Objects.equals(firstToken.accountId(), previewImportToken.accountId())) {
+        throw new BusinessException(
+            "All preview import tokens in one batch must use the same statement format and "
+                + "account.",
+            BudgetAnalyzerError.BATCH_IMPORT_SOURCE_MISMATCH.name());
+      }
+    }
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")

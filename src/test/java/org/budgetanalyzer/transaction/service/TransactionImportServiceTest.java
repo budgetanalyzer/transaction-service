@@ -2,14 +2,18 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,7 +47,7 @@ class TransactionImportServiceTest {
 
   private static final String USER_ID = "user-123";
 
-  @Mock private StatementExtractorRegistry extractorRegistry;
+  @Mock private StatementExtractorRegistry statementExtractorRegistry;
 
   @Mock private StatementFormatService statementFormatService;
 
@@ -54,6 +58,201 @@ class TransactionImportServiceTest {
   @Mock private PreviewImportTokenService previewImportTokenService;
 
   @InjectMocks private TransactionImportService transactionImportService;
+
+  @Test
+  void shouldReturnOrderedResultsAndMarkLaterFileDuplicateWhenPreviewingTwoSources() {
+    var statementFormat = statementFormat(42L);
+    var firstParserRevision = parserRevision(statementFormat, 101L, "first-handler");
+    var secondParserRevision = parserRevision(statementFormat, 102L, "second-handler");
+    var firstTransaction = previewTransaction("Coffee Shop");
+    var secondTransaction = previewTransaction("Coffee Shop");
+    var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(firstTransaction);
+    var firstFile = multipartFile("january.csv");
+    var secondFile = multipartFile("february.csv");
+
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(
+            new FileImportTrackingService.FileCheckResult("hash-january", Optional.empty()),
+            new FileImportTrackingService.FileCheckResult("hash-february", Optional.empty()));
+    when(statementExtractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("january.csv"), eq("checking")))
+        .thenReturn(List.of(ParserAttempt.matched(firstParserRevision, List.of(firstTransaction))));
+    when(statementExtractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("february.csv"), eq("checking")))
+        .thenReturn(
+            List.of(ParserAttempt.matched(secondParserRevision, List.of(secondTransaction))));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash-january"),
+            eq("january.csv"),
+            eq(42L),
+            eq(101L),
+            eq("checking"),
+            any()))
+        .thenReturn("token-january");
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash-february"),
+            eq("february.csv"),
+            eq(42L),
+            eq(102L),
+            eq("checking"),
+            any()))
+        .thenReturn("token-february");
+    when(transactionRepository.findDuplicateCandidates(Set.of(candidateKey), USER_ID))
+        .thenReturn(List.of());
+
+    var result =
+        transactionImportService.previewFiles(
+            42L, "checking", List.of(firstFile, secondFile), USER_ID);
+
+    assertThat(result.files())
+        .extracting(
+            previewFileResult -> previewFileResult.sourceFile(),
+            previewFileResult -> previewFileResult.previewImportToken())
+        .containsExactly(
+            tuple("january.csv", "token-january"), tuple("february.csv", "token-february"));
+    assertThat(result.files().getFirst().transactions().getFirst().duplicate()).isFalse();
+    assertThat(result.files().get(1).transactions().getFirst().duplicateReason())
+        .isEqualTo(PreviewDuplicateReason.IN_BATCH);
+    verify(statementFormatService, times(1)).getEnabledVisibleById(42L, USER_ID);
+    verify(transactionRepository, times(1)).findDuplicateCandidates(Set.of(candidateKey), USER_ID);
+  }
+
+  @Test
+  void shouldReturnNoResultAndPreserveCauseWhenSecondFileParserFails() {
+    var statementFormat = statementFormat(42L);
+    var firstParserRevision = parserRevision(statementFormat, 101L, "first-handler");
+    var secondParserRevision = parserRevision(statementFormat, 102L, "second-handler");
+    var firstFile = multipartFile("january.csv");
+    var secondFile = multipartFile("february.csv");
+    var parserCause = new IllegalArgumentException("invalid row");
+    var parserFailure =
+        new BusinessException(
+            "Required column is missing.",
+            BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+            parserCause);
+
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(
+            new FileImportTrackingService.FileCheckResult("hash-january", Optional.empty()),
+            new FileImportTrackingService.FileCheckResult("hash-february", Optional.empty()));
+    when(statementExtractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("january.csv"), eq("checking")))
+        .thenReturn(
+            List.of(
+                ParserAttempt.matched(firstParserRevision, List.of(previewTransaction("Coffee")))));
+    when(statementExtractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("february.csv"), eq("checking")))
+        .thenReturn(List.of(ParserAttempt.failed(secondParserRevision, parserFailure)));
+    when(previewImportTokenService.createToken(
+            eq(USER_ID),
+            eq("hash-january"),
+            eq("january.csv"),
+            eq(42L),
+            eq(101L),
+            eq("checking"),
+            any()))
+        .thenReturn("token-january");
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(firstFile, secondFile), USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+              assertThat(businessException.getCause()).isSameAs(parserFailure);
+              assertThat(businessException.getCause().getCause()).isSameAs(parserCause);
+            });
+
+    verifyNoInteractions(transactionRepository);
+  }
+
+  @Test
+  void previewFilesParserFailureWithoutNestedCausePreservesParserException() {
+    var statementFormat = statementFormat(42L);
+    var parserRevision = parserRevision(statementFormat, 101L, "first-handler");
+    var multipartFile = multipartFile("statement.csv");
+    var parserFailure =
+        new BusinessException(
+            "Required column is missing.", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
+    when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
+        .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
+    when(statementExtractorRegistry.attemptParse(
+            eq(statementFormat), any(byte[].class), eq("statement.csv"), eq("checking")))
+        .thenReturn(List.of(ParserAttempt.failed(parserRevision, parserFailure)));
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+              assertThat(businessException.getCause()).isSameAs(parserFailure);
+              assertThat(parserFailure.getCause()).isNull();
+            });
+
+    verifyNoInteractions(transactionRepository, previewImportTokenService);
+  }
+
+  @Test
+  void shouldStopBeforeReadingSecondFileWhenItsFilenameIsMissing() throws Exception {
+    var firstFile = multipartFile();
+    var secondFile = spy(multipartFile("   "));
+    stubSuccessfulParse(List.of(previewTransaction("Coffee Shop")), firstFile, Optional.empty());
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(firstFile, secondFile), USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
+            });
+
+    verify(secondFile, never()).getBytes();
+    verifyNoInteractions(transactionRepository);
+  }
+
+  @Test
+  void shouldPreserveCauseAndSkipDownstreamWorkWhenFileReadFails() throws Exception {
+    var multipartFile = spy(multipartFile("broken.csv"));
+    var ioException = new IOException("storage failure");
+    when(statementFormatService.getEnabledVisibleById(42L, USER_ID))
+        .thenReturn(statementFormat(42L));
+    doThrow(ioException).when(multipartFile).getBytes();
+
+    assertThatThrownBy(
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception -> {
+              var businessException = (BusinessException) exception;
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+              assertThat(businessException.getCause()).isSameAs(ioException);
+            });
+
+    verifyNoInteractions(
+        fileImportTrackingService, statementExtractorRegistry, previewImportTokenService);
+  }
 
   @Test
   void previewFile_statementFormatIdRecordsMatchedParserRevisionInToken() {
@@ -68,7 +267,7 @@ class TransactionImportServiceTest {
     when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
-    when(extractorRegistry.attemptParse(
+    when(statementExtractorRegistry.attemptParse(
             eq(statementFormat), any(byte[].class), eq("transactions.csv"), eq("checking")))
         .thenReturn(
             List.of(
@@ -86,11 +285,12 @@ class TransactionImportServiceTest {
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenReturn(List.of());
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
 
-    assertThat(result.statementFormatId()).isEqualTo(42L);
-    assertThat(result.previewImportToken()).isEqualTo("preview-token");
-    assertThat(result.transactions()).hasSize(1);
+    assertThat(result.files().getFirst().statementFormatId()).isEqualTo(42L);
+    assertThat(result.files().getFirst().previewImportToken()).isEqualTo("preview-token");
+    assertThat(result.files().getFirst().transactions()).hasSize(1);
     verify(previewImportTokenService)
         .createToken(
             eq(USER_ID),
@@ -111,12 +311,14 @@ class TransactionImportServiceTest {
     when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
-    when(extractorRegistry.attemptParse(
+    when(statementExtractorRegistry.attemptParse(
             eq(statementFormat), any(byte[].class), eq("transactions.csv"), eq("checking")))
         .thenReturn(List.of(ParserAttempt.notApplicable(parserRevision)));
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -139,21 +341,22 @@ class TransactionImportServiceTest {
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenReturn(List.of(duplicateCandidate(candidateKey, "Coffee Shop")));
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
 
-    assertThat(result.fileImport().alreadyImported()).isFalse();
-    assertThat(result.previewImportToken()).isEqualTo("preview-token");
-    assertThat(result.fileImport().warningCode()).isNull();
-    assertThat(result.fileImport().previousImport()).isNull();
-    assertThat(result.transactions()).hasSize(1);
-    assertThat(result.transactions().getFirst().duplicate()).isTrue();
-    assertThat(result.transactions().getFirst().duplicateReason())
+    assertThat(result.files().getFirst().fileImport().alreadyImported()).isFalse();
+    assertThat(result.files().getFirst().previewImportToken()).isEqualTo("preview-token");
+    assertThat(result.files().getFirst().fileImport().warningCode()).isNull();
+    assertThat(result.files().getFirst().fileImport().previousImport()).isNull();
+    assertThat(result.files().getFirst().transactions()).hasSize(1);
+    assertThat(result.files().getFirst().transactions().getFirst().duplicate()).isTrue();
+    assertThat(result.files().getFirst().transactions().getFirst().duplicateReason())
         .isEqualTo(PreviewDuplicateReason.EXISTING_TRANSACTION);
     verify(transactionRepository).findDuplicateCandidates(Set.of(candidateCriteria), USER_ID);
   }
 
   @Test
-  void previewFile_existingFuzzyDatabaseDuplicate_marksTransactionWithExistingReason() {
+  void shouldMarkExistingDuplicateWhenNormalizedDescriptionsMatch() {
     var previewTransaction = previewTransaction("X CORP. PAID FEATURESBASTROPTX");
     var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(previewTransaction);
     var candidateCriteria = candidateCriteria(candidateKey);
@@ -164,34 +367,36 @@ class TransactionImportServiceTest {
         .thenReturn(
             List.of(duplicateCandidate(candidateKey, "X CORP. PAID FEATURES BASTROP     TX")));
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
 
-    assertThat(result.transactions()).hasSize(1);
-    assertThat(result.transactions().getFirst().duplicate()).isTrue();
-    assertThat(result.transactions().getFirst().duplicateReason())
+    assertThat(result.files().getFirst().transactions()).hasSize(1);
+    assertThat(result.files().getFirst().transactions().getFirst().duplicate()).isTrue();
+    assertThat(result.files().getFirst().transactions().getFirst().duplicateReason())
         .isEqualTo(PreviewDuplicateReason.EXISTING_TRANSACTION);
   }
 
   @Test
-  void previewFile_existingCandidateWithDifferentDescription_doesNotMarkDuplicate() {
-    var previewTransaction = previewTransaction("Rent Payment May");
+  void shouldNotMarkExistingDuplicateWhenDescriptionIsMerelySimilar() {
+    var previewTransaction = previewTransaction("PAYPAL DIGITAL SERVICES");
     var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(previewTransaction);
     var candidateCriteria = candidateCriteria(candidateKey);
     var multipartFile = multipartFile();
 
     stubSuccessfulParse(List.of(previewTransaction), multipartFile, Optional.empty());
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
-        .thenReturn(List.of(duplicateCandidate(candidateKey, "Starbucks Store 1234")));
+        .thenReturn(List.of(duplicateCandidate(candidateKey, "PAYPAL DIGITAL SERVICE")));
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
 
-    assertThat(result.transactions()).hasSize(1);
-    assertThat(result.transactions().getFirst().duplicate()).isFalse();
-    assertThat(result.transactions().getFirst().duplicateReason()).isNull();
+    assertThat(result.files().getFirst().transactions()).hasSize(1);
+    assertThat(result.files().getFirst().transactions().getFirst().duplicate()).isFalse();
+    assertThat(result.files().getFirst().transactions().getFirst().duplicateReason()).isNull();
   }
 
   @Test
-  void previewFile_inPreviewDuplicate_marksLaterTransactionWithInBatchReason() {
+  void shouldNotMarkEitherTransactionWhenSameFileContainsDuplicateRows() {
     var firstTransaction = previewTransaction("Coffee Shop");
     var secondTransaction = previewTransaction("Coffee Shop");
     var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(firstTransaction);
@@ -203,18 +408,21 @@ class TransactionImportServiceTest {
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenReturn(List.of());
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
+    var transactions = result.files().getFirst().transactions();
 
-    assertThat(result.transactions()).hasSize(2);
-    assertThat(result.transactions().get(0).duplicate()).isFalse();
-    assertThat(result.transactions().get(0).duplicateReason()).isNull();
-    assertThat(result.transactions().get(1).duplicate()).isTrue();
-    assertThat(result.transactions().get(1).duplicateReason())
-        .isEqualTo(PreviewDuplicateReason.IN_BATCH);
+    assertThat(transactions).hasSize(2);
+    assertThat(transactions)
+        .allSatisfy(
+            transaction -> {
+              assertThat(transaction.duplicate()).isFalse();
+              assertThat(transaction.duplicateReason()).isNull();
+            });
   }
 
   @Test
-  void previewFile_inPreviewFuzzyDuplicate_marksLaterTransactionWithInBatchReason() {
+  void shouldNotMarkEitherTransactionWhenSameFileDescriptionsNormalizeEqually() {
     var firstTransaction = previewTransaction("X CORP. PAID FEATURES BASTROP     TX");
     var secondTransaction = previewTransaction("X CORP. PAID FEATURESBASTROPTX");
     var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(firstTransaction);
@@ -226,20 +434,23 @@ class TransactionImportServiceTest {
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenReturn(List.of());
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
+    var transactions = result.files().getFirst().transactions();
 
-    assertThat(result.transactions()).hasSize(2);
-    assertThat(result.transactions().get(0).duplicate()).isFalse();
-    assertThat(result.transactions().get(0).duplicateReason()).isNull();
-    assertThat(result.transactions().get(1).duplicate()).isTrue();
-    assertThat(result.transactions().get(1).duplicateReason())
-        .isEqualTo(PreviewDuplicateReason.IN_BATCH);
+    assertThat(transactions).hasSize(2);
+    assertThat(transactions)
+        .allSatisfy(
+            transaction -> {
+              assertThat(transaction.duplicate()).isFalse();
+              assertThat(transaction.duplicateReason()).isNull();
+            });
   }
 
   @Test
-  void previewFile_inPreviewCandidateWithDifferentDescription_doesNotMarkInBatchDuplicate() {
-    var firstTransaction = previewTransaction("Rent Payment May");
-    var secondTransaction = previewTransaction("Starbucks Store 1234");
+  void shouldNotMarkInBatchDuplicateWhenPreviewDescriptionsAreMerelySimilar() {
+    var firstTransaction = previewTransaction("PAYPAL DIGITAL SERVICES");
+    var secondTransaction = previewTransaction("PAYPAL DIGITAL SERVICE");
     var candidateKey = TransactionDuplicateMatcher.duplicateIdentity(firstTransaction);
     var candidateCriteria = candidateCriteria(candidateKey);
     var multipartFile = multipartFile();
@@ -249,13 +460,17 @@ class TransactionImportServiceTest {
     when(transactionRepository.findDuplicateCandidates(Set.of(candidateCriteria), USER_ID))
         .thenReturn(List.of());
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
+    var transactions = result.files().getFirst().transactions();
 
-    assertThat(result.transactions()).hasSize(2);
-    assertThat(result.transactions().get(0).duplicate()).isFalse();
-    assertThat(result.transactions().get(0).duplicateReason()).isNull();
-    assertThat(result.transactions().get(1).duplicate()).isFalse();
-    assertThat(result.transactions().get(1).duplicateReason()).isNull();
+    assertThat(transactions).hasSize(2);
+    assertThat(transactions)
+        .allSatisfy(
+            transaction -> {
+              assertThat(transaction.duplicate()).isFalse();
+              assertThat(transaction.duplicateReason()).isNull();
+            });
   }
 
   @Test
@@ -265,7 +480,9 @@ class TransactionImportServiceTest {
     stubNoMatch(multipartFile);
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class);
     verify(transactionRepository, never()).findDuplicateCandidates(any(), any());
   }
@@ -283,7 +500,9 @@ class TransactionImportServiceTest {
         .thenThrow(dataAccessException);
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isSameAs(dataAccessException);
   }
 
@@ -297,17 +516,22 @@ class TransactionImportServiceTest {
     stubSuccessfulParse(List.of(previewTransaction), multipartFile, Optional.of(fileImport));
     when(transactionRepository.findDuplicateCandidates(any(), eq(USER_ID))).thenReturn(List.of());
 
-    var result = transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID);
+    var result =
+        transactionImportService.previewFiles(42L, "checking", List.of(multipartFile), USER_ID);
 
-    assertThat(result.fileImport().alreadyImported()).isTrue();
-    assertThat(result.fileImport().warningCode().name()).isEqualTo("FILE_ALREADY_IMPORTED");
-    assertThat(result.fileImport().previousImport().originalFilename())
+    assertThat(result.files().getFirst().fileImport().alreadyImported()).isTrue();
+    assertThat(result.files().getFirst().fileImport().warningCode().name())
+        .isEqualTo("FILE_ALREADY_IMPORTED");
+    assertThat(result.files().getFirst().fileImport().previousImport().originalFilename())
         .isEqualTo("transactions.csv");
-    assertThat(result.fileImport().previousImport().importedAt())
+    assertThat(result.files().getFirst().fileImport().previousImport().importedAt())
         .isEqualTo(fileImport.getImportedAt());
-    assertThat(result.fileImport().previousImport().statementFormatId()).isEqualTo(42L);
-    assertThat(result.fileImport().previousImport().accountId()).isEqualTo("checking");
-    assertThat(result.fileImport().previousImport().transactionCount()).isEqualTo(12);
+    assertThat(result.files().getFirst().fileImport().previousImport().statementFormatId())
+        .isEqualTo(42L);
+    assertThat(result.files().getFirst().fileImport().previousImport().accountId())
+        .isEqualTo("checking");
+    assertThat(result.files().getFirst().fileImport().previousImport().transactionCount())
+        .isEqualTo(12);
   }
 
   @Test
@@ -318,7 +542,9 @@ class TransactionImportServiceTest {
         .thenReturn(statementFormat(42L));
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -329,7 +555,7 @@ class TransactionImportServiceTest {
 
     verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
     verify(multipartFile, never()).getBytes();
-    verifyNoInteractions(extractorRegistry);
+    verifyNoInteractions(statementExtractorRegistry);
   }
 
   @Test
@@ -340,7 +566,9 @@ class TransactionImportServiceTest {
         .thenReturn(statementFormat(42L));
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -351,7 +579,7 @@ class TransactionImportServiceTest {
 
     verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
     verify(multipartFile, never()).getBytes();
-    verifyNoInteractions(extractorRegistry);
+    verifyNoInteractions(statementExtractorRegistry);
   }
 
   @Test
@@ -362,7 +590,9 @@ class TransactionImportServiceTest {
         .thenReturn(statementFormat(42L));
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -373,7 +603,7 @@ class TransactionImportServiceTest {
 
     verifyNoInteractions(fileImportTrackingService, previewImportTokenService);
     verify(multipartFile, never()).getBytes();
-    verifyNoInteractions(extractorRegistry);
+    verifyNoInteractions(statementExtractorRegistry);
   }
 
   @Test
@@ -383,9 +613,11 @@ class TransactionImportServiceTest {
     stubNoMatch(multipartFile);
 
     assertThatThrownBy(
-            () -> transactionImportService.previewFile(42L, "checking", multipartFile, USER_ID))
+            () ->
+                transactionImportService.previewFiles(
+                    42L, "checking", List.of(multipartFile), USER_ID))
         .isInstanceOf(BusinessException.class);
-    verify(extractorRegistry)
+    verify(statementExtractorRegistry)
         .attemptParse(
             any(StatementFormat.class), any(byte[].class), eq("transactions.csv"), eq("checking"));
   }
@@ -401,7 +633,7 @@ class TransactionImportServiceTest {
     when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", existingImport));
-    when(extractorRegistry.attemptParse(
+    when(statementExtractorRegistry.attemptParse(
             eq(statementFormat), any(byte[].class), eq(originalFilename), eq("checking")))
         .thenReturn(List.of(ParserAttempt.matched(parserRevision, previewTransactions)));
     when(previewImportTokenService.createToken(
@@ -423,7 +655,7 @@ class TransactionImportServiceTest {
     when(statementFormatService.getEnabledVisibleById(42L, USER_ID)).thenReturn(statementFormat);
     when(fileImportTrackingService.checkFile(any(byte[].class), eq(USER_ID)))
         .thenReturn(new FileImportTrackingService.FileCheckResult("hash", Optional.empty()));
-    when(extractorRegistry.attemptParse(
+    when(statementExtractorRegistry.attemptParse(
             eq(statementFormat), any(byte[].class), eq(originalFilename), eq("checking")))
         .thenReturn(List.of(ParserAttempt.notApplicable(parserRevision)));
   }

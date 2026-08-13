@@ -1,18 +1,22 @@
 package org.budgetanalyzer.transaction.service;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.budgetanalyzer.service.exception.BusinessException;
+import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.PreviewFileImportStatus;
+import org.budgetanalyzer.transaction.service.dto.PreviewFileResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.extractor.StatementExtractorRegistry;
@@ -28,7 +32,7 @@ public class TransactionImportService {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionImportService.class);
 
-  private final StatementExtractorRegistry extractorRegistry;
+  private final StatementExtractorRegistry statementExtractorRegistry;
   private final StatementFormatService statementFormatService;
   private final TransactionRepository transactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
@@ -39,19 +43,19 @@ public class TransactionImportService {
   /**
    * Constructs a new TransactionImportService.
    *
-   * @param extractorRegistry the registry for looking up statement extractors
+   * @param statementExtractorRegistry the registry for looking up statement extractors
    * @param statementFormatService the service for visible statement format lookup
    * @param transactionRepository the repository for owner-scoped duplicate lookup
    * @param fileImportTrackingService the service for file import history lookup
    * @param previewImportTokenService the service for preview import token creation
    */
   public TransactionImportService(
-      StatementExtractorRegistry extractorRegistry,
+      StatementExtractorRegistry statementExtractorRegistry,
       StatementFormatService statementFormatService,
       TransactionRepository transactionRepository,
       FileImportTrackingService fileImportTrackingService,
       PreviewImportTokenService previewImportTokenService) {
-    this.extractorRegistry = extractorRegistry;
+    this.statementExtractorRegistry = statementExtractorRegistry;
     this.statementFormatService = statementFormatService;
     this.transactionRepository = transactionRepository;
     this.fileImportTrackingService = fileImportTrackingService;
@@ -59,32 +63,66 @@ public class TransactionImportService {
   }
 
   /**
-   * Previews transactions from any supported file type (PDF or CSV).
+   * Previews transactions from ordered files of any supported type (PDF or CSV).
    *
    * <p>The statementFormatId parameter is required and determines which top-level format to use.
-   * The registry selects the active parser revision for that format.
+   * The registry selects an active parser revision independently for each file. The operation
+   * returns only after every file has been parsed and duplicate metadata has been applied.
    *
    * @param statementFormatId selected statement format ID
    * @param accountId optional account identifier to pre-fill for all transactions
-   * @param file the file to preview (PDF or CSV)
+   * @param files the ordered files to preview (PDF or CSV)
    * @param userId the ID of the user whose active transactions should be checked for duplicates
-   * @return PreviewResult containing extracted transactions
+   * @return grouped preview result in multipart order
    * @throws BusinessException if the format is not supported or parsing fails
    */
-  public PreviewResult previewFile(
-      Long statementFormatId, String accountId, MultipartFile file, String userId) {
+  @Transactional(readOnly = true)
+  public PreviewResult previewFiles(
+      Long statementFormatId, String accountId, List<MultipartFile> files, String userId) {
     var statementFormat = statementFormatService.getEnabledVisibleById(statementFormatId, userId);
-    var originalFilename = requireOriginalFilename(file);
-    if (file.isEmpty()) {
-      throw new BusinessException("File is empty", BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+    var extractedPreviewFiles = new ArrayList<ExtractedPreviewFile>(files.size());
+    for (var fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+      extractedPreviewFiles.add(
+          extractPreviewFile(statementFormat, accountId, files.get(fileIndex), fileIndex, userId));
     }
 
-    var fileContent = readFileContent(file);
+    var markedTransactionGroups =
+        transactionDuplicateMatcher.markGroupedDuplicates(
+            transactionRepository,
+            extractedPreviewFiles.stream().map(ExtractedPreviewFile::transactions).toList(),
+            userId);
+    var previewFileResults = new ArrayList<PreviewFileResult>(extractedPreviewFiles.size());
+    for (var fileIndex = 0; fileIndex < extractedPreviewFiles.size(); fileIndex++) {
+      var extractedPreviewFile = extractedPreviewFiles.get(fileIndex);
+      previewFileResults.add(
+          new PreviewFileResult(
+              extractedPreviewFile.sourceFile(),
+              statementFormat.getId(),
+              extractedPreviewFile.previewImportToken(),
+              extractedPreviewFile.fileImport(),
+              markedTransactionGroups.get(fileIndex)));
+    }
+
+    return new PreviewResult(previewFileResults);
+  }
+
+  private ExtractedPreviewFile extractPreviewFile(
+      StatementFormat statementFormat,
+      String accountId,
+      MultipartFile file,
+      int fileIndex,
+      String userId) {
+    var originalFilename = requireOriginalFilename(file, fileIndex);
+    if (file.isEmpty()) {
+      throw new BusinessException(
+          "Uploaded file '" + originalFilename + "' is empty.",
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name());
+    }
+
+    var fileContent = readFileContent(file, originalFilename);
     var fileCheckResult = fileImportTrackingService.checkFile(fileContent, userId);
     var fileImportStatus = PreviewFileImportStatus.from(fileCheckResult.existingImport());
-    var parserAttempts =
-        extractorRegistry.attemptParse(statementFormat, fileContent, originalFilename, accountId);
-    var parserAttempt = selectParserAttempt(statementFormatId, parserAttempts);
+    var parserAttempt = parseFile(statementFormat, fileContent, originalFilename, accountId);
     var parserRevision = parserAttempt.parserRevision();
 
     log.info(
@@ -103,40 +141,55 @@ public class TransactionImportService {
             file.getSize());
     var extractedTransactions = parserAttempt.transactions();
 
-    log.info("Successfully previewed {} transactions", extractedTransactions.size());
+    log.info(
+        "Successfully previewed {} transactions from file index {}",
+        extractedTransactions.size(),
+        fileIndex);
 
-    var transactions = markDuplicates(extractedTransactions, userId);
-
-    return new PreviewResult(
-        originalFilename,
-        statementFormat.getId(),
-        previewImportToken,
-        fileImportStatus,
-        transactions);
+    return new ExtractedPreviewFile(
+        originalFilename, previewImportToken, fileImportStatus, extractedTransactions);
   }
 
-  private byte[] readFileContent(MultipartFile file) {
+  private ParserAttempt parseFile(
+      StatementFormat statementFormat,
+      byte[] fileContent,
+      String originalFilename,
+      String accountId) {
     try {
-      return file.getBytes();
-    } catch (IOException e) {
+      var parserAttempts =
+          statementExtractorRegistry.attemptParse(
+              statementFormat, fileContent, originalFilename, accountId);
+      return selectParserAttempt(statementFormat.getId(), parserAttempts);
+    } catch (BusinessException businessException) {
       throw new BusinessException(
-          "Failed to read file: " + e.getMessage(),
-          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          e);
+          "Failed to preview file '" + originalFilename + "': " + businessException.getMessage(),
+          businessException.getCode(),
+          businessException);
     }
   }
 
-  private String requireOriginalFilename(MultipartFile file) {
+  private byte[] readFileContent(MultipartFile file, String originalFilename) {
+    try {
+      return file.getBytes();
+    } catch (IOException ioException) {
+      throw new BusinessException(
+          "Failed to read uploaded file '" + originalFilename + "'.",
+          BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
+          ioException);
+    }
+  }
+
+  private String requireOriginalFilename(MultipartFile file, int fileIndex) {
     var originalFilename = file.getOriginalFilename();
     if (originalFilename == null) {
       throw new BusinessException(
-          "Uploaded file must include an original filename.",
+          "Uploaded file part at index " + fileIndex + " must include an original filename.",
           BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
     }
     var trimmedOriginalFilename = originalFilename.trim();
     if (trimmedOriginalFilename.isBlank()) {
       throw new BusinessException(
-          "Uploaded file must include an original filename.",
+          "Uploaded file part at index " + fileIndex + " must include an original filename.",
           BudgetAnalyzerError.MISSING_ORIGINAL_FILENAME.name());
     }
     return trimmedOriginalFilename;
@@ -177,8 +230,9 @@ public class TransactionImportService {
         BudgetAnalyzerError.FORMAT_NOT_SUPPORTED.name());
   }
 
-  private List<PreviewTransaction> markDuplicates(
-      List<PreviewTransaction> transactions, String userId) {
-    return transactionDuplicateMatcher.markDuplicates(transactionRepository, transactions, userId);
-  }
+  private record ExtractedPreviewFile(
+      String sourceFile,
+      String previewImportToken,
+      PreviewFileImportStatus fileImport,
+      List<PreviewTransaction> transactions) {}
 }

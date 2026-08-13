@@ -9,8 +9,8 @@ import org.budgetanalyzer.service.exception.BusinessException;
  * Exception thrown when batch transaction validation fails.
  *
  * <p>This exception aggregates all business validation errors from a batch import operation. The
- * entire batch is rejected (all-or-nothing semantics) and each error includes the index, field, and
- * message for UI display.
+ * entire batch is rejected (all-or-nothing semantics) and each error includes the nested source
+ * file and transaction path plus a filename-bearing message for UI display.
  *
  * <p>This is distinct from Jakarta Bean Validation (400 VALIDATION_ERROR) which handles simple
  * field presence/format validation. BatchValidationException is for business rule violations that

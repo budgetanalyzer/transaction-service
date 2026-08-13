@@ -5,6 +5,6 @@ public enum PreviewDuplicateReason {
   /** The preview transaction matches an active transaction already stored for the owner. */
   EXISTING_TRANSACTION,
 
-  /** The preview transaction duplicates an earlier transaction in the same preview payload. */
+  /** The preview transaction duplicates a transaction from a completed earlier source file. */
   IN_BATCH
 }

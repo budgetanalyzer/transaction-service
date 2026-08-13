@@ -63,9 +63,9 @@ public record PreviewTransactionResponse(
     @Schema(
             description =
                 "Whether this row appears to duplicate an existing active "
-                    + "transaction or an earlier row in the same preview payload after strict "
-                    + "financial identity matching plus normalized exact or conservative fuzzy "
-                    + "description matching",
+                    + "transaction or a row from a completed earlier source file after strict "
+                    + "financial identity matching plus normalized description equality. Rows "
+                    + "within this source file are not compared with each other.",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "false")
         boolean duplicate,

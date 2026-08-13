@@ -111,7 +111,7 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 
 **The most sophisticated feature of this service** - Configuration-driven file parsing for multiple banks.
 
-**Pattern**: Database-driven format metadata via `statement_format` plus hidden parser configuration in `parser_revision`. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors behind internal parser revision handler keys. Public import identity is `StatementFormat.id`.
+**Pattern**: Database-driven format metadata via `statement_format` plus hidden parser configuration in `parser_revision`. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors behind internal parser revision handler keys. Public import identity is `StatementFormat.id`. Preview accepts ordered files sharing one format and optional account, and selects a parser revision independently for each source.
 
 **When to consult documentation:**
 - **Adding new bank formats** → Read [Statement Import Guide](docs/statement-import.md) for configuration examples and step-by-step instructions
@@ -122,8 +122,18 @@ See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC
 - Currently supported: Capital One (PDF), Bangkok Bank (CSV and statement PDF)
 - Configuration: `statement_format` and `parser_revision` tables (see `StatementFormatService`)
 - API: `GET /v1/statement-formats` to list visible formats, `POST` to create new user-scoped formats, `GET/PUT /v1/statement-formats/{id}` for item access
-- Endpoints: `POST /v1/transactions/preview` with `statementFormatId`, then `POST /v1/transactions/batch`
-- Single-file preview plus transactional batch import
+- Endpoints: `POST /v1/transactions/preview` with repeated `files` parts and one `statementFormatId`, then `POST /v1/transactions/batch`
+- Ordered grouped preview with one result/token per file; batch accepts those file groups in one ordered, atomic request
+- Batch requires a non-empty `files` array; each `transactions` array is
+  required but may be empty. An empty group can retain an ordered zero-count
+  result only when the aggregate request creates at least one transaction; an
+  aggregate zero-created result returns 422
+  `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`
+- Every batch token must verify to the same statement format and account; a
+  mismatch returns 422 `BATCH_IMPORT_SOURCE_MISMATCH`, while parser revision
+  IDs may differ
+- Batch duplicate precedence is first-file-wins, while repeated rows within one source file remain eligible
+- Each non-empty accepted file group creates or reuses its own `FileImport` provenance
 - No code changes needed for new CSV banks
 
 **Discovery:**
@@ -250,13 +260,14 @@ If a new `service → api` import appears outside this single exception,
 treat it as a layering violation and introduce a service-layer DTO
 instead.
 
-`ViewCriteriaApi.toDomain()` and
-`BatchImportTransactionRequest.toServiceDto()` are the current precedents for
-api-side HTTP-to-internal conversion helpers. They are allowed because the
-controller owns the call sites and performs the mapping at the boundary
-before invoking the service layer. If a new api record needs a similar `to*`
-helper, keep all call sites in controllers; do not call those helpers from
-`service/` or `repository/`.
+`ViewCriteriaApi.toDomain()`,
+`BatchImportFileRequest.toServiceFile()`, and
+`BatchImportTransactionRequest.toServiceTransaction()` are the current
+precedents for api-side HTTP-to-internal conversion helpers. They are allowed
+because the controller owns the call sites and performs the mapping at the
+boundary before invoking the service layer. If a new api record needs a
+similar `to*` helper, keep all call sites in controllers; do not call those
+helpers from `service/` or `repository/`.
 
 ## API Documentation
 

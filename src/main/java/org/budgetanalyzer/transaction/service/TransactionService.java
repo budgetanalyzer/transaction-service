@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,9 @@ import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.BatchImportFileResult;
+import org.budgetanalyzer.transaction.service.dto.BatchImportResult;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
@@ -214,95 +218,160 @@ public class TransactionService {
   }
 
   /**
-   * Imports a batch of transactions with required source file metadata.
+   * Imports ordered transaction groups with per-file source metadata.
    *
    * <p>This method implements the batch import with all-or-nothing semantics:
    *
    * <ul>
-   *   <li>Jakarta Bean Validation handles field presence/format at controller layer (400)
-   *   <li>Business validation (date rules) is performed here (422 if fails)
-   *   <li>Duplicates are detected by strict financial identity fields and fuzzy description
-   *       matching, then skipped unless explicitly allowed on the row
-   *   <li>Non-duplicate transactions are persisted atomically and linked to file import metadata
+   *   <li>Jakarta Bean Validation handles field presence and format at the controller layer
+   *   <li>Business validation for every file and row is completed before database work
+   *   <li>Duplicates are detected by strict financial identity fields and normalized description
+   *       equality against persisted rows and completed earlier files, never within one file
+   *   <li>Accepted transactions are persisted atomically and linked to their own source file
    * </ul>
    *
    * <p>Duplicate detection is scoped per-owner, allowing different users to import the same
    * transactions independently.
    *
-   * <p>When at least one transaction is created, the method records a {@code file_import} row if
-   * the same file hash has not already been recorded for the user. Newly created transactions are
-   * linked to either the new file import row or the existing matching row. Existing file import
-   * rows remain advisory and do not block transaction import.
+   * <p>Each file group that creates transactions records or reuses its own {@code file_import} row.
+   * A group that creates no transactions has a successful zero-created result when another group
+   * creates at least one transaction, but it does not create provenance.
    *
-   * @param transactions the list of transaction DTOs to import
+   * @param batchImportFiles the ordered source file groups to import
    * @param userId the ID of the user who will own the imported transactions
-   * @param fileImportSource required source file metadata verified from a preview import token
-   * @return result containing created transactions and duplicate count
+   * @return aggregate and ordered per-file import results
    * @throws BatchValidationException if any transaction fails business validation
    */
   @Transactional
-  public BatchImportResult batchImport(
-      List<PreviewTransaction> transactions,
-      String userId,
-      BatchFileImportSource fileImportSource) {
-    log.info("Starting batch import of {} transactions", transactions.size());
+  public BatchImportResult batchImport(List<BatchImportFile> batchImportFiles, String userId) {
+    var transactionCount =
+        batchImportFiles.stream().mapToInt(file -> file.transactions().size()).sum();
+    log.info(
+        "Starting grouped batch import of {} files and {} transactions",
+        batchImportFiles.size(),
+        transactionCount);
 
-    // Phase 1: Business validation (beyond Jakarta Bean Validation)
-    validateBusinessRules(transactions);
+    validateBusinessRules(batchImportFiles);
 
-    // Phase 2: Check for duplicates in the database
+    var allPreviewTransactions =
+        batchImportFiles.stream().flatMap(file -> file.transactions().stream()).toList();
     var existingCandidatesByKey =
         transactionDuplicateMatcher.findExistingCandidatesByKey(
-            transactionRepository, transactions, userId);
+            transactionRepository, allPreviewTransactions, userId);
     log.debug("Found duplicate candidates for {} key(s)", existingCandidatesByKey.size());
 
-    // Phase 3: Filter out duplicates and persist non-duplicates
-    var toCreate = new ArrayList<Transaction>();
-    var seenTransactionsByCandidateKey =
+    var earlierFileTransactionsByCandidateKey =
         new HashMap<TransactionDuplicateIdentity, List<PreviewTransaction>>();
-    var duplicatesSkipped = 0;
-    var duplicatesImported = 0;
+    var evaluatedFiles = new ArrayList<EvaluatedBatchImportFile>(batchImportFiles.size());
+    var aggregateCreated = 0;
+    var aggregateDuplicatesSkipped = 0;
+    var aggregateDuplicatesImported = 0;
 
-    for (var dto : transactions) {
-      var transactionCandidateKey = TransactionDuplicateMatcher.duplicateIdentity(dto);
-      var duplicate =
-          transactionDuplicateMatcher.matchesExistingTransaction(
-                  dto, existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()))
-              || transactionDuplicateMatcher.matchesSeenTransaction(
-                  dto,
-                  seenTransactionsByCandidateKey.getOrDefault(transactionCandidateKey, List.of()));
+    for (var batchImportFile : batchImportFiles) {
+      var acceptedTransactions = new ArrayList<Transaction>();
+      var acceptedPreviewTransactions = new ArrayList<PreviewTransaction>();
+      var fileDuplicatesSkipped = 0;
+      var fileDuplicatesImported = 0;
 
-      if (duplicate && !dto.allowDuplicate()) {
-        duplicatesSkipped++;
+      for (var previewTransaction : batchImportFile.transactions()) {
+        var transactionCandidateKey =
+            TransactionDuplicateMatcher.duplicateIdentity(previewTransaction);
+        var matchesPersisted =
+            transactionDuplicateMatcher.matchesExistingTransaction(
+                previewTransaction,
+                existingCandidatesByKey.getOrDefault(transactionCandidateKey, List.of()));
+        var matchesEarlierFile =
+            !matchesPersisted
+                && transactionDuplicateMatcher.matchesSeenTransaction(
+                    previewTransaction,
+                    earlierFileTransactionsByCandidateKey.getOrDefault(
+                        transactionCandidateKey, List.of()));
+        var duplicate = matchesPersisted || matchesEarlierFile;
+
+        if (duplicate && !previewTransaction.allowDuplicate()) {
+          fileDuplicatesSkipped++;
+          continue;
+        }
+
+        if (duplicate) {
+          fileDuplicatesImported++;
+        }
+
+        var transaction = mapToEntity(previewTransaction);
+        transaction.setOwnerId(userId);
+        acceptedTransactions.add(transaction);
+        acceptedPreviewTransactions.add(previewTransaction);
+      }
+
+      addEarlierFileTransactions(
+          earlierFileTransactionsByCandidateKey, acceptedPreviewTransactions);
+      evaluatedFiles.add(
+          new EvaluatedBatchImportFile(
+              batchImportFile,
+              acceptedTransactions,
+              fileDuplicatesSkipped,
+              fileDuplicatesImported));
+      aggregateCreated += acceptedTransactions.size();
+      aggregateDuplicatesSkipped += fileDuplicatesSkipped;
+      aggregateDuplicatesImported += fileDuplicatesImported;
+    }
+
+    rejectEmptyImport(aggregateCreated, aggregateDuplicatesSkipped);
+
+    var allTransactionsToCreate = new ArrayList<Transaction>(aggregateCreated);
+    for (var evaluatedFile : evaluatedFiles) {
+      if (evaluatedFile.transactions().isEmpty()) {
         continue;
       }
 
-      if (duplicate) {
-        duplicatesImported++;
-      }
-
-      var entity = mapToEntity(dto);
-      entity.setOwnerId(userId);
-      toCreate.add(entity);
-      seenTransactionsByCandidateKey
-          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
-          .add(dto);
+      var fileImport =
+          resolveFileImport(
+              evaluatedFile.batchImportFile().source(),
+              userId,
+              evaluatedFile.transactions().size());
+      evaluatedFile.transactions().forEach(transaction -> transaction.setFileImport(fileImport));
+      allTransactionsToCreate.addAll(evaluatedFile.transactions());
     }
 
-    rejectEmptyImport(toCreate, duplicatesSkipped);
-
-    var fileImport = resolveFileImport(fileImportSource, userId, toCreate.size());
-    toCreate.forEach(transaction -> transaction.setFileImport(fileImport));
-
-    var created = transactionRepository.saveAll(toCreate);
+    var createdTransactions = transactionRepository.saveAll(allTransactionsToCreate);
+    var fileResults = new ArrayList<BatchImportFileResult>(evaluatedFiles.size());
+    var createdTransactionIndex = 0;
+    for (var evaluatedFile : evaluatedFiles) {
+      var nextCreatedTransactionIndex =
+          createdTransactionIndex + evaluatedFile.transactions().size();
+      fileResults.add(
+          new BatchImportFileResult(
+              evaluatedFile.batchImportFile().source().originalFilename(),
+              createdTransactions.subList(createdTransactionIndex, nextCreatedTransactionIndex),
+              evaluatedFile.duplicatesSkipped(),
+              evaluatedFile.duplicatesImported()));
+      createdTransactionIndex = nextCreatedTransactionIndex;
+    }
 
     log.info(
-        "Batch import completed: {} created, {} duplicates skipped, {} duplicates imported",
-        created.size(),
-        duplicatesSkipped,
-        duplicatesImported);
+        "Grouped batch import completed: {} created, {} duplicates skipped, {} duplicates imported",
+        createdTransactions.size(),
+        aggregateDuplicatesSkipped,
+        aggregateDuplicatesImported);
 
-    return new BatchImportResult(created, duplicatesSkipped, duplicatesImported);
+    return new BatchImportResult(
+        createdTransactions.size(),
+        aggregateDuplicatesSkipped,
+        aggregateDuplicatesImported,
+        fileResults);
+  }
+
+  private void addEarlierFileTransactions(
+      Map<TransactionDuplicateIdentity, List<PreviewTransaction>>
+          earlierFileTransactionsByCandidateKey,
+      List<PreviewTransaction> acceptedPreviewTransactions) {
+    for (var previewTransaction : acceptedPreviewTransactions) {
+      var transactionCandidateKey =
+          TransactionDuplicateMatcher.duplicateIdentity(previewTransaction);
+      earlierFileTransactionsByCandidateKey
+          .computeIfAbsent(transactionCandidateKey, key -> new ArrayList<>())
+          .add(previewTransaction);
+    }
   }
 
   private FileImport resolveFileImport(
@@ -325,8 +394,8 @@ public class TransactionService {
         userId);
   }
 
-  private void rejectEmptyImport(List<Transaction> toCreate, int duplicatesSkipped) {
-    if (!toCreate.isEmpty()) {
+  private void rejectEmptyImport(int created, int duplicatesSkipped) {
+    if (created > 0) {
       return;
     }
 
@@ -349,38 +418,45 @@ public class TransactionService {
    *   <li>Transaction date must not be more than 1 day in the future
    * </ul>
    *
-   * @param transactions the transactions to validate
+   * @param batchImportFiles the ordered source file groups to validate
    * @throws BatchValidationException if any transaction fails validation
    */
-  private void validateBusinessRules(List<PreviewTransaction> transactions) {
+  private void validateBusinessRules(List<BatchImportFile> batchImportFiles) {
     var errors = new ArrayList<FieldError>();
     var today = LocalDate.now();
     var maxAllowedDate = today.plusDays(1);
 
-    for (int i = 0; i < transactions.size(); i++) {
-      var dto = transactions.get(i);
-      var date = dto.date();
+    for (int fileIndex = 0; fileIndex < batchImportFiles.size(); fileIndex++) {
+      var batchImportFile = batchImportFiles.get(fileIndex);
+      for (var transactionIndex = 0;
+          transactionIndex < batchImportFile.transactions().size();
+          transactionIndex++) {
+        var previewTransaction = batchImportFile.transactions().get(transactionIndex);
+        var date = previewTransaction.date();
+        var field = "files[" + fileIndex + "].transactions[" + transactionIndex + "].date";
 
-      if (date.getYear() < 2000) {
-        errors.add(
-            FieldError.forIndexedField(
-                i,
-                "date",
-                "Transaction date "
-                    + date
-                    + " is before year 2000. "
-                    + "Transactions before 2000 are not supported.",
-                date));
-      } else if (date.isAfter(maxAllowedDate)) {
-        errors.add(
-            FieldError.forIndexedField(
-                i,
-                "date",
-                "Transaction date "
-                    + date
-                    + " is more than 1 day in the future. "
-                    + "Future-dated transactions are not allowed.",
-                date));
+        if (date.getYear() < 2000) {
+          errors.add(
+              FieldError.forField(
+                  field,
+                  "Transaction date "
+                      + date
+                      + " in source file '"
+                      + batchImportFile.source().originalFilename()
+                      + "' is before year 2000. Transactions before 2000 are not supported.",
+                  date));
+        } else if (date.isAfter(maxAllowedDate)) {
+          errors.add(
+              FieldError.forField(
+                  field,
+                  "Transaction date "
+                      + date
+                      + " in source file '"
+                      + batchImportFile.source().originalFilename()
+                      + "' is more than 1 day in the future. Future-dated transactions are not "
+                      + "allowed.",
+                  date));
+        }
       }
     }
 
@@ -406,21 +482,21 @@ public class TransactionService {
   }
 
   /**
-   * Maps a preview DTO to a transaction entity.
+   * Maps a preview transaction to a transaction entity.
    *
-   * @param dto the preview DTO
+   * @param previewTransaction the preview transaction
    * @return the transaction entity
    */
-  private Transaction mapToEntity(PreviewTransaction dto) {
+  private Transaction mapToEntity(PreviewTransaction previewTransaction) {
     var transaction = new Transaction();
-    transaction.setDate(dto.date());
-    transaction.setDescription(dto.description());
-    transaction.setAmount(dto.amount());
-    transaction.setType(dto.type());
-    transaction.setBankName(dto.bankName());
-    transaction.setCurrencyIsoCode(dto.currencyIsoCode());
-    transaction.setAccountId(dto.accountId());
-    // Note: category from preview DTO is not stored (Transaction entity doesn't have this field)
+    transaction.setDate(previewTransaction.date());
+    transaction.setDescription(previewTransaction.description());
+    transaction.setAmount(previewTransaction.amount());
+    transaction.setType(previewTransaction.type());
+    transaction.setBankName(previewTransaction.bankName());
+    transaction.setCurrencyIsoCode(previewTransaction.currencyIsoCode());
+    transaction.setAccountId(previewTransaction.accountId());
+    // PreviewTransaction category is not stored because Transaction has no category field.
     return transaction;
   }
 
@@ -448,13 +524,9 @@ public class TransactionService {
     return transaction;
   }
 
-  /**
-   * Result of a batch import operation.
-   *
-   * @param createdTransactions the list of transactions that were created
-   * @param duplicatesSkipped the count of transactions that were skipped as duplicates
-   * @param duplicatesImported the count of duplicate transactions intentionally imported
-   */
-  public record BatchImportResult(
-      List<Transaction> createdTransactions, int duplicatesSkipped, int duplicatesImported) {}
+  private record EvaluatedBatchImportFile(
+      BatchImportFile batchImportFile,
+      List<Transaction> transactions,
+      int duplicatesSkipped,
+      int duplicatesImported) {}
 }
