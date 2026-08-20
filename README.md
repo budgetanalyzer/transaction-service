@@ -1,8 +1,6 @@
 # Transaction Service
 
-> "Archetype: service. Role: Manages financial transactions and file-based imports."
->
-> — [AGENTS.md](AGENTS.md#tree-position)
+> Repository operating instructions: [AGENTS.md](AGENTS.md#repository-position)
 
 [![Build](https://github.com/budgetanalyzer/transaction-service/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/transaction-service/actions/workflows/build.yml)
 

@@ -1,430 +1,317 @@
-# Transaction Service - Budget and Transaction Management
+# Transaction Service Agent Instructions
 
-## Tree Position
+## Repository Position
 
-**Archetype**: service
-**Scope**: budgetanalyzer ecosystem
-**Role**: Manages financial transactions and file-based imports
+**Archetype:** service
+**Scope:** transaction and budget management in the Budget Analyzer ecosystem
+**Role:** owns financial transactions, saved transaction views, statement
+formats, and file-based transaction imports
 
 ### Relationships
-- **Consumes**: service-common (patterns)
-- **Coordinated by**: orchestration
-- **Peers with**: Discover via `ls /workspace/*-service`
 
-### Permissions
-- **Read**: `../service-common/`, `../orchestration/docs/`
-- **Write**: This repository only
+- Consume shared Java architecture and runtime libraries from
+  `../service-common/`.
+- Let `../orchestration/` own deployment, routing, infrastructure, and the
+  full-stack local environment.
+- Coordinate authorization semantics with `../permission-service/`; this
+  service enforces the claims and permissions supplied through the trusted
+  gateway path.
+- Discover peer services with the commands in [Discovery](#discovery); do not
+  maintain a peer inventory here.
 
-### Discovery
+### Boundaries
+
+- Read this repository and the sibling documentation under
+  `../service-common/`, `../orchestration/docs/`,
+  `../permission-service/docs/`, and `../ai-session-handler/docs/` when the
+  sources below require cross-repository context.
+- Write source-controlled changes only within this repository. Do not modify
+  sibling source, configuration, or documentation; report any required
+  cross-repository change to the user.
+- Treat the explicit `service-common` Maven Local recovery workflow as a build
+  operation, not permission to edit that sibling repository.
+
+## Discovery
+
+Use direct repository search and reads for code exploration. Never use agent or
+subagent tools for code exploration.
+
 ```bash
-# My peers
-ls -d /workspace/*-service
-# My platform
-ls ../service-common/
+# Repository structure
+find . -maxdepth 2 -type f -not -path './.git/*' -not -path './build/*' | sort
+
+# Source and test files
+rg --files src/main src/test | sort
+
+# Peer services
+find .. -maxdepth 1 -type d -name '*-service' -print | sort
+
+# Controllers, routes, and method security
+rg -n '@(Get|Post|Put|Patch|Delete)Mapping|@RequestMapping|@PreAuthorize' \
+  src/main/java --glob '*.java'
+
+# Domain, repositories, and migrations
+find src/main/java/org/budgetanalyzer/transaction/domain \
+  src/main/java/org/budgetanalyzer/transaction/repository \
+  -type f -name '*.java' | sort
+find src/main/resources/db/migration -maxdepth 1 -type f | sort
+
+# Intentional and accidental service-to-API imports
+rg -n '^import org\.budgetanalyzer\.transaction\.api\.' \
+  src/main/java/org/budgetanalyzer/transaction/service \
+  src/main/java/org/budgetanalyzer/transaction/repository --glob '*.java'
+
+# Build tasks, dependencies, and runtime configuration
+./gradlew tasks --quiet
+rg -n 'dependencies|implementation|testImplementation|runtimeOnly' build.gradle.kts
+sed -n '1,220p' src/main/resources/application.yml
 ```
 
-## Code Exploration
+## Sources of Truth
 
-NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read directly.
+- **Purpose, prerequisites, setup, and local use:** Read
+  [README.md](README.md) before changing prerequisites, setup assumptions,
+  public usage, or local run behavior. Read
+  [getting-started.md](../orchestration/docs/development/getting-started.md)
+  before changing or debugging the full-stack Tilt workflow.
+- **Runtime configuration:** Read
+  [configuration.md](docs/configuration.md) and
+  [application.yml](src/main/resources/application.yml) before changing or
+  documenting server, database, logging, upload, or preview-token settings.
+- **HTTP API and authorization:** Read
+  [API documentation](docs/api/README.md) and inspect current controller
+  annotations before adding, removing, or reshaping routes, request models,
+  response models, filters, sorting, or permissions. Read the Permission
+  Service [authorization model](../permission-service/docs/authorization-model.md)
+  before changing permission semantics or cross-user scope.
+- **Gateway, deployment, and exposure:** Read the orchestration
+  [system overview](../orchestration/docs/architecture/system-overview.md) and
+  [session-edge authorization pattern](../orchestration/docs/architecture/session-edge-authorization-pattern.md)
+  before changing gateway, trusted-header, routing, or deployment assumptions.
+  Read the active [port reference](../orchestration/docs/architecture/port-reference.md)
+  when current service exposure or approved caller rules matter.
+- **Domain and persistence:** Read
+  [domain-model.md](docs/domain-model.md) before changing entities,
+  relationships, packages, or service-owned concepts. Read
+  [database-schema.md](docs/database-schema.md) and inspect the complete ordered
+  migration directory before changing schema or persistence behavior.
+- **Statement imports:** Read
+  [statement-import.md](docs/statement-import.md) before changing formats,
+  parsers, preview, batch import, or import troubleshooting. Read
+  [duplicate-detection.md](docs/duplicate-detection.md) before changing
+  transaction matching, file reupload tracking, preview tokens, or grouped
+  batch semantics.
+- **Shared Spring architecture:** Read
+  [service-common/AGENTS.md](../service-common/AGENTS.md) before implementing a
+  new feature that uses shared patterns. Read
+  [spring-boot-conventions.md](../service-common/docs/spring-boot-conventions.md)
+  when changing layers, controllers, services, repositories, entities, or API
+  models.
+- **Java quality:** Before writing or modifying any Java code, read
+  [code-quality-standards.md](../service-common/docs/code-quality-standards.md).
+  Do not skip this prerequisite.
+- **Errors and tests:** Read
+  [error-handling.md](../service-common/docs/error-handling.md) when changing
+  error flows or custom exceptions. Read
+  [testing-patterns.md](../service-common/docs/testing-patterns.md) when writing
+  or modifying tests.
+- **Build and dependencies:** Read `build.gradle.kts`, `settings.gradle.kts`,
+  `gradle/libs.versions.toml`, and
+  `gradle/wrapper/gradle-wrapper.properties` before changing the toolchain,
+  plugins, dependencies, wrapper, formatting, tests, or coverage gates.
+- **Dependency resolution:** Read
+  [service-common artifact resolution](../orchestration/docs/development/service-common-artifact-resolution.md)
+  when changing or debugging `service-common` resolution for local, CI, or
+  release builds.
 
-## Documentation Discipline
+## Operating Rules
 
-Always keep documentation up to date after any configuration or code change.
+### Repository and Git Safety
 
-Update the nearest affected documentation in the same work:
-- `AGENTS.md` when instructions, guardrails, or discovery commands change
-- Before updating `AGENTS.md`, read and apply the
-  [AGENTS.md checkstyle](https://github.com/budgetanalyzer/orchestration/blob/main/docs/agents-md-checkstyle.md).
-- `README.md` when setup, usage, or repository purpose changes
-- `docs/` when architecture, configuration, APIs, behaviors, or operating procedures change
+- Never run git write operations such as `commit`, `push`, `checkout`, `reset`,
+  branch manipulation, or history rewriting unless the user explicitly asks.
+- Do not modify source-controlled files outside this repository. Surface
+  required sibling-repository changes instead of making them.
+- Check every plan or feature for documented prerequisites before
+  implementation. If a required prerequisite is missing, stop and inform the
+  user; do not invent a workaround.
+- Do not bypass authentication, authorization, persistence, validation, or
+  other enforced boundaries as a durable fix.
+- Never log credentials, claims-header values, financial statement contents,
+  import tokens, hashes, or other sensitive financial data.
 
-When creating an implementation or execution plan intended for AI Session
-Handler, follow the [AI Session Handler plan format](../ai-session-handler/docs/plan-format.md),
-use its canonical template, replace every placeholder, and retain the numbered
+### Java and Spring Architecture
+
+- Follow the layered architecture: controllers own HTTP concerns, services own
+  business rules and transaction boundaries, repositories own data access, and
+  entities carry persistence state.
+- Use dependency injection, declarative transactions, JPA, shared exception
+  handling, Bean Validation, and structured SLF4J logging according to the
+  shared owner documents.
+- Choose the simplest implementation that correctly handles realistic inputs,
+  states, and failure modes. Do not trade away security, data integrity, or
+  required behavior for brevity.
+- Put request shape and syntax validation in request models and controllers.
+  Put business invariants, ownership, persistence state, and cross-entity rules
+  in services.
+- Do not duplicate API validation in a service when every caller passes through
+  the validated API contract. Validate again only when another caller can
+  bypass that boundary or when the service owns the rule.
+- Do not add guards, fallbacks, custom exception paths, abstractions, or
+  extension points for states that enforced boundaries make impossible.
+- Handle plausible failures explicitly at external or asynchronous boundaries.
+  Before adding a defensive branch, identify how the state can arise and what
+  the caller or system can usefully do in response; omit the branch if neither
+  is concrete.
+
+### Authorization and Ownership
+
+- Protect every application controller endpoint with fine-grained
+  `@PreAuthorize` checks. Preserve only the public infrastructure surfaces
+  documented by the active API and shared security configuration.
+- Treat `X-User-Id`, `X-Permissions`, and `X-Roles` as trusted only after the
+  gateway and `ClaimsHeaderSecurityConfig` path has established the Spring
+  Security context. Obtain actor identity from that context, not from request
+  bodies or application-level parsing of untrusted headers.
+- Keep ordinary transaction operations scoped to the authenticated owner.
+  Require the documented `:any` permission for cross-user behavior, and do not
+  make an owner filter effective on self-scoped endpoints.
+- Use `ClaimsHeaderTestBuilder` for per-request authentication in controller
+  tests, following the shared testing patterns.
+
+### Transaction and Import Invariants
+
+- Soft-delete transactions. Never hard-delete them, and keep normal queries
+  restricted to active rows.
+- Keep CSV import configuration-driven. A normal new CSV bank format should be
+  represented by statement-format and parser-revision data rather than new Java
+  parsing code. Use dedicated handlers only for formats, such as specialized
+  PDFs, that require code.
+- Keep the public import identity at the statement-format level; parser
+  revisions remain internal implementation and provenance detail. Preserve
+  ordered, atomic preview-to-batch behavior described by the import owner docs.
+- Test parser or format changes with sanitized real bank exports for every
+  affected format. Do not commit sensitive statement samples.
+- Build advanced transaction search with JPA Specifications. Preserve owner
+  scoping and the documented separation between self-scoped and cross-user
+  search.
+
+### Layering Exception
+
+- Treat the existing `TransactionFilter` service/repository import from
+  `api.request` as the only intentional `service -> api` crossing. It carries
+  Spring MVC query-binding annotations and maps directly to transaction
+  criteria. Do not create another crossing; introduce a service-layer model
+  instead.
+- Keep API-side HTTP-to-internal conversion helpers controller-owned. Call them
+  only at the controller boundary; never call them from `service/` or
+  `repository/`.
+
+## Development Workflow
+
+1. Read the relevant source-of-truth documents and check their prerequisites
+   before implementation.
+2. Confirm the required toolchain, database or container runtime, credentials,
+   and external services are available for the requested work.
+3. Inspect current source, tests, migrations, configuration, and build files
+   with the discovery commands above.
+4. Implement the smallest coherent change without weakening security, data
+   integrity, validation, or test coverage.
+5. Update the nearest owner documentation in the same work.
+6. Run every validation gate appropriate to the changed files. If a required
+   verifier is unavailable, report it instead of claiming success.
+
+Use `./gradlew bootRun` for the service-only local entry point after satisfying
+the prerequisites in `README.md`. Use the orchestration getting-started guide
+for the supported full-stack path.
+
+### AI Session Handler Plans
+
+When creating an implementation or execution plan for AI Session Handler, read
+and follow [plan-format.md](../ai-session-handler/docs/plan-format.md). Use its
+canonical template, replace every placeholder, and retain numbered
 `## Phase N: Title` headings.
 
-Run a specific plan through the workspace wrapper with:
+Run a plan from this repository root with:
 
 ```bash
 ai-session-handler run \
-  --plan /workspace/REPOSITORY/docs/plans/PLAN.md \
+  --plan docs/plans/PLAN.md \
   --max-phases 999 \
   --quiet \
-  --agent-cmd "/workspace/ai-session-handler/.venv/bin/ai-session-handler-codex-high --model MODEL"
+  --agent-cmd "../ai-session-handler/.venv/bin/ai-session-handler-codex-high --model MODEL"
 ```
 
-Omit `--model MODEL` from the quoted agent command to use the wrapper's
+Remove `--model MODEL` from the quoted agent command to use the wrapper's
 configured or default model.
 
-Do not leave documentation updates as follow-up work.
-
-## Service Purpose
-
-Manages financial transactions and file-based imports for the Budget Analyzer application.
-
-**Domain**: Transaction and budget management
-**Responsibilities**:
-- CRUD operations for financial transactions
-- Multi-bank file import (CSV, PDF) with configurable formats
-- Advanced transaction search with dynamic filtering
-- Multi-account and multi-currency transaction support
-
-## Coding Standards
-
-**Before writing or modifying any Java code, read [code-quality-standards.md](../service-common/docs/code-quality-standards.md).** Do not skip this step. The most common violations: missing `var`, wildcard imports, abbreviated variable names, Javadoc without trailing periods.
-
-## Spring Boot Patterns
-
-**This service follows standard Budget Analyzer Spring Boot conventions.** Uses layered architecture (Controller → Service → Repository) with dependency injection, declarative transactions, and JPA for data access.
-
-**When to consult service-common documentation:**
-- **Implementing new features** → Read [service-common/AGENTS.md](../service-common/AGENTS.md) for architecture patterns
-- **Handling errors** → Read [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
-- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
-- **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
-
-**Quick reference:**
-- Naming: `*Controller`, `*Service`, `*Repository`
-- Exceptions: Use `BusinessException` for business rule violations, `InvalidRequestException` for bad input
-- Logging: SLF4J with structured logging (never log sensitive data)
-- Validation: Bean Validation (@Valid) for request DTOs, business validation in service layer
-- Dependencies: Inherit from service-common parent POM
-
-### Architectural Simplicity (KISS)
-
-**Primary rule: Keep it simple.** Choose the simplest implementation that correctly handles realistic inputs, states, and failure modes. Simplicity must not come at the expense of security, data integrity, or required behavior.
-
-- Put validation in the layer that owns the rule: request models and controllers validate request shape and syntax; services validate business invariants, ownership, persistence state, and cross-entity rules.
-- Do not duplicate API validation in the service layer when every call reaches the service through the validated API contract. Add service-level validation when another caller can bypass that contract or when the service owns the rule.
-- Do not add a guard, fallback, or custom exception path for a state made impossible by an enforced boundary or invariant.
-- At external or asynchronous boundaries, handle plausible failures explicitly because they are outside the local code's control.
-- Before adding a defensive branch, identify how the state can arise and what the caller or system can usefully do in response. If neither is concrete, omit the branch.
-- Prefer a direct implementation and established project patterns over speculative abstractions or extension points.
-
-### Authorization
-
-All endpoints are protected by fine-grained claims-header-based permissions. Session Gateway manages browser authentication and Redis-backed sessions. Envoy ext_authz validates those sessions and injects `X-User-Id`, `X-Permissions`, `X-Roles` headers. `ClaimsHeaderSecurityConfig` (from service-common) extracts these into the Spring Security context. Controllers enforce access via `@PreAuthorize` annotations. Tests use `ClaimsHeaderTestBuilder` to set up per-request authentication.
-
-See [permission-service/AGENTS.md](../permission-service/AGENTS.md) for the RBAC model, role definitions, and permission details. See also the [Permission Service README](../permission-service/README.md) for an overview.
-
-## Service-Specific Patterns
-
-### File Import System
-
-**The most sophisticated feature of this service** - Configuration-driven file parsing for multiple banks.
-
-**Pattern**: Database-driven format metadata via `statement_format` plus hidden parser configuration in `parser_revision`. Supports CSV and PDF imports. CSV supports two amount patterns: single column with type indicator (Capital One, Truist) or separate credit/debit columns (Bangkok Bank). PDF uses dedicated statement extractors behind internal parser revision handler keys. Public import identity is `StatementFormat.id`. Preview accepts ordered files sharing one format and optional account, and selects a parser revision independently for each source.
-
-**When to consult documentation:**
-- **Adding new bank formats** → Read [Statement Import Guide](docs/statement-import.md) for configuration examples and step-by-step instructions
-- **Troubleshooting import errors** → Read [Troubleshooting section](docs/statement-import.md#troubleshooting) for common issues
-- **Understanding amount patterns** → Read [Amount Column Patterns](docs/statement-import.md#amount-column-patterns)
-
-**Quick reference:**
-- Currently supported: Capital One (PDF), Bangkok Bank (CSV and statement PDF)
-- Configuration: `statement_format` and `parser_revision` tables (see `StatementFormatService`)
-- API: `GET /v1/statement-formats` to list visible formats, `POST` to create new user-scoped formats, `GET/PUT /v1/statement-formats/{id}` for item access
-- Endpoints: `POST /v1/transactions/preview` with repeated `files` parts and one `statementFormatId`, then `POST /v1/transactions/batch`
-- Ordered grouped preview with one result/token per file; batch accepts those file groups in one ordered, atomic request
-- Batch requires a non-empty `files` array; each `transactions` array is
-  required but may be empty. An empty group can retain an ordered zero-count
-  result only when the aggregate request creates at least one transaction; an
-  aggregate zero-created result returns 422
-  `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`
-- Every batch token must verify to the same statement format and account; a
-  mismatch returns 422 `BATCH_IMPORT_SOURCE_MISMATCH`, while parser revision
-  IDs may differ
-- Batch duplicate precedence is first-file-wins, while repeated rows within one source file remain eligible
-- Each non-empty accepted file group creates or reuses its own `FileImport` provenance
-- No code changes needed for new CSV banks
-
-**Discovery:**
-```bash
-# View statement format entity
-cat src/main/java/org/budgetanalyzer/transaction/domain/StatementFormat.java
-
-# View format service
-cat src/main/java/org/budgetanalyzer/transaction/service/StatementFormatService.java
-```
-
-### Advanced Transaction Search
-
-**JPA Specification-based dynamic queries** with combinable filters:
-
-**Search Criteria:**
-- Exact match: `id`, `type`
-- Case-insensitive LIKE: `accountId`, `bankName`, `description`
-- Case-insensitive exact: `currencyIsoCode`
-- Range queries: `dateFrom`/`dateTo`, `minAmount`/`maxAmount`
-- Timestamp filtering: `createdAfter`, `createdBefore`, `updatedAfter`, `updatedBefore`
-
-**Discovery:**
-```bash
-# Find search endpoint
-grep -r "search" src/main/java/*/api/ | grep "@GetMapping"
-
-# View JPA specifications
-cat src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java
-```
-
-See [TransactionSpecifications.java](src/main/java/org/budgetanalyzer/transaction/repository/spec/TransactionSpecifications.java)
-
-### Cross-User Transaction Search
-
-**Requires `transactions:read:any` permission.** Cross-user transaction search and count, exposed as additional handlers on `TransactionController`.
-
-**Endpoints:**
-- `GET /v1/transactions/search` — Paginated search across all users (default sort: `date`, `id` DESC)
-- `GET /v1/transactions/search/count` — Count matching transactions across all users
-
-**Cross-user filter field:**
-- `ownerId` — Filter by the owning user's ID. Part of `TransactionFilter` but only effective on the cross-user endpoints; ignored on user-scoped endpoints where the authenticated user is always applied.
-
-**Sort fields:** `id`, `ownerId`, `accountId`, `bankName`, `date`, `currencyIsoCode`, `amount`, `type`, `description`, `createdAt`, `updatedAt`
-
-**Authorization:** Method-level `@PreAuthorize("hasAuthority('transactions:read:any')")`. The permission is bundled into the `ADMIN` role by current `permission-service` seed data.
-
-**Response:** `TransactionResponse`, the same DTO returned by the self-scope endpoints. `ownerId` is a first-class field on that record and is always populated.
-
-**Discovery:**
-```bash
-# View controller (cross-user handlers live alongside the self-scope ones)
-cat src/main/java/org/budgetanalyzer/transaction/api/TransactionController.java
-
-# View response DTO
-cat src/main/java/org/budgetanalyzer/transaction/api/response/TransactionResponse.java
-```
-
-### Soft Delete Pattern
-
-Transactions are never permanently deleted:
-- Delete operations mark records with `deleted=true`
-- Queries automatically exclude deleted records via `findByIdActive()`
-- Inherited from `SoftDeletableEntity` base class (service-common)
-- Provides data retention and audit trail
-
-**Discovery:**
-```bash
-# Find soft delete methods
-grep -r "findByIdActive\|findAllActive" src/main/java/*/repository/
-```
-
-### Domain Model
-
-**Key Concept:**
-- **Transaction**: Financial transaction with multi-account, multi-currency support, and soft-delete pattern
-
-**Discovery:**
-```bash
-# View entity
-cat src/main/java/org/budgetanalyzer/transaction/domain/Transaction.java
-
-# Find all enums
-find src/main/java -name "*.java" -path "*/domain/*" -exec grep -l "^enum " {} \;
-```
-
-### Package Structure
-
-**Standard Spring Boot layered architecture:** Controller → Service → Repository with domain entities and DTOs.
-
-**Service-specific packages:**
-- `api/` - REST controllers and request/response DTOs
-- `service/` - Business logic interfaces and implementations
-- `repository/` - JPA repositories and custom queries
-- `repository/spec/` - JPA Specifications for advanced search
-- `service/impl/` - Includes CSV mapping logic (`CsvTransactionMapper`)
-- `domain/` - JPA entities and enums
-
-**Discovery:**
-```bash
-# View structure
-tree src/main/java/org/budgetanalyzer/transaction -L 2
-
-# Or without tree
-find src/main/java/org/budgetanalyzer/transaction -type d | sort
-```
-
-### Layering — `TransactionFilter` crossing
-
-`TransactionFilter` lives in `api/request/` and is imported directly by
-`TransactionService`, `TransactionCriteria`, and the compatibility overload in
-`TransactionSpecifications`.
-This is an **intentional** `service → api.request` crossing: the record
-carries `@DateTimeFormat` bind annotations for Spring MVC query-parameter
-binding, and its fields map 1:1 to the JPA spec built in
-`TransactionCriteria.fromFilter(...)`, which then feeds
-`TransactionSpecifications.withCriteria(...)`. Moving it to `service/dto/`
-would require translating between two identical records at the HTTP boundary.
-All other service → api crossings have been eliminated (see
-`docs/plans/service-api-layering-fixes.md`).
-
-If a new `service → api` import appears outside this single exception,
-treat it as a layering violation and introduce a service-layer DTO
-instead.
-
-`ViewCriteriaApi.toDomain()`,
-`BatchImportFileRequest.toServiceFile()`, and
-`BatchImportTransactionRequest.toServiceTransaction()` are the current
-precedents for api-side HTTP-to-internal conversion helpers. They are allowed
-because the controller owns the call sites and performs the mapping at the
-boundary before invoking the service layer. If a new api record needs a
-similar `to*` helper, keep all call sites in controllers; do not call those
-helpers from `service/` or `repository/`.
-
-## API Documentation
-
-**OpenAPI Specification:** Run service and access Swagger UI:
-```bash
-./gradlew bootRun
-# Visit: http://localhost:8082/swagger-ui.html
-```
-
-**Key Endpoints:**
-- Transactions: `GET/PATCH/DELETE /v1/transactions/**`
-- Count: `GET /v1/transactions/count`
-- Preview: `POST /v1/transactions/preview`
-- Batch Import: `POST /v1/transactions/batch`
-- Bulk Delete: `POST /v1/transactions/bulk-delete`
-- Cross-user Search: `GET /v1/transactions/search` (`transactions:read:any`)
-- Cross-user Count: `GET /v1/transactions/search/count` (`transactions:read:any`)
-- Saved Views: `/v1/views/**`
-- Statement Formats: `/v1/statement-formats/**`
-
-**Gateway Access:**
-- Internal: `http://localhost:8082/v1/transactions`
-- External (via NGINX): `http://localhost:8080/api/v1/transactions`
-
-## Running Locally
-
-**Prerequisites:**
-- JDK 25
-- PostgreSQL 15+
-- Gradle 9.5.0 wrapper
-
-**Start Infrastructure:**
-```bash
-cd ../orchestration
-docker compose up
-```
-
-**Run Service:**
-```bash
-./gradlew bootRun
-```
-
-**Access:**
-- Service: http://localhost:8082
-- Swagger UI: http://localhost:8082/swagger-ui.html
-- Health Check: http://localhost:8082/actuator/health
-
-## Discovery Commands
+### Service-Common Recovery
+
+If `service-common` cannot resolve from local artifacts or GitHub Packages,
+immediately publish the sibling project to Maven Local before retrying this
+service:
 
 ```bash
-# Find all REST endpoints
-grep -r "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" src/main/java/*/api/
-
-# View statement format migration (seed data)
-cat src/main/resources/db/migration/V7__add_statement_format.sql
-cat src/main/resources/db/migration/V18__user_scoped_statement_formats_and_parser_revisions.sql
-
-# Check service dependencies
-./gradlew dependencies | grep "org.budgetanalyzer"
-
-# View application configuration
-cat src/main/resources/application.yml
+(cd ../service-common && ./gradlew clean build publishToMavenLocal)
+./gradlew clean build
 ```
 
-## Build and Test
+Do not edit `service-common` to work around resolution failures. Use the
+artifact-resolution owner document for CI or release failures.
 
-**Format code:**
+## Validation
+
+Before completing Java, Gradle, configuration, or migration changes, run these
+commands in sequence:
+
 ```bash
 ./gradlew clean spotlessApply
-```
-
-**Build and test:**
-```bash
 ./gradlew clean build
 ```
 
-The build includes:
-- Spotless code formatting checks
-- Checkstyle rule enforcement
-- All unit and integration tests
-- JAR file creation
+- Inspect the full build output and fix Checkstyle warnings even if Gradle exits
+  successfully.
+- Use focused tests for iteration, but do not substitute them for the required
+  full build.
+- For configuration changes, run the affected configuration or startup tests
+  in addition to the full build and confirm `docs/configuration.md` matches the
+  runtime configuration.
+- For migration changes, inspect the complete ordered migration history, run
+  the affected repository or service integration tests, and update the schema
+  owner documentation in addition to the full build.
+- For import changes, run the affected automated tests and sanitized real-bank
+  sample checks in addition to the full build.
+- For documentation-only changes, run
+  `git diff --check -- AGENTS.md README.md docs`, verify every changed local
+  link target and anchor, and run or syntax-check every changed command. Do not
+  run Gradle solely for Markdown changes.
+- Never disable, weaken, or delete an existing test to make a change pass. If
+  an unrelated test is already failing, stop and report it.
+- If any required verifier cannot run because a tool, service, credential,
+  sample, or container runtime is unavailable, state exactly what was not
+  verified and why. Do not represent the work as fully verified.
 
-**Troubleshooting:**
+## Documentation Maintenance
 
-If `service-common` is unavailable for any reason (cannot resolve classes,
-missing local artifacts, GitHub Packages 401, or unresolved
-`org.budgetanalyzer` dependencies), immediately publish the sibling
-`service-common` repo to Maven Local before retrying this service:
-```bash
-cd ../service-common
-./gradlew clean build publishToMavenLocal
-cd ../transaction-service
-./gradlew clean build
-```
-
-For CI/release `service-common` artifact resolution, use the single source of
-truth in
-[orchestration/docs/development/service-common-artifact-resolution.md](../orchestration/docs/development/service-common-artifact-resolution.md).
-
-## Testing
-
-**Standard testing approach:** JUnit 5 with TestContainers for integration tests, MockMvc for controller tests, Mockito for unit tests.
-
-**When to consult testing documentation:**
-- **Writing new tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md)
-- **Debugging test failures** → See testing-patterns.md for container lifecycle, test data setup
-
-**Quick reference:**
-- Test naming: `*Test` (unit), `*IntegrationTest` (with TestContainers)
-- Use `@SpringBootTest` + TestContainers for repository/service integration tests
-- Use `@WebMvcTest` for isolated controller tests
-- Test data: Use builders or test fixtures for domain objects
-
-**Current state**: Minimal coverage, priority areas: CSV import, search filters, soft-delete behavior
-
-## NOTES FOR AI AGENTS
-
-**CRITICAL - Prerequisites First**: Before implementing any plan or feature:
-1. Check for prerequisites in documentation (e.g., "Prerequisites: service-common Enhancement")
-2. If prerequisites are NOT satisfied, STOP immediately and inform the user
-3. Do NOT attempt to hack around missing prerequisites - this leads to broken implementations that must be deleted
-4. Complete prerequisites first, then return to the original task
-
-**Service-specific reminders:**
-- File import is configuration-driven - most banks need no code changes
-- Always test imports with real bank export samples (CSV or PDF)
-- JPA Specifications enable dynamic search queries - see `repository/spec/`
-- Use soft-delete pattern - never hard delete transactions
-- For code quality standards and build commands, see [service-common/AGENTS.md](../service-common/AGENTS.md)
-
-**NO GIT WRITE OPERATIONS**: Never run git commands (commit, push, checkout, reset, etc.) without explicit user request. The user controls git operations entirely. You may suggest what to commit, but don't do it.
+- Keep documentation current in the same work as configuration or code
+  changes. Do not leave required documentation updates as follow-up work.
+- Update `AGENTS.md` when agent instructions, guardrails, discovery commands,
+  authority boundaries, workflows, or source-of-truth ownership changes.
+  Before creating, reviewing, or substantially revising it, read and apply the
+  [AGENTS.md checkstyle](../orchestration/docs/agents-md-checkstyle.md).
+- Update `README.md` when setup, usage, repository purpose, or human onboarding
+  changes.
+- Update `docs/` when architecture, configuration, APIs, behavior, operations,
+  or design rationale changes.
+- Do not update archived documents unless the user explicitly requests it.
+- Keep detailed recurring topics in one active owner document and link to it
+  instead of duplicating it here.
 
 ## Honest Discourse
 
-Do not over-validate ideas. The user wants honest pushback, not agreement.
-
-- If something seems wrong, say so directly
-- Distinguish "novel" from "obvious in retrospect"
-- Push back on vague claims — ask for concrete constraints
-- Don't say "great question" or "that's a really interesting point"
-- Skip the preamble and caveats — just answer
-
----
-
-## External Links (GitHub Web Viewing)
-
-*The relative paths in this document are optimized for Claude Code. When viewing on GitHub, use these links to access other repositories:*
-
-- [Service-Common Repository](https://github.com/budgetanalyzer/service-common)
-- [Service-Common AGENTS.md](https://github.com/budgetanalyzer/service-common/blob/main/AGENTS.md)
-- [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
-- [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
-- [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)
-- [Session Gateway Repository](https://github.com/budgetanalyzer/session-gateway)
-- [Session Gateway AGENTS.md](https://github.com/budgetanalyzer/session-gateway/blob/main/AGENTS.md)
-- [Token Validation Service Repository](https://github.com/budgetanalyzer/token-validation-service)
-- [Permission Service Repository](https://github.com/budgetanalyzer/permission-service)
-- [Permission Service AGENTS.md](https://github.com/budgetanalyzer/permission-service/blob/main/AGENTS.md)
+- Say directly when an idea or assumption is wrong.
+- Distinguish novel work from conclusions that are obvious in retrospect.
+- Push back on vague claims and request concrete constraints when they are
+  necessary to proceed.
+- Skip praise, preambles, and unnecessary caveats; lead with the evidence and
+  outcome.
