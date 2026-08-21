@@ -110,11 +110,12 @@ sed -n '1,220p' src/main/resources/application.yml
 - **Java quality:** Before writing or modifying any Java code, read
   [code-quality-standards.md](../service-common/docs/code-quality-standards.md).
   Do not skip this prerequisite.
-- **Errors and tests:** Read
-  [error-handling.md](../service-common/docs/error-handling.md) when changing
-  error flows or custom exceptions. Read
-  [testing-patterns.md](../service-common/docs/testing-patterns.md) when writing
-  or modifying tests.
+- **Errors:** Read [error-handling.md](../service-common/docs/error-handling.md)
+  when changing error flows or custom exceptions.
+- **Tests:** Test pure logic with real objects and application behavior with
+  real Spring beans. Do not mock or spy application-owned Spring beans. Before
+  writing or modifying tests, read
+  [testing-patterns.md](../service-common/docs/testing-patterns.md).
 - **Build and dependencies:** Read `build.gradle.kts`, `settings.gradle.kts`,
   `gradle/libs.versions.toml`, and
   `gradle/wrapper/gradle-wrapper.properties` before changing the toolchain,

@@ -1,12 +1,11 @@
 package org.budgetanalyzer.transaction.service.extractor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -20,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.service.BudgetAnalyzerError;
 import org.budgetanalyzer.transaction.service.dto.ParserAttempt;
 import org.budgetanalyzer.transaction.service.dto.ParserAttemptStatus;
 import org.budgetanalyzer.transaction.service.dto.PdfTextTableFileType;
@@ -54,9 +54,8 @@ class ConfigurablePdfTextTableStatementExtractorTest {
   }
 
   @Test
-  void attemptParsesDebitCreditColumnsWithOnePdfTextExtraction() throws IOException {
-    var pdfTextExtractionService = spy(new PdfTextExtractionService());
-    var extractor = extractor(debitCreditConfig(), pdfTextExtractionService);
+  void attemptParsesDebitCreditColumnsWithRealPdfExtraction() throws IOException {
+    var extractor = extractor(debitCreditConfig());
     var pdfContent =
         pdfWithRows(
             List.of(
@@ -67,10 +66,16 @@ class ConfigurablePdfTextTableStatementExtractorTest {
     var transactions = matchedTransactions(extractor, pdfContent, "checking");
 
     assertThat(transactions).hasSize(2);
+    assertThat(transactions.getFirst().date()).isEqualTo(LocalDate.of(2025, 1, 2));
+    assertThat(transactions.getFirst().description()).isEqualTo("Coffee Shop");
+    assertThat(transactions.getFirst().amount()).isEqualByComparingTo(new BigDecimal("4.50"));
     assertThat(transactions.getFirst().type()).isEqualTo(TransactionType.DEBIT);
+    assertThat(transactions.getFirst().bankName()).isEqualTo("Example Bank");
+    assertThat(transactions.getFirst().currencyIsoCode()).isEqualTo("USD");
+    assertThat(transactions.getFirst().accountId()).isEqualTo("checking");
+    assertThat(transactions.get(1).amount()).isEqualByComparingTo(new BigDecimal("100.00"));
     assertThat(transactions.get(1).type()).isEqualTo(TransactionType.CREDIT);
     assertThat(extractor.getHandlerKey()).contains("pdf-text-table");
-    verify(pdfTextExtractionService, times(1)).extract(pdfContent, "statement.pdf");
   }
 
   @Test
@@ -185,7 +190,8 @@ class ConfigurablePdfTextTableStatementExtractorTest {
     var parserAttempt = attempt(extractor, pdfContent, "statement.pdf", "checking");
 
     assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.FAILED);
-    assertThat(parserAttempt.failure().getMessage()).contains("exactly one debit or credit amount");
+    assertThat(parserAttempt.failure().getCode())
+        .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name());
   }
 
   private ConfigurablePdfTextTableStatementExtractor extractor(
@@ -197,18 +203,6 @@ class ConfigurablePdfTextTableStatementExtractorTest {
     ReflectionTestUtils.setField(parserRevision, "id", 101L);
     return new ConfigurablePdfTextTableStatementExtractor(
         statementFormat, parserRevision, pdfTextTableParserConfig, new PdfTextExtractionService());
-  }
-
-  private ConfigurablePdfTextTableStatementExtractor extractor(
-      PdfTextTableParserConfig pdfTextTableParserConfig,
-      PdfTextExtractionService pdfTextExtractionService) {
-    var statementFormat =
-        StatementFormat.createSystemPdfFormat("Example PDF", "Example Bank", "USD");
-    ReflectionTestUtils.setField(statementFormat, "id", 42L);
-    var parserRevision = ParserRevision.createPdfTextTableConfig(statementFormat, 1, "{}");
-    ReflectionTestUtils.setField(parserRevision, "id", 101L);
-    return new ConfigurablePdfTextTableStatementExtractor(
-        statementFormat, parserRevision, pdfTextTableParserConfig, pdfTextExtractionService);
   }
 
   private ParserAttempt attempt(

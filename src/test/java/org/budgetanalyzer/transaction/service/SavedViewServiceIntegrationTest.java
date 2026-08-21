@@ -1,9 +1,11 @@
 package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -19,6 +21,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import org.budgetanalyzer.service.exception.ResourceNotFoundException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
@@ -26,6 +29,7 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
+import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
 
 @SpringBootTest
 @Testcontainers
@@ -62,6 +66,264 @@ class SavedViewServiceIntegrationTest {
   void cleanDatabase() {
     savedViewRepository.deleteAllInBatch();
     transactionRepository.deleteAllInBatch();
+  }
+
+  @Test
+  void createUpdateReadAndDeletePersistOwnedViewState() {
+    var initialCriteria =
+        new ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var created =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("December", initialCriteria, false));
+
+    var persisted = savedViewRepository.findById(created.getId()).orElseThrow();
+    assertThat(persisted.getUserId()).isEqualTo(USER_ID);
+    assertThat(persisted.getName()).isEqualTo("December");
+    assertThat(persisted.getCriteria().dateFrom()).isEqualTo(LocalDate.of(2024, 12, 1));
+    assertThat(persisted.isOpenEnded()).isFalse();
+    assertThat(savedViewService.getView(created.getId(), USER_ID).getId())
+        .isEqualTo(created.getId());
+    assertThatThrownBy(() -> savedViewService.getView(created.getId(), "other-user"))
+        .isInstanceOf(ResourceNotFoundException.class);
+
+    var updatedCriteria =
+        new ViewCriteria(
+            LocalDate.of(2025, 1, 1),
+            LocalDate.of(2025, 1, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            TransactionType.CREDIT,
+            null);
+    var updated =
+        savedViewService.updateView(
+            created.getId(), USER_ID, new SavedViewPatch("January credits", updatedCriteria, true));
+
+    assertThat(updated.getName()).isEqualTo("January credits");
+    assertThat(updated.getCriteria().type()).isEqualTo(TransactionType.CREDIT);
+    assertThat(updated.isOpenEnded()).isTrue();
+    var persistedUpdate = savedViewRepository.findById(created.getId()).orElseThrow();
+    assertThat(persistedUpdate.getName()).isEqualTo("January credits");
+    assertThat(persistedUpdate.getCriteria().dateFrom()).isEqualTo(LocalDate.of(2025, 1, 1));
+
+    savedViewService.deleteView(created.getId(), USER_ID);
+
+    assertThat(savedViewRepository.findById(created.getId())).isEmpty();
+  }
+
+  @Test
+  void pinAndExcludeAreMutuallyExclusiveAndPersisted() {
+    var transaction =
+        transactionRepository.save(
+            createTransaction(
+                "Pinned transaction", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Overrides", ViewCriteria.empty(), false));
+
+    savedViewService.excludeTransaction(view.getId(), USER_ID, transaction.getId());
+    var pinned = savedViewService.pinTransaction(view.getId(), USER_ID, transaction.getId());
+
+    assertThat(pinned.getPinnedIds()).containsExactly(transaction.getId());
+    assertThat(pinned.getExcludedIds()).isEmpty();
+
+    var excluded = savedViewService.excludeTransaction(view.getId(), USER_ID, transaction.getId());
+
+    assertThat(excluded.getExcludedIds()).containsExactly(transaction.getId());
+    assertThat(excluded.getPinnedIds()).isEmpty();
+    var persisted = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(persisted.getExcludedIds()).containsExactly(transaction.getId());
+
+    savedViewService.unexcludeTransaction(view.getId(), USER_ID, transaction.getId());
+    savedViewService.pinTransaction(view.getId(), USER_ID, transaction.getId());
+    savedViewService.unpinTransaction(view.getId(), USER_ID, transaction.getId());
+
+    var cleared = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(cleared.getPinnedIds()).isEmpty();
+    assertThat(cleared.getExcludedIds()).isEmpty();
+  }
+
+  @Test
+  void pinAndExcludeRejectMissingDeletedAndForeignTransactions() {
+    var deletedTransaction =
+        transactionRepository.save(
+            createTransaction("Deleted", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    transactionService.deleteTransaction(deletedTransaction.getId(), USER_ID, false);
+    var foreignTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Foreign", LocalDate.of(2024, 12, 15), TransactionType.DEBIT, "other-user"));
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Protected overrides", ViewCriteria.empty(), false));
+
+    assertThatThrownBy(
+            () ->
+                savedViewService.pinTransaction(view.getId(), USER_ID, deletedTransaction.getId()))
+        .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(
+            () ->
+                savedViewService.excludeTransaction(
+                    view.getId(), USER_ID, foreignTransaction.getId()))
+        .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(() -> savedViewService.pinTransaction(view.getId(), USER_ID, Long.MAX_VALUE))
+        .isInstanceOf(ResourceNotFoundException.class);
+
+    var persisted = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(persisted.getPinnedIds()).isEmpty();
+    assertThat(persisted.getExcludedIds()).isEmpty();
+  }
+
+  @Test
+  void resolveViewScopesAllMembershipTypesToActiveOwnerTransactions() {
+    var matchedPinned =
+        transactionRepository.save(
+            createTransaction("Matched pinned", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    var matchedExcluded =
+        transactionRepository.save(
+            createTransaction(
+                "Matched excluded", LocalDate.of(2024, 12, 16), TransactionType.DEBIT));
+    var outsideRangePinned =
+        transactionRepository.save(
+            createTransaction(
+                "Outside range pinned", LocalDate.of(2025, 1, 15), TransactionType.DEBIT));
+    var deletedPinned =
+        transactionRepository.save(
+            createTransaction("Deleted pinned", LocalDate.of(2025, 1, 16), TransactionType.DEBIT));
+    transactionService.deleteTransaction(deletedPinned.getId(), USER_ID, false);
+    var foreignPinned =
+        transactionRepository.save(
+            createTransaction(
+                "Foreign pinned", LocalDate.of(2025, 1, 17), TransactionType.DEBIT, "other-user"));
+    var criteria =
+        new ViewCriteria(
+            LocalDate.of(2024, 12, 1),
+            LocalDate.of(2024, 12, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var view =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Membership", criteria, false));
+    view.setPinnedIds(
+        new HashSet<>(
+            Set.of(
+                matchedPinned.getId(),
+                outsideRangePinned.getId(),
+                deletedPinned.getId(),
+                foreignPinned.getId())));
+    view.setExcludedIds(new HashSet<>(Set.of(matchedExcluded.getId(), foreignPinned.getId())));
+    savedViewRepository.save(view);
+
+    var resolution = savedViewService.resolveView(view);
+
+    assertThat(resolution.membership().matched()).containsExactly(matchedPinned.getId());
+    assertThat(resolution.membership().pinned()).containsExactly(outsideRangePinned.getId());
+    assertThat(resolution.membership().excluded()).containsExactly(matchedExcluded.getId());
+    assertThat(resolution.activePinnedCount()).isEqualTo(2);
+    assertThat(resolution.activeExcludedCount()).isEqualTo(1);
+    assertThat(resolution.transactionCount()).isEqualTo(2);
+    assertThat(savedViewService.countViewTransactions(view)).isEqualTo(2);
+  }
+
+  @Test
+  void bulkPinPersistsUniqueOwnedIdsAndReportsUnavailableIdsInRequestOrder() {
+    var firstTransaction =
+        transactionRepository.save(
+            createTransaction("First", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    var secondTransaction =
+        transactionRepository.save(
+            createTransaction("Second", LocalDate.of(2024, 12, 16), TransactionType.DEBIT));
+    var foreignTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Foreign", LocalDate.of(2024, 12, 17), TransactionType.DEBIT, "other-user"));
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Bulk pins", ViewCriteria.empty(), false));
+    savedViewService.bulkExcludeTransactions(
+        view.getId(), USER_ID, List.of(firstTransaction.getId(), secondTransaction.getId()));
+
+    var result =
+        savedViewService.bulkPinTransactions(
+            view.getId(),
+            USER_ID,
+            List.of(
+                firstTransaction.getId(),
+                firstTransaction.getId(),
+                secondTransaction.getId(),
+                foreignTransaction.getId(),
+                Long.MAX_VALUE));
+
+    assertThat(result.updatedCount()).isEqualTo(2);
+    assertThat(result.notFoundIds()).containsExactly(foreignTransaction.getId(), Long.MAX_VALUE);
+    var persisted = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(persisted.getPinnedIds())
+        .containsExactlyInAnyOrder(firstTransaction.getId(), secondTransaction.getId());
+    assertThat(persisted.getExcludedIds()).isEmpty();
+  }
+
+  @Test
+  void bulkExcludePersistsUniqueOwnedIdsAndReportsUnavailableIds() {
+    var ownedTransaction =
+        transactionRepository.save(
+            createTransaction("Owned", LocalDate.of(2024, 12, 15), TransactionType.DEBIT));
+    var foreignTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Foreign", LocalDate.of(2024, 12, 16), TransactionType.DEBIT, "other-user"));
+    var view =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Bulk exclusions", ViewCriteria.empty(), false));
+    savedViewService.bulkPinTransactions(view.getId(), USER_ID, List.of(ownedTransaction.getId()));
+
+    var result =
+        savedViewService.bulkExcludeTransactions(
+            view.getId(),
+            USER_ID,
+            List.of(
+                ownedTransaction.getId(),
+                ownedTransaction.getId(),
+                foreignTransaction.getId(),
+                Long.MAX_VALUE));
+
+    assertThat(result.updatedCount()).isEqualTo(1);
+    assertThat(result.notFoundIds()).containsExactly(foreignTransaction.getId(), Long.MAX_VALUE);
+    var persisted = savedViewRepository.findById(view.getId()).orElseThrow();
+    assertThat(persisted.getExcludedIds()).containsExactly(ownedTransaction.getId());
+    assertThat(persisted.getPinnedIds()).isEmpty();
+  }
+
+  @Test
+  void bulkUpdatesRejectMissingOrForeignView() {
+    var foreignView =
+        savedViewService.createView(
+            "other-user", new SavedViewCommand("Foreign view", ViewCriteria.empty(), false));
+
+    assertThatThrownBy(
+            () ->
+                savedViewService.bulkPinTransactions(
+                    foreignView.getId(), USER_ID, List.of(Long.MAX_VALUE)))
+        .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(
+            () ->
+                savedViewService.bulkExcludeTransactions(
+                    java.util.UUID.randomUUID(), USER_ID, List.of(Long.MAX_VALUE)))
+        .isInstanceOf(ResourceNotFoundException.class);
   }
 
   @Test
@@ -415,6 +677,15 @@ class SavedViewServiceIntegrationTest {
       String description, LocalDate date, TransactionType transactionType) {
     return createTransaction(
         description, date, transactionType, "checking-12345", "Capital One", "USD");
+  }
+
+  private Transaction createTransaction(
+      String description, LocalDate date, TransactionType transactionType, String ownerId) {
+    var transaction =
+        createTransaction(
+            description, date, transactionType, "checking-12345", "Capital One", "USD");
+    transaction.setOwnerId(ownerId);
+    return transaction;
   }
 
   private Transaction createTransaction(

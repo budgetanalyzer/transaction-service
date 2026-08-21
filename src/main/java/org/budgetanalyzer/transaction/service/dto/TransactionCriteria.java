@@ -137,6 +137,32 @@ public record TransactionCriteria(
   }
 
   /**
+   * Returns these criteria scoped to the supplied owner.
+   *
+   * @param ownerId the owner ID to apply
+   * @return criteria with the supplied owner and every other filter unchanged
+   */
+  public TransactionCriteria withOwnerId(String ownerId) {
+    return new TransactionCriteria(
+        id,
+        ownerId,
+        accountIds,
+        bankNames,
+        dateFrom,
+        dateTo,
+        currencyIsoCodes,
+        minAmount,
+        maxAmount,
+        type,
+        description,
+        searchText,
+        createdAfter,
+        createdBefore,
+        updatedAfter,
+        updatedBefore);
+  }
+
+  /**
    * Creates criteria from saved-view criteria scoped to an authenticated owner.
    *
    * <p>Saved views cannot supply owner IDs directly. The caller injects the authenticated owner ID
