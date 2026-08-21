@@ -420,6 +420,76 @@ class TransactionServiceIntegrationTest {
   }
 
   @Test
+  void batchImportTracksNormalizedDuplicateAcrossPersistedAndLaterFileRows() {
+    var date = LocalDate.of(2025, 11, 20);
+    var persistedTransaction =
+        transaction(previewTransaction(date, "STORE PAYMENT A-A-A", "100.00"));
+    transactionRepository.save(persistedTransaction);
+    var allowedDuplicate = previewTransaction(date, "store payment aaa", "100.00", true);
+    var laterDuplicate = previewTransaction(date, "STORE  PAYMENT AAA", "100.00");
+    var statementFormat = enabledStatementFormat();
+    var parserRevision = parserRevision(statementFormat);
+    var firstSource =
+        fileImportSource(
+            FIRST_CONTENT_HASH, "first.csv", statementFormat, parserRevision, ACCOUNT_ID);
+    var laterSource =
+        fileImportSource(
+            SECOND_CONTENT_HASH, "later.csv", statementFormat, parserRevision, ACCOUNT_ID);
+
+    var result =
+        transactionService.batchImport(
+            List.of(
+                new BatchImportFile(firstSource, List.of(allowedDuplicate)),
+                new BatchImportFile(laterSource, List.of(laterDuplicate))),
+            USER_ID);
+
+    assertThat(result.created()).isEqualTo(1);
+    assertThat(result.duplicatesSkipped()).isEqualTo(1);
+    assertThat(result.duplicatesImported()).isEqualTo(1);
+    assertThat(result.files())
+        .extracting(
+            fileResult -> fileResult.sourceFile(),
+            fileResult -> fileResult.createdTransactions().size(),
+            fileResult -> fileResult.duplicatesSkipped(),
+            fileResult -> fileResult.duplicatesImported())
+        .containsExactly(tuple("first.csv", 1, 0, 1), tuple("later.csv", 0, 1, 0));
+    assertThat(transactionRepository.findAll())
+        .extracting(Transaction::getDescription)
+        .containsExactlyInAnyOrder("STORE PAYMENT A-A-A", "store payment aaa");
+    assertThat(fileImportRepository.findAll())
+        .extracting(FileImport::getContentHash)
+        .containsExactly(FIRST_CONTENT_HASH);
+  }
+
+  @Test
+  void batchImportAggregatesBusinessDateErrorsBeforePersistence() {
+    var statementFormat = enabledStatementFormat();
+    var parserRevision = parserRevision(statementFormat);
+    var source =
+        fileImportSource(
+            FIRST_CONTENT_HASH, "invalid-dates.csv", statementFormat, parserRevision, ACCOUNT_ID);
+    var tooOld = previewTransaction(LocalDate.of(1999, 12, 31), "TOO OLD", "10.00");
+    var tooFarInFuture =
+        previewTransaction(LocalDate.now().plusDays(2), "TOO FAR IN FUTURE", "20.00");
+
+    assertThatThrownBy(
+            () ->
+                transactionService.batchImport(
+                    List.of(new BatchImportFile(source, List.of(tooOld, tooFarInFuture))), USER_ID))
+        .isInstanceOf(BatchValidationException.class)
+        .satisfies(
+            exception -> {
+              var batchValidationException = (BatchValidationException) exception;
+              assertThat(batchValidationException.getFieldErrors())
+                  .extracting(fieldError -> fieldError.getField())
+                  .containsExactly(
+                      "files[0].transactions[0].date", "files[0].transactions[1].date");
+            });
+    assertThat(transactionRepository.findAll()).isEmpty();
+    assertThat(fileImportRepository.findAll()).isEmpty();
+  }
+
+  @Test
   void bulkDeleteTransactions_duplicateInputIdsDeletesOnceAndReportsSecondAsNotFound() {
     var transaction = new Transaction();
     transaction.setAccountId("checking");
@@ -456,6 +526,20 @@ class TransactionServiceIntegrationTest {
         "Capital One",
         currencyIsoCode,
         "capital-one-credit");
+  }
+
+  private PreviewTransaction previewTransaction(
+      LocalDate date, String description, String amount, boolean allowDuplicate) {
+    return new PreviewTransaction(
+        date,
+        description,
+        new BigDecimal(amount),
+        TransactionType.DEBIT,
+        null,
+        "Capital One",
+        "USD",
+        "capital-one-credit",
+        allowDuplicate);
   }
 
   private BatchFileImportSource fileImportSource(String originalFilename) {

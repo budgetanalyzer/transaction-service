@@ -1,4 +1,10 @@
 spring:
+  data:
+    web:
+      pageable:
+        default-page-size: 50
+        max-page-size: 100
+
   datasource:
     url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa

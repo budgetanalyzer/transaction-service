@@ -199,8 +199,8 @@ public class TransactionService {
    * @return the count of matching transactions
    */
   public long countNotDeletedForUser(TransactionFilter filter, String userId) {
-    var spec = TransactionSpecifications.withCriteria(TransactionCriteria.fromFilter(filter));
-    spec = spec.and(TransactionSpecifications.byOwner(userId));
+    var criteria = TransactionCriteria.fromFilter(filter).withOwnerId(userId);
+    var spec = TransactionSpecifications.withCriteria(criteria);
     return transactionRepository.countNotDeleted(spec);
   }
 
