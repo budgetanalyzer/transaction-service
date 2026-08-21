@@ -19,10 +19,13 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
+import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 
 class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupport {
@@ -32,6 +35,8 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   private static final String SECOND_CONTENT_HASH =
       "2222222222222222222222222222222222222222222222222222222222222222";
 
+  @Autowired private FileImportRepository fileImportRepository;
+  @Autowired private ObjectMapper objectMapper;
   @Autowired private PreviewImportTokenService previewImportTokenService;
 
   @Test
@@ -101,6 +106,26 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   }
 
   @Test
+  void updatesAccountWhileRetainingDescriptionWhenDescriptionIsOmitted() throws Exception {
+    var transaction = persistTransaction(USER_ID, "Original Description");
+
+    mockMvc
+        .perform(
+            patch("/v1/transactions/{id}", transaction.getId())
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accountId\":\"savings-456\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(transaction.getId()))
+        .andExpect(jsonPath("$.description").value("Original Description"))
+        .andExpect(jsonPath("$.accountId").value("savings-456"));
+
+    var updated = transactionRepository.findById(transaction.getId()).orElseThrow();
+    assertThat(updated.getDescription()).isEqualTo("Original Description");
+    assertThat(updated.getAccountId()).isEqualTo("savings-456");
+  }
+
+  @Test
   void softDeletesTransactionThroughDeleteEndpoint() throws Exception {
     var transaction = persistTransaction(USER_ID, "Coffee Shop");
 
@@ -156,6 +181,26 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   }
 
   @Test
+  void bulkDeleteReportsMissingIdsWithoutChangingUnrelatedTransaction() throws Exception {
+    var unrelatedTransaction = persistTransaction(USER_ID, "Unrelated Purchase");
+    var missingId = unrelatedTransaction.getId() + 1000;
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/bulk-delete")
+                .with(deleteUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\":[%d]}".formatted(missingId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.deletedCount").value(0))
+        .andExpect(jsonPath("$.notFoundIds.length()").value(1))
+        .andExpect(jsonPath("$.notFoundIds[0]").value(missingId));
+
+    var persisted = transactionRepository.findById(unrelatedTransaction.getId()).orElseThrow();
+    assertThat(persisted.isDeleted()).isFalse();
+  }
+
+  @Test
   void previewReturnsOrderedFilesTokensAccountAndInBatchDuplicate() throws Exception {
     var parserRevision = persistCsvStatementFormat(USER_ID);
     var statementFormatId = parserRevision.getStatementFormat().getId();
@@ -195,6 +240,60 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
         .andExpect(jsonPath("$.files[0].transactions[0].duplicate").value(true))
         .andExpect(
             jsonPath("$.files[0].transactions[0].duplicateReason").value("EXISTING_TRANSACTION"));
+  }
+
+  @Test
+  void previewReportsPreviousImportMetadataAfterExactFileReupload() throws Exception {
+    var parserRevision = persistCsvStatementFormat(USER_ID);
+    var statementFormatId = parserRevision.getStatementFormat().getId();
+    var filename = "reupload.csv";
+    var accountId = "checking-123";
+
+    var firstPreviewResult =
+        mockMvc
+            .perform(
+                multipart("/v1/transactions/preview")
+                    .file(csvFile(filename, "2024-03-10", "Book Store", "8.25"))
+                    .param("statementFormatId", statementFormatId.toString())
+                    .param("accountId", accountId)
+                    .with(readUser()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.files[0].fileImport.alreadyImported").value(false))
+            .andReturn();
+    var firstPreviewJson =
+        objectMapper.readTree(firstPreviewResult.getResponse().getContentAsByteArray());
+    var previewImportToken = firstPreviewJson.at("/files/0/previewImportToken").asText();
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(exactReuploadBatchJson(previewImportToken, accountId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.created").value(1))
+        .andExpect(jsonPath("$.files[0].sourceFile").value(filename));
+
+    mockMvc
+        .perform(
+            multipart("/v1/transactions/preview")
+                .file(csvFile(filename, "2024-03-10", "Book Store", "8.25"))
+                .param("statementFormatId", statementFormatId.toString())
+                .param("accountId", accountId)
+                .with(readUser()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.files[0].fileImport.alreadyImported").value(true))
+        .andExpect(jsonPath("$.files[0].fileImport.warningCode").value("FILE_ALREADY_IMPORTED"))
+        .andExpect(
+            jsonPath("$.files[0].fileImport.previousImport.originalFilename").value(filename))
+        .andExpect(
+            jsonPath("$.files[0].fileImport.previousImport.statementFormatId")
+                .value(statementFormatId))
+        .andExpect(jsonPath("$.files[0].fileImport.previousImport.accountId").value(accountId))
+        .andExpect(jsonPath("$.files[0].fileImport.previousImport.transactionCount").value(1));
+
+    assertThat(transactionRepository.findAll()).singleElement();
+    assertThat(fileImportRepository.findAll()).singleElement();
   }
 
   @Test
@@ -372,6 +471,27 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   }
 
   @Test
+  void batchImportRejectsRealPreviewTokensWithDifferentAccounts() throws Exception {
+    var parserRevision = persistCsvStatementFormat(USER_ID);
+    var statementFormatId = parserRevision.getStatementFormat().getId();
+    var firstToken = previewToken("first.csv", statementFormatId, "checking-123");
+    var secondToken = previewToken("second.csv", statementFormatId, "savings-456");
+
+    mockMvc
+        .perform(
+            post("/v1/transactions/batch")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(emptyGroupedBatchJson(firstToken, secondToken)))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("BATCH_IMPORT_SOURCE_MISMATCH"));
+
+    assertThat(transactionRepository.findAll()).isEmpty();
+    assertThat(fileImportRepository.findAll()).isEmpty();
+  }
+
+  @Test
   void batchImportRejectsInvalidPreviewTokenThroughRealVerifier() throws Exception {
     mockMvc
         .perform(
@@ -519,6 +639,22 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
             .getBytes());
   }
 
+  private String previewToken(String filename, Long statementFormatId, String accountId)
+      throws Exception {
+    var previewResult =
+        mockMvc
+            .perform(
+                multipart("/v1/transactions/preview")
+                    .file(csvFile(filename, "2024-02-20", "Preview Purchase", "7.75"))
+                    .param("statementFormatId", statementFormatId.toString())
+                    .param("accountId", accountId)
+                    .with(readUser()))
+            .andExpect(status().isOk())
+            .andReturn();
+    var previewJson = objectMapper.readTree(previewResult.getResponse().getContentAsByteArray());
+    return previewJson.at("/files/0/previewImportToken").asText();
+  }
+
   private String createToken(
       String filename, String contentHash, ParserRevision parserRevision, String accountId) {
     return previewImportTokenService.createToken(
@@ -584,6 +720,26 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
         }
         """
         .formatted(token, description, allowDuplicate);
+  }
+
+  private String exactReuploadBatchJson(String token, String accountId) {
+    return """
+        {
+          "files": [{
+            "previewImportToken": "%s",
+            "transactions": [{
+              "date": "2024-03-10",
+              "description": "Book Store",
+              "amount": 8.25,
+              "type": "DEBIT",
+              "bankName": "Test Bank",
+              "currencyIsoCode": "USD",
+              "accountId": "%s"
+            }]
+          }]
+        }
+        """
+        .formatted(token, accountId);
   }
 
   private Transaction persistDetailedTransaction(

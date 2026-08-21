@@ -155,6 +155,57 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
   }
 
   @Test
+  void rejectsNonCsvFormatCreationWithoutPersistingFormatOrParserRevision() throws Exception {
+    var pdfCreateRequest =
+        createFormatJson("Example PDF", null)
+            .replace("\"formatType\": \"CSV\"", "\"formatType\": \"PDF\"");
+
+    mockMvc
+        .perform(
+            post("/v1/statement-formats")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(pdfCreateRequest))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'formatType')]").exists());
+
+    assertThat(statementFormatRepository.count()).isZero();
+    assertThat(parserRevisionRepository.count()).isZero();
+  }
+
+  @Test
+  void rejectsCsvCreationWithoutRequiredParserMappingFields() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/statement-formats")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "displayName": "Incomplete CSV",
+                      "formatType": "CSV",
+                      "bankName": "Example Bank",
+                      "defaultCurrencyIsoCode": "USD"
+                    }
+                    """))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors.length()").value(5))
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'dateHeader')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'dateFormat')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'descriptionHeader')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'creditHeader')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'debitHeader')]").exists());
+
+    assertThat(statementFormatRepository.count()).isZero();
+    assertThat(parserRevisionRepository.count()).isZero();
+  }
+
+  @Test
   void updatesPersistedFormatAndReturnsResponse() throws Exception {
     var parserRevision = persistCsvStatementFormat(USER_ID);
     var statementFormatId = parserRevision.getStatementFormat().getId();
@@ -182,6 +233,38 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
     var updated = statementFormatRepository.findById(statementFormatId).orElseThrow();
     assertThat(updated.getDisplayName()).isEqualTo("Updated CSV");
     assertThat(updated.isEnabled()).isFalse();
+  }
+
+  @Test
+  void rejectsBlankMetadataPatchWithoutChangingPersistedFormat() throws Exception {
+    var parserRevision = persistCsvStatementFormat(USER_ID);
+    var statementFormatId = parserRevision.getStatementFormat().getId();
+
+    mockMvc
+        .perform(
+            put("/v1/statement-formats/{id}", statementFormatId)
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "displayName": "",
+                      "bankName": "",
+                      "defaultCurrencyIsoCode": "   "
+                    }
+                    """))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'displayName')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'bankName')]").exists())
+        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'defaultCurrencyIsoCode')]").exists());
+
+    var persisted = statementFormatRepository.findById(statementFormatId).orElseThrow();
+    assertThat(persisted.getDisplayName()).isEqualTo("Test CSV");
+    assertThat(persisted.getBankName()).isEqualTo("Test Bank");
+    assertThat(persisted.getDefaultCurrencyIsoCode()).isEqualTo("USD");
+    assertThat(persisted.isEnabled()).isTrue();
   }
 
   @Test
