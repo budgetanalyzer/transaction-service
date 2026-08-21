@@ -9,22 +9,11 @@ import java.util.stream.StreamSupport;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.web.servlet.MockMvc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
-
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestClaimsSecurityConfig.class)
-class TransactionOpenApiIntegrationTest {
-
-  @Autowired private MockMvc mockMvc;
+class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport {
 
   @Autowired private ObjectMapper objectMapper;
 

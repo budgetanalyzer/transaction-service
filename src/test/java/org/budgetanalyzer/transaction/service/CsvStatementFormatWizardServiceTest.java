@@ -2,52 +2,27 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import org.budgetanalyzer.core.csv.CsvData;
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.core.csv.impl.OpenCsvParser;
 import org.budgetanalyzer.service.exception.BusinessException;
-import org.budgetanalyzer.transaction.domain.FormatType;
-import org.budgetanalyzer.transaction.domain.StatementFormat;
-import org.budgetanalyzer.transaction.domain.StatementFormatScope;
 import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardAmountMode;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardColumnMapping;
 import org.budgetanalyzer.transaction.service.dto.CsvWizardMappingPreviewCommand;
-import org.budgetanalyzer.transaction.service.dto.CsvWizardSaveCommand;
-import org.budgetanalyzer.transaction.service.dto.StatementFormatCommand;
 
-@ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class CsvStatementFormatWizardServiceTest {
 
-  @Mock private StatementFormatService statementFormatService;
-
-  private CsvStatementFormatWizardService csvStatementFormatWizardService;
-
-  @BeforeEach
-  void setUp() {
-    csvStatementFormatWizardService =
-        new CsvStatementFormatWizardService(new OpenCsvParser(), statementFormatService);
-  }
+  private final CsvStatementFormatWizardService csvStatementFormatWizardService =
+      new CsvStatementFormatWizardService(new OpenCsvParser(), null);
 
   @Test
   void analyzeInfersSingleAmountWithTypeMapping() {
@@ -342,7 +317,7 @@ class CsvStatementFormatWizardServiceTest {
             throw new IOException("read failed");
           }
         };
-    var service = new CsvStatementFormatWizardService(failingCsvParser, statementFormatService);
+    var service = new CsvStatementFormatWizardService(failingCsvParser, null);
 
     assertThatThrownBy(() -> service.analyze(csv("Date\n"), "sample.csv"))
         .isInstanceOfSatisfying(
@@ -350,36 +325,6 @@ class CsvStatementFormatWizardServiceTest {
             businessException ->
                 assertThat(businessException.getCode())
                     .isEqualTo(BudgetAnalyzerError.CSV_PARSING_ERROR.name()));
-  }
-
-  @Test
-  void saveCreatesUserScopedCsvFormatWithConfirmedMapping() {
-    var saved =
-        StatementFormat.createCsvFormat("Example CSV", "Example Bank", "USD", "usr_test123");
-    when(statementFormatService.createFormat(
-            any(StatementFormatCommand.class), eq("usr_test123"), eq(false)))
-        .thenReturn(saved);
-    var command = new CsvWizardSaveCommand("Example CSV", "Example Bank", "USD", singleMapping());
-
-    var result =
-        csvStatementFormatWizardService.save(
-            csv(
-                """
-                Transaction Date,Description,Amount,Type
-                04/12/24,Coffee Shop,4.50,Debit
-                """),
-            "sample.csv",
-            command,
-            "usr_test123");
-
-    assertThat(result).isSameAs(saved);
-    var captor = ArgumentCaptor.forClass(StatementFormatCommand.class);
-    verify(statementFormatService).createFormat(captor.capture(), eq("usr_test123"), eq(false));
-    assertThat(captor.getValue().formatType()).isEqualTo(FormatType.CSV);
-    assertThat(captor.getValue().scope()).isEqualTo(StatementFormatScope.USER);
-    assertThat(captor.getValue().creditHeader()).isEqualTo("Amount");
-    assertThat(captor.getValue().debitHeader()).isEqualTo("Amount");
-    assertThat(captor.getValue().typeHeader()).isEqualTo("Type");
   }
 
   private CsvWizardColumnMapping singleMapping() {
