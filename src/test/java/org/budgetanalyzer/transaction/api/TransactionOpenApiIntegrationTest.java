@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
@@ -97,6 +98,38 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         .isTrue();
     assertThat(openApiJsonNode.at("/components/schemas/AdminTransactionResponse").isMissingNode())
         .isTrue();
+  }
+
+  @Test
+  void savedViewSaveAsOpenApiDocumentsBoundedBackendOwnedContract() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+
+    var saveAsOperationJsonNode =
+        openApiJsonNode.at("/paths/~1v1~1views~1{sourceViewId}~1save-as/post");
+    assertThat(saveAsOperationJsonNode.isMissingNode()).isFalse();
+    assertThat(saveAsOperationJsonNode.path("description").asText())
+        .contains(
+            "complete target criteria",
+            "not a delta",
+            "unchanged source criteria",
+            "active source pins",
+            "changed filters",
+            "All stored source exclusions are copied",
+            "independent view",
+            "no ongoing relationship");
+
+    var requestSchemaJsonNode =
+        saveAsOperationJsonNode.at("/requestBody/content/application~1json/schema");
+    assertThat(requestSchemaJsonNode.path("$ref").asText())
+        .isEqualTo("#/components/schemas/CreateSavedViewRequest");
+    var createRequestSchemaJsonNode = resolveSchemaNode(openApiJsonNode, requestSchemaJsonNode);
+    assertThat(propertyNames(createRequestSchemaJsonNode))
+        .containsExactlyInAnyOrder("name", "criteria", "openEnded")
+        .doesNotContain("ids", "transactionIds", "pinnedIds", "excludedIds");
+
+    assertResponseSchema(saveAsOperationJsonNode, "201", "#/components/schemas/SavedViewResponse");
+    assertResponseSchema(saveAsOperationJsonNode, "400", "#/components/schemas/ApiErrorResponse");
+    assertResponseSchema(saveAsOperationJsonNode, "404", "#/components/schemas/ApiErrorResponse");
   }
 
   @Test
@@ -299,6 +332,21 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     return StreamSupport.stream(schemaJsonNode.path("required").spliterator(), false)
         .map(JsonNode::asText)
         .toList();
+  }
+
+  private List<String> propertyNames(JsonNode schemaJsonNode) {
+    var propertyNames = new ArrayList<String>();
+    schemaJsonNode.path("properties").fieldNames().forEachRemaining(propertyNames::add);
+    return propertyNames;
+  }
+
+  private void assertResponseSchema(
+      JsonNode operationJsonNode, String responseCode, String expectedSchemaReference) {
+    assertThat(
+            operationJsonNode
+                .at("/responses/" + responseCode + "/content/application~1json/schema/$ref")
+                .asText())
+        .isEqualTo(expectedSchemaReference);
   }
 
   private boolean schemaAllowsNull(JsonNode schemaJsonNode) {

@@ -1,6 +1,7 @@
 package org.budgetanalyzer.transaction.repository.spec;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -143,6 +144,17 @@ public class TransactionSpecifications {
   public static Specification<Transaction> byOwner(String ownerId) {
     Objects.requireNonNull(ownerId, "ownerId must not be null");
     return (root, query, cb) -> cb.equal(root.get("ownerId"), ownerId);
+  }
+
+  /**
+   * Creates a specification that filters transactions by ID.
+   *
+   * @param ids the transaction IDs to filter by
+   * @return a specification matching transactions with one of the given IDs
+   */
+  public static Specification<Transaction> byIds(Collection<Long> ids) {
+    Objects.requireNonNull(ids, "ids");
+    return (root, query, cb) -> root.get("id").in(ids);
   }
 
   /**

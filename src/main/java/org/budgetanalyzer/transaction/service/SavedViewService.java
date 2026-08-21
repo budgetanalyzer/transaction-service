@@ -1,5 +1,6 @@
 package org.budgetanalyzer.transaction.service;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -63,6 +64,54 @@ public class SavedViewService {
     view.setOpenEnded(command.openEnded());
 
     return savedViewRepository.save(view);
+  }
+
+  /**
+   * Creates an independent saved view from an existing owner-scoped view.
+   *
+   * <p>Only active source pins owned by the authenticated user and visible under changed target
+   * constraints are retained. Every stored source exclusion is copied unchanged.
+   *
+   * @param sourceViewId the source saved-view ID
+   * @param userId the authenticated user ID
+   * @param targetCommand the complete target saved-view definition
+   * @return the created target saved view
+   */
+  @Transactional
+  public SavedView saveViewAs(UUID sourceViewId, String userId, SavedViewCommand targetCommand) {
+    var sourceView = getView(sourceViewId, userId);
+    var evaluationDate = LocalDate.now();
+    var changedConstraints =
+        ViewCriteriaReconciler.changedConstraints(
+            sourceView.getCriteria(),
+            sourceView.isOpenEnded(),
+            targetCommand.criteria(),
+            targetCommand.openEnded(),
+            evaluationDate);
+    var transactionCriteria =
+        TransactionCriteria.fromViewCriteria(changedConstraints, userId, false);
+    var retainedPinnedIds = new HashSet<Long>();
+
+    if (!sourceView.getPinnedIds().isEmpty()) {
+      var retainedPinSpecification =
+          TransactionSpecifications.withCriteria(transactionCriteria)
+              .and(TransactionSpecifications.byIds(sourceView.getPinnedIds()));
+      var retainedPinnedTransactions =
+          transactionRepository.findAllNotDeleted(retainedPinSpecification);
+      for (var retainedPinnedTransaction : retainedPinnedTransactions) {
+        retainedPinnedIds.add(retainedPinnedTransaction.getId());
+      }
+    }
+
+    var targetView = new SavedView();
+    targetView.setUserId(userId);
+    targetView.setName(targetCommand.name());
+    targetView.setCriteria(targetCommand.criteria());
+    targetView.setOpenEnded(targetCommand.openEnded());
+    targetView.setPinnedIds(retainedPinnedIds);
+    targetView.setExcludedIds(new HashSet<>(sourceView.getExcludedIds()));
+
+    return savedViewRepository.save(targetView);
   }
 
   /**

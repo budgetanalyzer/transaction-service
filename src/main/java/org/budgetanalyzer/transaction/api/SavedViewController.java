@@ -95,6 +95,62 @@ public class SavedViewController {
     return ResponseEntity.created(location).body(toResponse(view));
   }
 
+  @PreAuthorize("hasAuthority('views:write')")
+  @Operation(
+      summary = "Save a saved view as a new view",
+      description =
+          "The request contains the complete target criteria and saved-view definition, not a "
+              + "delta. The backend does not combine the target criteria with source criteria "
+              + "for ordinary membership. Source pins continue to override unchanged source "
+              + "criteria; when effective filters change, the backend retains only active source "
+              + "pins that satisfy the changed filters. All stored source exclusions are copied. "
+              + "The target is an independent view with no ongoing relationship to the source.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "201",
+            description = "Independent saved view created",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = SavedViewResponse.class))),
+        @ApiResponse(
+            responseCode = "400",
+            description = "Invalid complete target definition",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class))),
+        @ApiResponse(
+            responseCode = "404",
+            description = "Source saved view not found for the current user",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
+      })
+  @PostMapping(
+      path = "/{sourceViewId}/save-as",
+      consumes = "application/json",
+      produces = "application/json")
+  public ResponseEntity<SavedViewResponse> saveViewAs(
+      @PathVariable("sourceViewId") UUID sourceViewId,
+      @Valid @RequestBody CreateSavedViewRequest request) {
+    var userId = getCurrentUserId();
+    log.info("Saving view {} as '{}' for user {}", sourceViewId, request.name(), userId);
+
+    var command =
+        new SavedViewCommand(request.name(), request.criteria().toDomain(), request.openEnded());
+    var view = savedViewService.saveViewAs(sourceViewId, userId, command);
+    var location =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/v1/views/{id}")
+            .buildAndExpand(view.getId())
+            .toUri();
+
+    return ResponseEntity.created(location).body(toResponse(view));
+  }
+
   @PreAuthorize("hasAuthority('views:read')")
   @Operation(
       summary = "List saved views",

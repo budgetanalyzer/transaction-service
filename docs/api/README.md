@@ -159,6 +159,38 @@ Response: SavedViewResponse (201 Created)
 Permission: views:write
 ```
 
+**Save Saved View As a New View**
+```
+POST /v1/views/{sourceViewId}/save-as
+Body:
+{
+  "name": "Coffee in 2024",
+  "criteria": {
+    "dateFrom": "2024-01-01",
+    "dateTo": "2024-12-31",
+    "accountIds": ["checking-1"],
+    "bankNames": ["Example Bank"],
+    "currencyIsoCodes": ["USD"],
+    "minAmount": 4.00,
+    "maxAmount": 25.00,
+    "type": "DEBIT",
+    "searchText": "coffee"
+  },
+  "openEnded": false
+}
+Response: SavedViewResponse (201 Created)
+Location: /v1/views/{newViewId}
+Permission: views:write
+```
+
+`criteria` is the complete target definition, not a delta. The backend does
+not combine it with source criteria for ordinary membership. The new view is
+independent, and the request never includes transaction, pin, or exclusion ID
+arrays, so its size is independent of view membership. See
+[Saved Views: Save As](../saved-views.md#save-as) for the canonical pin and
+exclusion reconciliation, owner and soft-delete handling, and dynamic
+membership semantics.
+
 **List Saved Views**
 ```
 GET /v1/views

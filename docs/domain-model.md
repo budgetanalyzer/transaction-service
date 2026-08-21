@@ -142,6 +142,10 @@ excluded transaction overrides.
   authenticated user.
 - Pinning a transaction removes it from exclusions. Excluding a transaction
   removes it from pins.
+- Save As creates an independent view from a complete target definition. It
+  reconciles active owner-scoped source pins against changed filters, copies all
+  stored source exclusions, and keeps future criteria membership dynamic. It
+  creates no persistent relationship between the source and target views.
 - Membership semantics are documented in [Saved Views](saved-views.md).
 
 ### ViewCriteria

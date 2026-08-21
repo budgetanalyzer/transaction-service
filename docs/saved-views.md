@@ -86,6 +86,63 @@ Both endpoints return `200 OK` for full or partial success, return `400 Bad
 Request` for null or empty ID lists, and return `404 Not Found` only when the
 saved view itself does not exist for the authenticated user.
 
+## Save As
+
+`POST /v1/views/{sourceViewId}/save-as` creates a new, independent saved view.
+The request uses the same `name`, `criteria`, and `openEnded` shape as create.
+Those values are the complete target definition, not a patch or delta:
+
+```text
+target criteria = request criteria
+target open-ended setting = request open-ended setting
+```
+
+The service does not merge ordinary membership criteria from the source. It
+uses the source only to reconcile the persisted pin and exclusion overrides.
+For reconciliation, effective criteria include the current date as `dateTo`
+when a view is open-ended and has no explicit upper bound. The service captures
+that evaluation date once during the operation.
+
+Let `changedFilters` contain each field whose effective source and target
+values differ. Pin reconciliation is:
+
+```text
+target pinned IDs = active owner-scoped source pinned IDs
+                    that match the target values of changedFilters
+target excluded IDs = all stored source excluded IDs
+```
+
+The changed-filter rules preserve pin override intent without turning the
+operation into a full criteria match:
+
+- An unchanged filter is not reapplied to source pins. With no changed filters,
+  every active source pin owned by the authenticated user is copied, including
+  a pin outside the unchanged criteria.
+- An added or replaced target filter is applied to source pins. Only source
+  pins matching that changed target filter are copied.
+- A filter removed from the target adds no constraint. It does not reapply the
+  old source value.
+- Set and text filters use their effective query semantics when deciding
+  whether they changed, including case-insensitive, order-independent OR terms.
+  Numerically equal amount values are also unchanged.
+
+Pins are never created from arbitrary matching transactions. A stored source
+pin is copied only when it identifies an active transaction owned by the
+authenticated user and passes the changed filters. Missing, soft-deleted, and
+foreign-owner source pins are omitted.
+
+Every raw source exclusion ID is copied, including currently irrelevant,
+missing, soft-deleted, or foreign-owner IDs. Normal membership resolution still
+counts and applies only active owner-scoped exclusions. Keeping the complete
+stored exclusion set preserves its veto if the target criteria are broadened
+later.
+
+Save As snapshots the submitted definition and reconciled curation state, not
+transaction membership. Transactions that match the target criteria after the
+operation enter the view normally. The target has its own ID and no persistent
+source-view relationship, lineage field, or later synchronization with the
+source.
+
 ## Membership Response
 
 `GET /v1/views/{id}/transactions` returns transaction IDs grouped by membership

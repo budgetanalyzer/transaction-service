@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -120,6 +121,236 @@ class SavedViewServiceIntegrationTest {
     savedViewService.deleteView(created.getId(), USER_ID);
 
     assertThat(savedViewRepository.findById(created.getId())).isEmpty();
+  }
+
+  @Test
+  void saveViewAsRetainsOnlySourcePinsMatchingChangedTextFilter() {
+    var sourceCriteria =
+        new ViewCriteria(
+            LocalDate.of(2025, 1, 1),
+            LocalDate.of(2025, 1, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    var retainedPin =
+        transactionRepository.save(
+            createTransaction(
+                "Coffee pin outside criteria", LocalDate.of(2025, 2, 15), TransactionType.DEBIT));
+    var filteredPin =
+        transactionRepository.save(
+            createTransaction(
+                "Groceries pin outside criteria",
+                LocalDate.of(2025, 2, 16),
+                TransactionType.DEBIT));
+    final var ordinaryMatchingTransaction =
+        transactionRepository.save(
+            createTransaction(
+                "Ordinary coffee outside criteria",
+                LocalDate.of(2025, 2, 17),
+                TransactionType.DEBIT));
+    var sourceView =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Source", sourceCriteria, false));
+    var sourcePinnedIds = new HashSet<>(Set.of(retainedPin.getId(), filteredPin.getId()));
+    sourceView.setPinnedIds(sourcePinnedIds);
+    savedViewRepository.save(sourceView);
+    var targetCriteria =
+        new ViewCriteria(
+            LocalDate.of(2025, 1, 1),
+            LocalDate.of(2025, 1, 31),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "coffee");
+    var targetCommand = new SavedViewCommand("January coffee", targetCriteria, false);
+
+    var targetView = savedViewService.saveViewAs(sourceView.getId(), USER_ID, targetCommand);
+    var persistedTarget = savedViewRepository.findById(targetView.getId()).orElseThrow();
+
+    assertThat(savedViewRepository.count()).isEqualTo(2);
+    assertThat(targetView.getId()).isNotEqualTo(sourceView.getId());
+    assertThat(targetView.getUserId()).isEqualTo(USER_ID);
+    assertThat(targetView.getName()).isEqualTo(targetCommand.name());
+    assertThat(targetView.getCriteria()).isEqualTo(targetCommand.criteria());
+    assertThat(targetView.isOpenEnded()).isEqualTo(targetCommand.openEnded());
+    assertThat(persistedTarget.getPinnedIds()).containsExactly(retainedPin.getId());
+    assertThat(persistedTarget.getPinnedIds())
+        .doesNotContain(filteredPin.getId(), ordinaryMatchingTransaction.getId());
+
+    var targetMembership = savedViewService.getViewTransactions(persistedTarget.getId(), USER_ID);
+    assertThat(targetMembership.pinned()).containsExactly(retainedPin.getId());
+    assertThat(targetMembership.matched()).doesNotContain(ordinaryMatchingTransaction.getId());
+
+    var persistedSource = savedViewRepository.findById(sourceView.getId()).orElseThrow();
+    assertThat(persistedSource.getName()).isEqualTo("Source");
+    assertThat(persistedSource.getCriteria()).isEqualTo(sourceCriteria);
+    assertThat(persistedSource.isOpenEnded()).isFalse();
+    assertThat(persistedSource.getPinnedIds()).containsExactlyInAnyOrderElementsOf(sourcePinnedIds);
+  }
+
+  @Test
+  void saveViewAsPreservesActivePinsAndEveryStoredExclusionWhenCriteriaAreUnchanged() {
+    var criteria =
+        new ViewCriteria(null, null, Set.of("checking-12345"), null, null, null, null, null, null);
+    var activePinInsideCriteria =
+        transactionRepository.save(
+            createTransaction(
+                "Active pin inside criteria", LocalDate.of(2025, 1, 15), TransactionType.DEBIT));
+    var activePinOutsideCriteria =
+        transactionRepository.save(
+            createTransaction(
+                "Active pin outside criteria",
+                LocalDate.of(2025, 1, 16),
+                TransactionType.DEBIT,
+                "savings-67890",
+                "Capital One",
+                "USD"));
+    var deletedPin =
+        transactionRepository.save(
+            createTransaction("Deleted pin", LocalDate.of(2025, 1, 17), TransactionType.DEBIT));
+    transactionService.deleteTransaction(deletedPin.getId(), USER_ID, false);
+    var foreignPin =
+        transactionRepository.save(
+            createTransaction(
+                "Foreign pin", LocalDate.of(2025, 1, 18), TransactionType.DEBIT, "other-user"));
+    var exclusionInsideCriteria =
+        transactionRepository.save(
+            createTransaction(
+                "Exclusion inside criteria", LocalDate.of(2025, 1, 19), TransactionType.DEBIT));
+    var exclusionOutsideCriteria =
+        transactionRepository.save(
+            createTransaction(
+                "Exclusion outside criteria",
+                LocalDate.of(2025, 1, 20),
+                TransactionType.DEBIT,
+                "savings-67890",
+                "Capital One",
+                "USD"));
+    var deletedExclusion =
+        transactionRepository.save(
+            createTransaction(
+                "Deleted historical exclusion", LocalDate.of(2025, 1, 21), TransactionType.DEBIT));
+    transactionService.deleteTransaction(deletedExclusion.getId(), USER_ID, false);
+    var sourceView =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Source", criteria, false));
+    var sourcePinnedIds =
+        new HashSet<>(
+            Set.of(
+                activePinInsideCriteria.getId(),
+                activePinOutsideCriteria.getId(),
+                deletedPin.getId(),
+                foreignPin.getId()));
+    var sourceExcludedIds =
+        new HashSet<>(
+            Set.of(
+                exclusionInsideCriteria.getId(),
+                exclusionOutsideCriteria.getId(),
+                deletedExclusion.getId(),
+                Long.MAX_VALUE));
+    sourceView.setPinnedIds(sourcePinnedIds);
+    sourceView.setExcludedIds(sourceExcludedIds);
+    savedViewRepository.save(sourceView);
+
+    var savedTargetView =
+        savedViewService.saveViewAs(
+            sourceView.getId(), USER_ID, new SavedViewCommand("Copy", criteria, false));
+
+    var persistedTarget = savedViewRepository.findById(savedTargetView.getId()).orElseThrow();
+    assertThat(persistedTarget.getPinnedIds())
+        .containsExactlyInAnyOrder(
+            activePinInsideCriteria.getId(), activePinOutsideCriteria.getId());
+    assertThat(persistedTarget.getPinnedIds())
+        .doesNotContain(deletedPin.getId(), foreignPin.getId());
+    assertThat(persistedTarget.getExcludedIds())
+        .containsExactlyInAnyOrderElementsOf(sourceExcludedIds);
+
+    var broadenedTarget =
+        savedViewService.updateView(
+            persistedTarget.getId(), USER_ID, new SavedViewPatch(null, ViewCriteria.empty(), null));
+    var broadenedMembership = savedViewService.resolveView(broadenedTarget).membership();
+    assertThat(broadenedMembership.excluded())
+        .containsExactlyInAnyOrder(
+            exclusionInsideCriteria.getId(), exclusionOutsideCriteria.getId());
+    assertThat(broadenedMembership.matched())
+        .doesNotContain(exclusionInsideCriteria.getId(), exclusionOutsideCriteria.getId());
+    assertThat(broadenedMembership.pinned()).doesNotContain(exclusionOutsideCriteria.getId());
+
+    var persistedSource = savedViewRepository.findById(sourceView.getId()).orElseThrow();
+    assertThat(persistedSource.getPinnedIds()).containsExactlyInAnyOrderElementsOf(sourcePinnedIds);
+    assertThat(persistedSource.getExcludedIds())
+        .containsExactlyInAnyOrderElementsOf(sourceExcludedIds);
+  }
+
+  @Test
+  void saveViewAsEnforcesChangedDateBoundsAndKeepsFutureMembershipDynamic() {
+    var evaluationDate = LocalDate.now();
+    var lowerBound = evaluationDate.minusDays(10);
+    var beforeLowerBound =
+        transactionRepository.save(
+            createTransaction(
+                "Before lower bound", lowerBound.minusDays(1), TransactionType.DEBIT));
+    var withinBounds =
+        transactionRepository.save(
+            createTransaction(
+                "Within changed bounds", lowerBound.plusDays(1), TransactionType.DEBIT));
+    var afterOpenEndedUpperBound =
+        transactionRepository.save(
+            createTransaction(
+                "After open-ended upper bound", evaluationDate.plusDays(2), TransactionType.DEBIT));
+    var sourceView =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Source", ViewCriteria.empty(), false));
+    sourceView.setPinnedIds(
+        new HashSet<>(
+            Set.of(
+                beforeLowerBound.getId(), withinBounds.getId(), afterOpenEndedUpperBound.getId())));
+    savedViewRepository.save(sourceView);
+    var targetCriteria =
+        new ViewCriteria(lowerBound, null, null, null, null, null, null, null, null);
+
+    var savedTargetView =
+        savedViewService.saveViewAs(
+            sourceView.getId(),
+            USER_ID,
+            new SavedViewCommand("Open-ended copy", targetCriteria, true));
+
+    var persistedTarget = savedViewRepository.findById(savedTargetView.getId()).orElseThrow();
+    assertThat(persistedTarget.getPinnedIds()).containsExactly(withinBounds.getId());
+
+    var laterMatchingTransaction =
+        transactionRepository.save(
+            createTransaction("Created after save-as", evaluationDate, TransactionType.DEBIT));
+    var membership = savedViewService.getViewTransactions(persistedTarget.getId(), USER_ID);
+
+    assertThat(membership.matched())
+        .containsExactlyInAnyOrder(withinBounds.getId(), laterMatchingTransaction.getId());
+    assertThat(membership.matched())
+        .doesNotContain(beforeLowerBound.getId(), afterOpenEndedUpperBound.getId());
+    assertThat(membership.pinned()).isEmpty();
+    assertThat(savedViewRepository.findById(persistedTarget.getId()).orElseThrow().getPinnedIds())
+        .containsExactly(withinBounds.getId());
+  }
+
+  @Test
+  void saveViewAsRejectsMissingAndForeignSourcesWithoutCreatingTargets() {
+    var foreignView =
+        savedViewService.createView(
+            "other-user", new SavedViewCommand("Foreign", ViewCriteria.empty(), false));
+    var targetCommand = new SavedViewCommand("Copy", ViewCriteria.empty(), false);
+
+    assertThatThrownBy(
+            () -> savedViewService.saveViewAs(foreignView.getId(), USER_ID, targetCommand))
+        .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(() -> savedViewService.saveViewAs(UUID.randomUUID(), USER_ID, targetCommand))
+        .isInstanceOf(ResourceNotFoundException.class);
+
+    assertThat(savedViewRepository.count()).isOne();
   }
 
   @Test
