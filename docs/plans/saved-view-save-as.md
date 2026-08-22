@@ -1,10 +1,11 @@
-# Backend-Owned Saved-View Save-As Plan
+# Backend-Owned Saved-View Create-From-Source Plan
 
-Add a transaction-service save-as operation that accepts the complete target view definition and
-derives membership changes entirely on the backend. The new view remains an independent, dynamic
-saved view with no source relationship: its ordinary membership uses the submitted target
-criteria, its pins are the active source pins that satisfy filters changed from the source
-definition, and all stored source exclusions are copied.
+Extend ordinary transaction-service saved-view creation with an optional `sourceViewId` query
+parameter. The request accepts the complete target view definition and derives initial pin and
+exclusion changes entirely on the backend. The new view remains an independent, dynamic saved view
+with no source relationship: its ordinary membership uses the submitted target criteria, its pins
+are the active source pins that satisfy filters changed from the source definition, and all stored
+source exclusions are copied. Omitting `sourceViewId` preserves ordinary creation behavior.
 
 Keep the implementation explicit and small. Reuse the existing create request and
 `SavedViewCommand`; add one pure criteria reconciler, one reusable transaction-ID specification,
@@ -145,7 +146,7 @@ tree.
 - No persistence, API, or membership behavior changes in this phase.
 - The clean format/build sequence passes.
 
-## Phase 2: Implement the Atomic Backend Save-As Operation
+## Phase 2: Implement the Atomic Backend Create-From-Source Operation
 
 ### Workspace
 
@@ -159,7 +160,7 @@ selecting retained pins and copying every stored exclusion.
 ### Scope
 
 - Add one transaction-ID specification that composes with existing transaction criteria.
-- Add one owner-scoped, transactional `SavedViewService.saveViewAs(...)` operation.
+- Add one owner-scoped, transactional `SavedViewService.createViewFromSource(...)` operation.
 - Reuse `SavedViewCommand` as the complete target definition.
 - Query active source pins through the existing saved-view filter semantics plus an ID constraint.
 - Copy all stored source exclusions and leave the source unchanged.
@@ -168,7 +169,7 @@ selecting retained pins and copying every stored exclusion.
 ### Non-goals
 
 - Adding an HTTP endpoint in this phase.
-- Adding a save-as-specific request or service command with duplicate fields.
+- Adding a create-from-source-specific request or service command with duplicate fields.
 - Asking the frontend to identify visible transactions or pins.
 - Persisting source lineage or static membership.
 - Adding a custom repository query, native SQL, cache, batching strategy, paging protocol, or
@@ -193,9 +194,10 @@ selecting retained pins and copying every stored exclusion.
 
 1. Add `TransactionSpecifications.byIds(Collection<Long> ids)` as a small composable
    specification using `root.get("id").in(ids)`. Require a non-null collection and document the
-   method; the save-as service will skip the transaction query for an empty source pin set, so do
-   not add a special query or premature empty-list optimization inside the specification.
-2. Add `SavedViewService.saveViewAs(UUID sourceViewId, String userId,
+   method; the create-from-source service will skip the transaction query for an empty source pin
+   set, so do not add a special query or premature empty-list optimization inside the
+   specification.
+2. Add `SavedViewService.createViewFromSource(UUID sourceViewId, String userId,
    SavedViewCommand targetCommand)` and mark it `@Transactional`. Load the source with the existing
    `getView(sourceViewId, userId)` method so missing and foreign-owned sources retain the same
    indistinguishable 404 behavior.
@@ -227,8 +229,8 @@ selecting retained pins and copying every stored exclusion.
 - Combining the changed-constraint specification with source pin IDs is intentionally direct. Do
   not load all pinned transactions and reimplement filtering in Java.
 - An empty changed-constraint object matches every active owner-scoped source pin. This gives an
-  unmodified save-as the expected full active-pin copy while still dropping soft-deleted or
-  foreign-owner historical pins.
+  unmodified source-assisted creation the expected full active-pin copy while still dropping
+  soft-deleted or foreign-owner historical pins.
 - Pins retain their override of unchanged source criteria. Only criteria whose effective target
   values changed can hide them.
 - Copy exclusions from the raw stored set. Hidden exclusions do not change initial membership but
@@ -245,9 +247,9 @@ Run the required repository sequence:
 ./gradlew clean build
 ```
 
-Confirm the save-as path contains one owner-scoped source lookup, at most one changed-filter pin
-query, and one target save. Verify no custom repository query, migration, or source-view field was
-added.
+Confirm the create-from-source path contains one owner-scoped source lookup, at most one
+changed-filter pin query, and one target save. Verify no custom repository query, migration, or
+source-view field was added.
 
 ### Completion criteria
 
@@ -256,13 +258,14 @@ added.
   merging.
 - Retained pins are selected by one database specification combining source IDs, ownership,
   active state, and reconciled changed filters.
-- No-change save-as copies every active source pin; changed filters omit pins that no longer match.
+- No-change source-assisted creation copies every active source pin; changed filters omit pins that
+  no longer match.
 - Every stored source exclusion is copied, including currently irrelevant and historical IDs.
 - Source state is unchanged and target override collections do not alias source collections.
 - Missing/foreign sources produce the existing 404 behavior without downstream work.
 - The clean format/build sequence passes.
 
-## Phase 3: Expose the Bounded Save-As API and OpenAPI Contract
+## Phase 3: Expose Source-Assisted Creation Through the Existing API
 
 ### Workspace
 
@@ -270,12 +273,13 @@ added.
 
 ### Goal
 
-Expose save-as through a bounded request containing only the complete target view definition and
-document that the backend owns all pin/exclusion reconciliation.
+Expose source-assisted creation through the existing bounded create request and document that the
+backend owns all pin/exclusion reconciliation when `sourceViewId` is supplied.
 
 ### Scope
 
-- Add `POST /v1/views/{sourceViewId}/save-as` to `SavedViewController`.
+- Add optional `sourceViewId` query-parameter handling to `POST /v1/views` in
+  `SavedViewController`.
 - Reuse `CreateSavedViewRequest` and `SavedViewResponse`.
 - Require `views:write`, return `201 Created`, and point `Location` to the new view.
 - Add controller authorization, mapping, validation, response, and error tests.
@@ -287,8 +291,9 @@ document that the backend owns all pin/exclusion reconciliation.
 - Adding a new request record identical to `CreateSavedViewRequest`.
 - Accepting partial criteria, criteria patches, refinement criteria, or backend merge instructions.
 - Exposing raw persisted override arrays in a response.
-- Adding a clone endpoint, new permission, new error code, or partial-success response.
-- Changing ordinary `POST /v1/views`.
+- Adding a child, clone, copy, variant, save-as, or other dedicated endpoint; a new permission; a
+  new error code; or a partial-success response.
+- Changing ordinary `POST /v1/views` behavior when `sourceViewId` is omitted.
 
 ### Required context
 
@@ -305,41 +310,46 @@ document that the backend owns all pin/exclusion reconciliation.
 
 ### Execution steps
 
-1. Add `POST /v1/views/{sourceViewId}/save-as`, accepting the existing validated
-   `CreateSavedViewRequest`. Guard it with `views:write`. Keep the controller thin: obtain the
-   authenticated user, convert the complete API criteria at the boundary, construct the existing
-   `SavedViewCommand`, call `saveViewAs(...)` once, and use the existing response mapping.
-2. Return `201 Created` with a `Location` ending in `/v1/views/{newViewId}`. Build the URI from the
-   application context path rather than appending to the `/save-as` request URI. Document 201, 400
-   validation, and owner-scoped 404 responses with existing response schemas.
+1. Extend the existing `POST /v1/views` operation with
+   `@RequestParam(name = "sourceViewId", required = false) UUID sourceViewId`, retaining the
+   existing validated `CreateSavedViewRequest` body and `views:write` guard. Keep the controller
+   thin: obtain the authenticated user, convert the complete API criteria at the boundary,
+   construct the existing `SavedViewCommand`, call `createView(...)` when the parameter is absent
+   or `createViewFromSource(...)` when it is present, and use the existing response mapping.
+2. Return `201 Created` in both modes with a `Location` ending in `/v1/views/{newViewId}` and
+   including the application context path. Document ordinary creation and source-assisted
+   creation on the same generated operation, including 201, malformed-UUID or body-validation
+   400, and owner-scoped 404 responses with existing response schemas.
 3. Write the OpenAPI operation description as a backend-owned contract: the request contains the
    complete target criteria; unchanged source criteria continue to be overridden by pins; changed
    effective filters are applied by the backend to active source pins; all stored exclusions are
    copied; and the target has no ongoing source relationship.
-4. Extend `SavedViewControllerAuthorizationTest` to cover exact request-to-command mapping, the
-   target `Location`, resolved response counts, unauthenticated 401, missing `views:write` 403,
-   successful write authorization, validation of the reused create request, and owner-scoped
-   service 404 mapping. Assert stable status/type/field paths rather than message text.
-5. Extend `TransactionOpenApiIntegrationTest` to prove the save-as path exists, its request body
-   references `CreateSavedViewRequest`, only name/criteria/open-ended target definition fields are
-   present, no membership-ID field is present, and 201/400/404 responses use the intended schemas.
-   Assert the operation description contains the selective-pin, all-exclusion, independent-view,
-   and complete-target-criteria rules.
-6. Update `docs/api/README.md` with the endpoint, permission, bounded request example, 201 response,
-   and concise backend reconciliation semantics. Explicitly state that `criteria` is the complete
-   target definition rather than a delta and that the backend does not combine it with source
-   criteria for ordinary membership.
+4. Extend `SavedViewControllerAuthorizationTest` to cover absent and valid `sourceViewId` modes,
+   exact request-to-command mapping, the top-level target `Location`, resolved response counts,
+   unauthenticated 401, missing `views:write` 403, successful write authorization, malformed UUID
+   and reused-request validation 400 responses, and owner-scoped service 404 mapping. Assert stable
+   status/type/field paths rather than message text.
+5. Extend `TransactionOpenApiIntegrationTest` to prove the single create operation documents the
+   optional UUID `sourceViewId` query parameter, references `CreateSavedViewRequest`, exposes only
+   name/criteria/open-ended target-definition fields, exposes no membership-ID field, and declares
+   the intended 201/400/404 responses. Assert the operation description covers ordinary creation,
+   selective pins, all exclusions, independent-view semantics, and complete target criteria.
+6. Update `docs/api/README.md` with both modes of `POST /v1/views`, the optional `sourceViewId`
+   parameter, permission, bounded request example, 201 response, and concise backend reconciliation
+   semantics. Explicitly state that `criteria` is the complete target definition rather than a
+   delta and that the backend does not combine it with source criteria for ordinary membership.
 
 ### Implementation notes
 
-- Reusing the create request is intentional because both endpoints accept exactly one complete
-  saved-view definition. Source override reconciliation is selected by the path, not by conditional
-  request fields.
+- Reusing the create request is intentional because both modes accept exactly one complete
+  saved-view definition. Source override reconciliation is selected by the optional query
+  parameter, not by conditional request fields.
 - `views:write` is consistent with existing pin/exclude operations. Ownership still comes from the
   security context and owner-scoped source lookup; never accept a user ID in the body.
 - The request size is independent of transaction count and pin/exclusion count.
-- The endpoint is save-as rather than clone because target criteria may differ and hidden pins are
-  intentionally omitted.
+- The operation is ordinary top-level creation, not a child, clone, copy, save-as, variant, or
+  lineage operation. The parameter supplies only the source view UUID used to initialize pins and
+  exclusions.
 - Keep using `SavedViewResponse`; its counts remain resolved active counts rather than raw stored
   array sizes.
 
@@ -357,16 +367,18 @@ is sufficient for the web repository to implement the workflow without inferring
 
 ### Completion criteria
 
-- Save-as accepts the existing bounded create request and calls the backend reconciliation path
-  exactly once.
+- `POST /v1/views` accepts the existing bounded create request and selects the ordinary or
+  source-assisted service operation exactly once according to whether `sourceViewId` is absent or
+  present.
 - It returns 201, a correct new-resource `Location`, and the standard saved-view response.
 - Authentication, `views:write`, owner-scoped 404, and request validation use existing conventions.
-- OpenAPI and `docs/api/README.md` state that criteria are complete, pin selection is backend-owned,
-  all exclusions are copied, and the target is independent.
+- OpenAPI and `docs/api/README.md` document both modes on the single create operation and state that
+  criteria are complete, pin selection is backend-owned, all exclusions are copied, and the target
+  is independent.
 - No membership IDs, duplicate request model, new permission, or new error type appear.
 - The clean format/build sequence passes.
 
-## Phase 4: Prove Persisted Behavior and Reconcile Saved-View Documentation
+## Phase 4: Prove Persisted Create-From-Source Behavior and Reconcile Documentation
 
 ### Workspace
 
@@ -374,9 +386,9 @@ is sufficient for the web repository to implement the workflow without inferring
 
 ### Goal
 
-Prove reconciliation and save-as behavior against PostgreSQL, document the durable semantics next
-to existing membership rules, and perform final repository-wide verification without broadening
-the architecture.
+Prove reconciliation and source-assisted creation behavior against PostgreSQL, document the
+durable semantics next to existing membership rules, and perform final repository-wide
+verification without broadening the architecture.
 
 ### Scope
 
@@ -384,7 +396,7 @@ the architecture.
   criteria types.
 - Prove no-change, selective-pin, all-exclusion, ownership, soft-delete, and future-broadening
   behavior.
-- Prove ordinary target criteria remain dynamic after save-as.
+- Prove ordinary target criteria remain dynamic after source-assisted creation.
 - Update canonical saved-view behavior documentation and audit related domain/schema text.
 - Run final formatting, static checks, tests, and build.
 
@@ -401,10 +413,11 @@ the architecture.
 - Confirm Phases 1 through 3 are complete and their clean builds pass.
 - Read `AGENTS.md`, `../service-common/docs/code-quality-standards.md`, and
   `../service-common/docs/testing-patterns.md` before changing Java tests.
-- Review `ViewCriteriaReconcilerTest`, the completed save-as service/API path,
+- Review `ViewCriteriaReconcilerTest`, the completed create-from-source service/API path,
   `SavedViewServiceIntegrationTest`, and its PostgreSQL/Testcontainers setup.
 - Re-read `docs/saved-views.md`, the SavedView section of `docs/domain-model.md`, the `saved_view`
-  section of `docs/database-schema.md`, and the save-as entry in `docs/api/README.md`.
+  section of `docs/database-schema.md`, and the create-from-source entry in
+  `docs/api/README.md`.
 - Confirm no implementation change is needed in service-common, permission-service, orchestration,
   or the web repository. Stop and report if that prerequisite assumption becomes false.
 
@@ -414,9 +427,9 @@ the architecture.
    criteria and whose target changes one representative set/text filter. Prove matching source pins
    are retained, nonmatching source pins are omitted, ordinary non-pin transactions cannot become
    pins, and the source row remains unchanged.
-2. Add a no-change save-as case proving every active source pin is copied even when those pins do
-   not match unchanged source criteria. Include a soft-deleted historical source pin and prove it
-   is not copied as an active target pin.
+2. Add a no-change create-from-source case proving every active source pin is copied even when
+   those pins do not match unchanged source criteria. Include a soft-deleted historical source pin
+   and prove it is not copied as an active target pin.
 3. Include source exclusions inside and outside the target criteria, plus a stored historical
    exclusion. Reload the target row and prove every raw exclusion ID was copied. Broaden the target
    criteria so the previously irrelevant active exclusion would otherwise match, then prove it
@@ -425,21 +438,22 @@ the architecture.
    prove the reconciled effective upper/lower bound is actually enforced by the composed JPA
    specification. Rely on Phase 1 unit tests for the remaining individual fields and equivalence
    cases.
-5. Insert a new transaction matching the target criteria after save-as and prove it enters target
+5. Insert a new transaction matching the target criteria after creation and prove it enters target
    membership normally. This establishes that the operation snapshots definition and curation,
    not immutable transaction membership.
-6. Update `docs/saved-views.md` with a Save As section containing the defining formulas, complete-
-   target request semantics, changed-filter rules for pins, all-stored-exclusion behavior,
+6. Update `docs/saved-views.md` with a Create From Source section containing the defining formulas,
+   complete-target request semantics, changed-filter rules for pins, all-stored-exclusion behavior,
    owner/soft-delete handling, dynamic future membership, and lack of a persistent source
    relationship.
-7. Update `docs/domain-model.md` only as needed to describe the save-as business rule without
-   claiming a new entity relationship. Audit `docs/database-schema.md` and leave it unchanged if
-   accurate; do not manufacture a migration or schema edit. Reconcile any duplicate wording in
-   `docs/api/README.md` with the canonical saved-view document.
+7. Update `docs/domain-model.md` only as needed to describe the create-from-source business rule
+   without claiming a new entity relationship. Audit `docs/database-schema.md` and leave it
+   unchanged if accurate; do not manufacture a migration or schema edit. Reconcile any duplicate
+   wording in `docs/api/README.md` with the canonical saved-view document.
 8. Audit changed Java for wildcard or Hibernate imports, explicit local types where `var` is
    appropriate, abbreviated fields, forbidden `*Dto` names, missing Javadoc periods, and new
    suppressions. Search affected code and docs for stale claims about client-submitted membership,
-   criteria merging, full cloning, parent-child relationships, or immutable snapshots.
+   criteria merging, save-as or variant terminology, full cloning, parent-child relationships, or
+   immutable snapshots.
 
 ### Implementation notes
 
@@ -449,8 +463,9 @@ the architecture.
 - Persisted-set assertions are required. Response-only checks could miss dropped irrelevant or
   historical exclusions because response counts include only active overrides.
 - The future-broadening exclusion case is the regression proving why all exclusions are copied.
-- Capture current date once inside save-as. Integration dates should avoid midnight-sensitive
-  assertions; deterministic boundary detail belongs in the reconciler's fixed-date unit tests.
+- Capture current date once inside source-assisted creation. Integration dates should avoid
+  midnight-sensitive assertions; deterministic boundary detail belongs in the reconciler's
+  fixed-date unit tests.
 - Do not add optimistic concurrency now. The service uses the owner-scoped source state read in its
   transaction and the submitted target definition. Address observed concurrent edits as a separate
   versioning feature.
@@ -469,14 +484,15 @@ Run the repository-required sequence and inspect all output for warnings and fai
 Then inspect the affected contract and documentation without using git write operations:
 
 ```bash
-rg -n "save-as|changedConstraints|changed filters|all stored.*exclusion|independent" \
+rg -n "create.from.source|source-assisted|changedConstraints|changed filters|all stored.*exclusion" \
   src/main/java src/test/java docs/api/README.md docs/saved-views.md docs/domain-model.md
 rg -n "visibleTransactionIds|visiblePinnedIds|parent|child|materialized|immutable membership" \
   src/main/java src/test/java docs/api/README.md docs/saved-views.md docs/domain-model.md
 ```
 
 Every second-search result must either be removed or explicitly describe a non-goal. Confirm there
-is no new Flyway migration, persistent source-view field, or save-as request model.
+is no new Flyway migration, persistent source-view field, dedicated create-from-source request
+model, or child creation path.
 
 ### Completion criteria
 
