@@ -438,3 +438,173 @@ This issue is resolved only when:
 8. Shared cross-repository fixtures and end-to-end cases prevent semantic drift.
 9. A dedicated mitigation plan is completed and the source-assisted creation plan is rewritten and
    reviewed against the corrected architecture.
+
+
+Another Agent reviewed:
+
+• ## Recommendation
+
+  Given the product decision that the browser loads the complete current-user dataset and saved views do not automatically absorb future transactions, I would replace dynamic saved views with static, curated transaction collections.
+
+  That is a domain-model change, not merely a filter-contract fix:
+
+  > A saved view is an unordered set of transaction identities chosen by the user. Membership changes only through explicit add/remove operations.
+
+  Under that definition, the issue’s proposed clause model, backend currency conversion, shared filter fixtures, openEnded, pins, exclusions, and source-view reconciliation are unnecessary. The issue’s diagnosis remains correct, but its recommended architecture
+  should be superseded.
+
+  The playlist analogy fits membership, cloning, and editing. I would not copy playlist ordering or duplicate-item behavior; transaction views should remain sets.
+
+  ## What the code confirms
+
+  The architecture is already mostly client-first:
+
+  - The self-scoped API returns every transaction in one response: src/main/java/org/budgetanalyzer/transaction/api/TransactionController.java:313.
+  - The web filters the complete array and gives the table the filtered result: /workspace/budget-analyzer-web/src/features/transactions/pages/TransactionsPage.tsx:78.
+  - The table uses client-side pagination and sorting: /workspace/budget-analyzer-web/src/features/transactions/components/TransactionTable.tsx:296.
+  - Cross-user administration is separately paginated and server-filtered. That is a sensible boundary.
+
+  The inconsistency appears only when transient browser state is serialized as a backend predicate. The web turns its current filters into ViewCriteriaApi /workspace/budget-analyzer-web/src/features/transactions/pages/TransactionsPage.tsx:109, while the backend
+  later reevaluates those criteria in src/main/java/org/budgetanalyzer/transaction/service/SavedViewService.java:317.
+
+  Static membership removes that translation boundary completely.
+
+  ## Proposed target architecture
+
+   Concern                                                     Authority
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━
+   Transient filtering, sorting, search, display conversion    Web application
+  ──────────────────────────────────────────────────────────  ─────────────────────
+   Dated exchange-rate facts and publication provenance        Currency Service
+  ──────────────────────────────────────────────────────────  ─────────────────────
+   Transaction truth, ownership, active/deleted state          Transaction Service
+  ──────────────────────────────────────────────────────────  ─────────────────────
+   Persisted saved-view membership                             Transaction Service
+  ──────────────────────────────────────────────────────────  ─────────────────────
+   Which visible results the user chooses to save              User/web request
+
+  Creation becomes conceptually:
+
+  {
+    "name": "Thailand trip",
+    "transactionIds": [101, 104, 109]
+  }
+
+  The backend should atomically:
+
+  1. Canonicalize the list as a set.
+  2. Confirm every ID is owned by the authenticated user.
+  3. Apply the chosen active/deleted rule.
+  4. Create the view and its membership.
+  5. Reject the complete operation if the client’s observed data has become unavailable. Partial creation would violate “save what I see.”
+
+  Important resulting behavior:
+
+  - Late imports do not enter an existing view, even when their dates would have matched the old criteria.
+  - Editing a transaction’s description, bank, account, or amount does not change membership.
+  - Soft-deleted members disappear from normal view reads, but their membership row can remain for historical intent.
+  - Saving a locally filtered source view simply submits filteredTransactions.map(id).
+  - Cloning an unfiltered view submits its current visible IDs.
+  - Empty views should probably be allowed, like empty collections.
+  - Add/remove APIs replace pin/exclude APIs. There is only membership, not “matched versus pinned.”
+
+  For persistence, use a relational membership table:
+
+  saved_view
+  saved_view_transaction(view_id, transaction_id, added_at)
+
+  with (view_id, transaction_id) as the primary key. Do not move 10,000 IDs into the existing JSON pinned_ids field. PostgreSQL’s own guidance says collections of identifiers belong in a separate table because arrays are not sets and scale/search better
+  relationally. The current entity stores criteria and ID sets as text columns src/main/java/org/budgetanalyzer/transaction/domain/SavedView.java:37, which would cause whole-row rewrites and poor concurrent-update behavior.
+
+  Use delta operations after creation—bulk add and bulk remove—rather than replacing all 10,000 IDs for every edit. A monotonically increasing view revision or strong ETag would protect multi-tab/device changes. HTTP If-Match is specifically intended to prevent
+  lost updates.
+
+  The frontend should also stop fetching missing view members individually. The current hook can fan out one GET per missing ID /workspace/budget-analyzer-web/src/hooks/useViews.ts:91. In the chosen architecture, it should wait for the canonical all-transactions
+  query, build one ID map, and intersect it with membership. A missing ID means deleted/stale membership, not “start thousands of requests.”
+
+  ## Currency amounts
+
+  One correction: amount filtering is not based on the selected display currency today. It compares Math.abs(transaction.amount) in the native currency /workspace/budget-analyzer-web/src/utils/transactionFilters.ts:53. Meanwhile, amount sorting explicitly derives
+  USD values /workspace/budget-analyzer-web/src/features/transactions/components/TransactionTable.tsx:95.
+
+  Sorting by USD is not equivalent to sorting by the selected display currency. For transaction-date conversions:
+
+  display amount = USD equivalent on transaction date
+                   × selected-currency rate on transaction date
+
+  The second factor varies by date, so two transactions can reverse order when the selected currency changes.
+
+  I would define one frontend DisplayAmount computation and make display, filtering, sorting, and statistics consume exactly that result:
+
+  - Convert the amount magnitude into the selected currency using the transaction date.
+  - Use Currency Service’s previous-published-rate policy for weekends and holidays. It already returns a dense daily series and exposes publishedDate: /workspace/currency-service/src/main/java/org/budgetanalyzer/currency/service/ExchangeRateService.java:163 and /
+    workspace/currency-service/src/main/java/org/budgetanalyzer/currency/api/response/ExchangeRateResponse.java:34.
+
+  - Quantize to the selected currency’s minor units before filtering if the intention is “filter what the user sees.”
+  - Use that same quantized value for sorting.
+  - Stable-sort equal amounts by date and ID.
+  - Treat conversion failure as unavailable, never as the original numeric amount in the target currency. The current fallback silently returns the native amount /workspace/budget-analyzer-web/src/utils/currency.ts:142, which is unsuitable for filtering, sorting,
+    or totals.
+
+  - Disable saving an amount-filtered view while required rates are loading or unavailable, or require explicit acknowledgement of excluded unavailable rows.
+
+  Changing display currency while an amount range is active also needs a decision. There is no single correct conversion of the bounds because every transaction uses a different date’s rate. My preference is:
+
+  - include amountCurrency in the URL contract; and
+  - clear the amount bounds with a brief notice when display currency changes.
+
+  Silently reinterpreting 100 USD as 100 EUR is surprising, while preserving the same matching set is mathematically impossible using one converted bound.
+
+  There is also an independent stored-amount invariant to settle. The domain documentation says amounts are positive and type carries debit/credit direction, but persistence and import validation do not consistently enforce positivity. I would enforce nonnegative
+  magnitude at every write boundary and in the database, then remove defensive Math.abs behavior after migrating existing negative data.
+
+  Finally, the rate loader currently fetches daily history from 2000 onward for every currency used by any transaction /workspace/budget-analyzer-web/src/hooks/useCurrencies.ts:120. At scale, rate data may cost more than the 10,000 transactions. Deriving the
+  actual transaction date range—or eventually adding a Currency Service batch endpoint for the distinct currency/date pairs—would preserve client-side conversion with less data.
+
+  ## What web guidance says about pagination
+
+  Yes, general API guidance says to paginate:
+
+  - Google AIP-158 (https://google.aip.dev/158) says arbitrary, growing collections should provide pagination from the outset.
+  - Spotify paginates playlist items (https://developer.spotify.com/documentation/web-api/reference/get-playlists-items), caps an add request at 100 items, and uses snapshot_id
+    (https://developer.spotify.com/documentation/web-api/concepts/playlists#version-control-and-snapshots) for concurrency.
+
+  - web.dev’s list virtualization guidance (https://web.dev/articles/virtualize-long-lists-react-window) emphasizes rendering only the visible subset.
+  - RFC 9110 If-Match (https://www.rfc-editor.org/rfc/rfc9110.html#name-if-match) describes conditional mutations for preventing lost updates.
+  - PostgreSQL collection guidance (https://www.postgresql.org/docs/current/arrays.html#ARRAYS-SEARCHING) recommends a separate membership table rather than identifier arrays.
+
+  But transport pagination and decision ownership are orthogonal. The frontend can still load every transaction and make every interactive decision locally while hydrating the cache through cursor-paged responses.
+
+  At 10,000 transactions, keeping the existing single response is defensible for now:
+
+  - production NGINX already compresses JSON;
+  - client pagination limits rendered DOM rows;
+  - the user scope is inherently bounded compared with cross-user search.
+
+  Memoization does not address network transfer, JSON parsing, browser memory, or rate-series volume, however. I would establish a supported envelope—perhaps 25,000 or 50,000 transactions—and measure cold-load payload size, parse time, memory, and filter/sort
+  latency on representative mobile hardware.
+
+  The natural later evolution is not backend filtering; it is a sync protocol:
+
+  initial cursor-paged hydration
+  + collection revision
+  + incremental updates
+  + soft-delete tombstones
+
+  That still leaves the complete active collection in the browser. Because changing the existing top-level array into a paginated envelope would be breaking, this should be a new endpoint/version when needed.
+
+  ## Disposition of the issue
+
+  I would split the current issue into four narrower decisions:
+
+  1. Replace dynamic saved views with static ID membership.
+  2. Define one frontend display-amount contract.
+  3. Clarify that backend administrative search uses native-currency amounts and cannot meaningfully sort mixed currencies as one economic amount.
+  4. Establish the supported all-transactions loading/synchronization envelope.
+
+  The existing source-assisted plan should be discarded, not repaired. “Create from source” becomes ordinary creation from the currently visible ID set, with no source lineage or pin reconciliation.
+
+  For existing views, exact historical reconstruction is impossible—the system did not retain the displayed result or display currency. The most honest migration is to freeze each view’s effective visible membership at cutover. That preserves what its unfiltered
+  detail page shows immediately before migration, though not necessarily what the user originally saw when creating it.
+
+  No files were changed during this review.
