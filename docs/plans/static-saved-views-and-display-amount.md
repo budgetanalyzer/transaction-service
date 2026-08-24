@@ -19,21 +19,34 @@ The target ownership model is:
 | Displayed, filtered, sorted, and aggregated converted amount | One web display-amount model |
 | Cross-user administrative filtering and paging | Transaction Service native-value search |
 
-The saved-view API is deliberately breaking. `POST /v1/views` accepts `name` and
-`transactionIds`; an empty membership is valid. Membership is an unordered set. The service
-canonicalizes duplicate IDs and rejects the complete create or add operation when any requested
-addition is not an active transaction owned by the caller. `PATCH /v1/views/{id}/transactions`
-applies disjoint `addTransactionIds` and `removeTransactionIds` sets atomically; removal is
-idempotent and may remove retained membership for a now-soft-deleted transaction. There is no
-criteria, `openEnded`, pin, exclusion, source lineage, or full-membership replacement operation.
-Delta mutation limits the multi-writer lost-update surface, so view revisions and `ETag`/
-`If-Match` are deferred until concurrent-edit evidence warrants that protocol.
+The saved-view API and persistence cutover are deliberately breaking. `POST /v1/views` accepts
+`name` and `transactionIds`; an empty membership is valid. Membership is an unordered set. The
+service canonicalizes duplicate IDs and rejects the complete create or add operation when any
+requested addition is not an active transaction owned by the caller.
+`PATCH /v1/views/{id}/transactions` applies disjoint `addTransactionIds` and
+`removeTransactionIds` sets atomically, and removal is idempotent. Single and bulk transaction
+soft deletion remove the affected membership rows in the same database transaction without
+changing any saved view's `updated_at`. There is no criteria, `openEnded`, pin, exclusion, source
+lineage, or full-membership replacement operation.
+Successful membership deltas return `204 No Content`; clients refresh membership and metadata
+caches rather than consuming a special delta-result model. Delta mutation limits the multi-writer
+lost-update surface, so view revisions and `ETag`/`If-Match` are deferred until concurrent-edit
+evidence warrants that protocol.
 
-Existing views are frozen at cutover as `(current backend criteria matches - exclusions) union
-pins`, restricted to active transactions owned by the view owner. This is the only membership the
-system can reconstruct. It preserves what the old backend would show immediately before cutover;
-it cannot reconstruct the browser-visible set, selected display currency, or rates used when the
-view was originally created.
+No existing saved view is migrated or interpreted. The cutover migration deletes every
+`saved_view` row before dropping `criteria`, `open_ended`, `pinned_ids`, and `excluded_ids`, then
+creates the minimal static membership table. Runtime code, tests, API models, and UI contain only
+the new architecture; there is no old/new discriminator or compatibility branch. Historical
+Flyway files remain immutable migration history, not supported runtime behavior.
+
+The membership-table invariant is that every stored association points to an active transaction.
+Create/add validation establishes it, and single/bulk transaction soft deletion removes affected
+associations atomically. Both workflows lock affected transaction rows in deterministic ID order
+so a concurrent add cannot commit after deletion cleanup. Membership ID and count queries therefore
+read the association table directly rather than joining `transaction` on `deleted = false`. The
+web still intersects member IDs with its active transaction snapshot to tolerate cache timing, not
+to enforce deletion semantics. Transaction-driven cleanup does not change saved-view audit
+timestamps.
 
 The web display-amount result is a discriminated value: either an available amount quantized once
 to the selected ISO currency's minor units, or an unavailable result with a reason. Conversion
@@ -62,11 +75,21 @@ reconsideration requires a new explicit product/architecture decision; none is c
 Bounding Currency Service rate requests is separate display-amount work. Enforcing positive stored
 transaction magnitudes is also an independent data migration and is not part of this plan.
 
-Phases 1 and 2 are one release unit: do not deploy the intermediate schema after Phase 1 without
-the Phase 2 cutover. Each phase otherwise leaves focused validation passing, and repository changes
-remain confined to the declared workspace.
+Administrative `minAmount` and `maxAmount` compare the stored numeric amount regardless of the
+row's currency. `currencyIsoCode` is already an independent exact search criterion. An amount-only
+query is valid and spans currencies without normalization; supplying both currency and amount
+criteria applies their conjunction and is the normal economically meaningful workflow. Native
+amount sorting likewise compares stored numeric values. The administrative UI remains independent
+of the global display-currency model and exposes currency as search criteria rather than a display
+currency selector.
 
-## Phase 1: Freeze Legacy Membership in a Relational Table
+The backend saved-view cutover is one deliberately larger phase. The destructive migration,
+domain/repository model, service behavior, HTTP contract, owner documentation, and affected tests
+must land together so the phase ends with the mandatory full build passing. Do not split that phase
+by staging old and new runtime models or by leaving a schema that the application cannot start
+against. Repository changes remain confined to each phase's declared workspace.
+
+## Phase 1: Atomically Cut Over the Static Saved-View Backend
 
 ### Workspace
 
@@ -74,71 +97,106 @@ remain confined to the declared workspace.
 
 ### Goal
 
-Add and verify a PostgreSQL migration that materializes each legacy dynamic saved view into an
-explicit relational membership set without yet changing application behavior.
+Replace the complete dynamic saved-view backend with one build-valid static-membership
+implementation and no compatibility path.
 
 ### Scope
 
-Create `saved_view_transaction(view_id, transaction_id, added_at)` with a composite primary key,
-foreign keys to `saved_view` and `transaction`, cascade only from view deletion, and indexes needed
-for membership lookup and active counting. Backfill the exact effective backend membership that
-exists at migration time. Add a PostgreSQL/Testcontainers migration test.
+Perform the destructive V22 schema change, replace the persistence/domain/service/API models,
+delete legacy code and tests, publish the breaking static routes, update the saved-view owner
+documents, and complete focused plus full backend validation in the same phase.
 
 ### Non-goals
 
-Changing the Java entity, repository, service, HTTP API, frontend behavior, or dropping the legacy
-saved-view columns. This intermediate migration is not independently deployable.
+Frontend behavior; preserving or reconstructing any existing view; rewriting historical Flyway
+files; criteria, open-ended, pin, or exclusion compatibility; membership order, provenance, or
+timestamps; full-set replacement; cross-user views; or optimistic HTTP revisions.
 
 ### Required context
 
-Read `AGENTS.md`, `docs/database-schema.md`, `docs/domain-model.md`, `docs/saved-views.md`, the full
-ordered `src/main/resources/db/migration/` history, `SavedView`, its converters,
-`TransactionCriteria.fromViewCriteria`, `TransactionSpecifications`, and the shared
-`../service-common/docs/code-quality-standards.md` and `testing-patterns.md` instructions before
-editing Java tests.
+Read `AGENTS.md`, `docs/api/README.md`, `docs/database-schema.md`, `docs/domain-model.md`,
+`docs/saved-views.md`, the Permission Service authorization model, the full ordered migration
+history, all saved-view domain/repository/service/controller/API models and tests, and the shared
+Spring conventions, code quality, error handling, and testing pattern documents required by
+`AGENTS.md`.
 
 ### Execution steps
 
-1. Add `V22__materialize_saved_view_membership.sql` and create the membership table with a
-   composite `(view_id, transaction_id)` primary key, `ON DELETE CASCADE` for the view FK, a normal
-   transaction FK so soft-deleted rows remain referentially valid, and an index beginning with
-   `transaction_id` for reverse lookup and deletion diagnostics.
-2. Backfill one deduplicated row for every active, owner-scoped effective member. Mirror the old
-   server semantics exactly: native stored amount comparisons; inclusive date bounds;
-   `CURRENT_DATE` for open-ended views without `dateTo`; case-insensitive description word-OR
-   substring search with escaped wildcard characters; account/bank substring sets; currency exact
-   sets; type matching; exclusions removed; and valid pins unioned back in.
-3. Use cutover time as `added_at` and add SQL comments that this timestamp records materialization,
-   not the historical moment the user selected a transaction. Retain the legacy criteria,
-   `open_ended`, `pinned_ids`, and `excluded_ids` columns for the next phase.
-4. Add a focused Flyway migration integration test that migrates a PostgreSQL container to V21,
-   inserts representative legacy views and transactions, applies V22, and verifies null versus
-   empty criteria collections, multiple search words, escaped `%`/`_`, native amounts, open-ended
-   dates, pins, exclusions, duplicate membership, soft deletion, and wrong-owner IDs.
-5. Update the migration inventory portion of `docs/database-schema.md` to mark the membership table
-   as staged for the static-view cutover; do not yet describe the application as static.
+1. Add `V22__replace_saved_views_with_static_membership.sql`. Make its first executable statement
+   `DELETE FROM saved_view;`, drop `criteria`, `open_ended`, `pinned_ids`, and `excluded_ids`, and
+   create `saved_view_transaction` with only non-null `view_id` and `transaction_id`, a composite
+   primary key, `ON DELETE CASCADE` from the view, and a normal transaction FK. Do not backfill or
+   add a timestamp, order, membership type, provenance, or legacy payload. Add an index beginning
+   with `transaction_id` for transaction soft-delete cleanup.
+2. Reduce `SavedView` to UUID, owner, name, and audit timestamps. Add a scalar composite-key
+   membership model/repository without a `SavedView` collection, with batch insertion, idempotent
+   bulk removal, deterministic member-ID reads, grouped counts, and set-based deletion by one or
+   many transaction IDs. Add active-owner transaction lookup operations that lock sorted unique
+   transaction rows for create/add validation and deletion. Membership reads and counts operate
+   directly on the association table; they must not join `transaction` merely to filter deleted
+   rows.
+3. Replace `SavedViewService` and its DTOs with atomic static create, name update, membership read,
+   count, add, and remove behavior. Canonicalize duplicate IDs; allow empty create; validate every
+   addition as active and owner-scoped before writing anything; make unknown removals a no-op;
+   reject overlapping add/remove sets; touch view `updated_at` on explicit membership deltas; and
+   use `422 APPLICATION_ERROR` code `SAVED_VIEW_MEMBERSHIP_STALE` without disclosing inaccessible
+   IDs. Update single and bulk `TransactionService` soft-delete paths to lock successfully resolved
+   transaction rows in the same deterministic order used by create/add, mark them deleted, and
+   delete their memberships in the same transaction without touching view timestamps.
+4. Replace the HTTP contract: create with `{ "name", "transactionIds" }`; list/get metadata with
+   active count; `PATCH /v1/views/{id}` for name only; active membership
+   `{ "transactionIds" }`; `PATCH /v1/views/{id}/transactions` with disjoint add/remove arrays and
+   `204 No Content`; and the existing delete route. Delete `PUT`, every pin/exclude route, all
+   legacy request/response/service/domain models and converters, and their old-only tests. Preserve
+   fine-grained `views:read`, `views:write`, and `views:delete` authorization and actor identity from
+   `SecurityContextUtil`.
+5. Add focused migration, repository, service, controller, authorization, validation, error, and
+   OpenAPI tests for the final architecture, including destructive row deletion, exact schema,
+   cascades, the reverse cleanup index, empty/duplicate/10,000-ID create, owner rules, transactional
+   membership cleanup for single and bulk soft delete, a concurrent add-versus-delete case proving
+   no dangling membership can commit, unchanged view timestamps during cleanup, idempotent removal,
+   grouped counts, `204` deltas, removed routes, and absence of legacy schemas.
+   Rewrite `docs/saved-views.md` and update `docs/api/README.md`, `docs/domain-model.md`, and
+   `docs/database-schema.md` in the same phase.
 
 ### Implementation notes
 
-Do not attempt to reproduce frontend filtering in this migration. The honest migration target is
-the old backend resolver because the original frontend result and display currency were never
-persisted. V16 deleted criteria serialized with the obsolete field names, so V22 only needs to
-interpret the active `dateFrom`/`dateTo` JSON shape. Keep the SQL set-based; do not load financial
-rows into application memory or log criteria or transaction contents.
+Keep the migration transactional so failed DDL rolls back the delete. Historical V4 and V16 remain
+unchanged for Flyway checksum integrity and clean database construction; they are not runtime
+compatibility. Avoid eager/lazy membership collections and legacy/new discriminators. The
+10,000-ID case verifies correctness rather than timing. Log only counts and view IDs, never
+financial contents or inaccessible requested IDs. Let `TransactionService` use the membership
+repository directly for deletion cleanup; do not introduce a `TransactionService` ->
+`SavedViewService` dependency or an event whose eventual consistency would weaken the invariant.
+Acquire transaction locks in sorted unique ID order on both membership-add and soft-delete paths to
+avoid deadlocks and close the validation-to-insert race. Use real transactional integration tests
+for the race; do not mock application services or repositories.
+This phase is intentionally larger than normal because no smaller destructive checkpoint can
+satisfy both the clean-cutover requirement and the repository's mandatory full-build gate.
 
 ### Validation
 
-Run the focused migration test with `./gradlew test --tests '*SavedViewMembershipMigrationTest'`.
-Run `git diff --check -- src/main/resources/db/migration docs/database-schema.md src/test` and
-inspect the V1-V22 ordering manually. Do not run the full build until the Java cutover is present.
+Run focused suites during iteration, including the schema migration, repository, service,
+controller, authorization, and OpenAPI tests. Then run:
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+git diff --check -- AGENTS.md README.md docs src
+rg -n 'openEnded|pinnedIds|excludedIds|ViewCriteria|/pin|/exclude' \
+  src/main/java src/test docs/api docs/saved-views.md docs/domain-model.md docs/database-schema.md
+```
+
+Inspect the complete build output for Checkstyle warnings and review every final search match as
+intentional historical text or remove it.
 
 ### Completion criteria
 
-V22 reproducibly freezes all tested legacy membership cases, retains legacy columns for the next
-phase, and the existing application can still ignore the new table. The phase is clearly marked as
-not deployable on its own.
+The latest schema, Java runtime, API, tests, and owner docs describe only static membership; V22
+deletes every old view; no legacy column, route, model, converter, test fixture, compatibility
+branch, or unused membership field remains; and the mandatory full backend build passes.
 
-## Phase 2: Cut Saved-View Persistence to Static Membership
+## Phase 2: Harden Static-Membership Persistence
 
 ### Workspace
 
@@ -146,63 +204,67 @@ not deployable on its own.
 
 ### Goal
 
-Make the persisted domain model represent saved-view metadata plus relational transaction
-membership, with no dynamic-filter state.
+Characterize and harden the final static-membership repository path after the atomic cutover.
 
 ### Scope
 
-Drop the staged legacy columns in V23, simplify `SavedView`, add a lightweight membership entity or
-repository model, and provide batch-safe repository operations for IDs and active counts.
+Review repository query shape, batch behavior, counts, transaction-delete cleanup, and relational
+constraints under realistic membership sizes; fix only issues found in the new architecture.
 
 ### Non-goals
 
-Implementing create/add/remove business rules, changing HTTP routes, frontend changes, or changing
-transaction soft-delete behavior.
+Restoring any legacy model, adding additional schema fields or indexes without a demonstrated
+query, changing HTTP routes, frontend work, transaction restore behavior, or adding timing-based
+performance gates.
 
 ### Required context
 
 Re-read `AGENTS.md`, `docs/domain-model.md`, `docs/database-schema.md`, V22 and its migration test,
-`SavedViewRepository`, `TransactionRepository`, and the shared Java architecture, quality, and test
-documents required by `AGENTS.md`.
+the final saved-view membership repositories, `TransactionRepository`, and the shared Java
+architecture, quality, and testing documents required by `AGENTS.md`.
 
 ### Execution steps
 
-1. Add `V23__remove_dynamic_saved_view_columns.sql` to drop `criteria`, `open_ended`, `pinned_ids`,
-   and `excluded_ids` only after V22 has materialized their effective membership.
-2. Reduce `SavedView` to ID, owner, name, and timestamps. Remove `ViewCriteria`, the saved-view JSON
-   converters, and pin/exclusion mutators when no remaining runtime use exists; preserve the
-   intentional API-bound `TransactionFilter` layering exception for administrative search.
-3. Model `saved_view_transaction` without placing a 10,000-row collection on `SavedView`. Prefer a
-   composite ID with scalar view and transaction identifiers plus `addedAt`, so ID queries do not
-   hydrate full `Transaction` entities.
-4. Add repository operations for deterministic active member IDs, total/active counts grouped by
-   owner-visible views, idempotent bulk delete by view and transaction IDs, and batch insertion.
-   Active reads must join to `transaction.deleted = false`; stored membership itself must retain
-   soft-deleted IDs.
-5. Extend repository and migration integration tests to prove final V23 schema shape, FK/cascade
-   behavior, duplicate rejection, owner-scoped view lookup, active-count behavior, and retained
-   membership after a transaction is soft-deleted.
+1. Inspect the final association mapping and queries for accidental `Transaction` hydration,
+   `SavedView` collections, per-view count queries, or repository/API layering crossings. Remove
+   any such issue without adding alternate legacy paths.
+2. Extend repository and service integration tests for deterministic member IDs, grouped counts,
+   duplicate membership rejection, view-delete cascade, transaction FK restriction, and set-based
+   membership cleanup during both single and bulk transaction soft deletion. Assert affected view
+   timestamps do not change. Add a real concurrent add-versus-delete test proving the row-locking
+   protocol leaves either an active member or a deleted transaction with no membership, never a
+   deleted transaction with a dangling membership.
+3. Characterize a 10,000-ID create through the final repository path. If the current JPA batching
+   is incorrect or exceeds a concrete database/driver limit, make the smallest batching fix and
+   keep transactionality; do not add a wall-clock assertion.
+4. Verify explicit membership removal is idempotent, transaction-driven cleanup uses the
+   `transaction_id` index, and list/count queries use the association table without a deleted-state
+   join. Verify all multi-ID lock acquisition uses sorted unique IDs. Add another index only if an
+   actual final query shape demonstrates the need.
+5. Update `docs/database-schema.md` or `docs/domain-model.md` if hardening changes the documented
+   final design, then run focused tests and the mandatory formatting/full-build sequence.
 
 ### Implementation notes
 
 Keep controllers free of persistence details and do not expose the association entity through API
-models. Avoid an eager or lazy `@OneToMany` collection on `SavedView`; both invite accidental
-hydration of the complete membership. Use the simplest JPA batching that handles the characterized
-10,000-ID create path before considering native insert SQL.
+models. The absence of `added_at` and a view-side collection is intentional. The reverse
+`transaction_id` index exists specifically for single/bulk soft-delete cleanup.
 
 ### Validation
 
 Run focused repository and migration tests, including
-`./gradlew test --tests '*SavedView*Repository*' --tests '*SavedViewMembershipMigrationTest'`.
-Run Spotless on changed Java files through the project task and inspect Checkstyle output from the
-focused test execution.
+`./gradlew test --tests '*SavedView*Repository*' --tests '*SavedViewSchemaMigrationTest'`.
+Then run `./gradlew clean spotlessApply` and `./gradlew clean build`; inspect all output for
+Checkstyle warnings.
 
 ### Completion criteria
 
-The latest schema has no dynamic saved-view columns, the Java domain has no dynamic saved-view
-state, and repository tests prove static membership storage without hydrating full transactions.
+The final static repository path is batch-correct at the characterized size, avoids accidental
+entity hydration, N+1 counts, and deleted-state joins, cleans membership transactionally on soft
+delete without changing view timestamps, prevents concurrent add/delete races, and passes the full
+build without speculative schema.
 
-## Phase 3: Implement Atomic Static-Membership Services
+## Phase 3: Harden Atomic Membership Semantics
 
 ### Workspace
 
@@ -210,68 +272,67 @@ state, and repository tests prove static membership storage without hydrating fu
 
 ### Goal
 
-Replace dynamic resolution, pins, and exclusions with owner-scoped create, read, count, add, and
-remove business operations over explicit membership.
+Audit and harden owner-scoped create, read, count, add, and remove semantics over the clean static
+model.
 
 ### Scope
 
-Refactor `SavedViewService` and its service-layer command/result models. Implement all-or-nothing
-validation for membership creation and additions, idempotent removals, efficient list counts, and
-soft-delete-aware reads.
+Exercise all-or-nothing validation, idempotency, stale-snapshot handling, count consistency, and
+transaction boundaries through focused service integration tests; fix only final-model defects.
 
 ### Non-goals
 
-Changing controller routes or API models, adding full-set replacement, source-view lineage,
-ordering, duplicate membership, optimistic HTTP revisions, or cross-user view operations.
+Changing controller routes or API models, reintroducing legacy concepts, adding full-set
+replacement, source-view lineage, ordering, optimistic HTTP revisions, or cross-user views.
 
 ### Required context
 
 Read `AGENTS.md`, the shared Spring conventions, code quality, error handling, and testing pattern
-documents, then inspect `SavedViewService`, `TransactionService`, the new membership repositories,
-and current service and integration tests. Preserve authentication-owner boundaries supplied by
-the controller.
+documents, then inspect the final `SavedViewService`, membership repositories, error contract, and
+service/integration tests. Preserve authentication-owner boundaries supplied by the controller.
 
 ### Execution steps
 
-1. Replace `SavedViewCommand` with a create command containing a name and transaction ID collection;
-   canonicalize it to an unordered set and allow an empty set.
-2. Make create transactional. Resolve all unique requested IDs through the existing active-owner
-   repository boundary and reject the complete operation with a non-leaking stale-snapshot conflict
-   when the counts differ; create neither the view nor partial membership on failure.
-3. Replace `resolveView`, criteria querying, and pin/exclusion methods with deterministic active-ID
-   reads, grouped active counts, name-only updates, and one transactional membership-delta method.
-   Require disjoint add/remove sets, validate every addition atomically, make unknown removals a
-   no-op, and update the view timestamp when membership changes.
-4. Ensure list/get responses can obtain active counts without one dynamic transaction query per
-   view. Keep persisted membership for soft-deleted transactions while excluding those IDs and
-   counts from normal reads.
-5. Rewrite service tests with real objects and Spring integration coverage where persistence
-   behavior matters. Cover empty create, duplicates, a 10,000-ID static-membership create, wrong
-   owner, deleted IDs, rollback on one invalid addition, idempotent removal, overlapping delta
-   rejection, and list-count query behavior. The large create case validates the new membership
-   request/persistence path; it is not a transaction-snapshot transport test.
+1. Verify create canonicalizes duplicate IDs, permits an empty set, and writes neither metadata nor
+   partial membership when any unique ID fails the active-owner check. Verify validation holds the
+   required transaction-row locks through membership insertion.
+2. Verify membership delta rejects overlap before persistence, validates the complete add set,
+   treats already-present additions and unknown removals idempotently, and rolls back additions and
+   removals together on failure.
+3. Verify wrong-owner, missing, and soft-deleted additions all produce the same non-leaking
+   `SAVED_VIEW_MEMBERSHIP_STALE` application error, while explicit removal operates only under an
+   owner-checked view and remains idempotent after transaction-driven cleanup.
+4. Verify explicit membership deltas touch the view timestamp only when the set changes, while
+   transaction soft-delete cleanup never touches view timestamps. Verify list/get counts use one
+   grouped association query rather than a query per view or a deleted-state join.
+5. Delete any obsolete service fixture discovered during the audit, update owner documentation if
+   a final semantic detail changes, and run focused plus mandatory full validation.
 
 ### Implementation notes
 
-Use `409 Conflict` for a syntactically valid create/add request based on a stale client snapshot and
-`400 Bad Request` for an invalid delta shape. Do not return which inaccessible IDs belong to other
-users. Membership removal only addresses rows under the already owner-checked view and therefore
-does not need to load or reactivate a transaction. Keep batch logs to counts and view IDs; never log
-financial row contents.
+Use the shared `BusinessException` path to return `422 APPLICATION_ERROR` with code
+`SAVED_VIEW_MEMBERSHIP_STALE` for a syntactically valid create/add request containing any ID that
+is not an active transaction owned by the caller. Use `400 Bad Request` for an invalid delta shape.
+Do not return which inaccessible IDs belong to other users. Explicit membership removal only
+addresses rows under the already owner-checked view and therefore does not need to load a
+transaction. Transaction-driven cleanup deletes associations by successfully soft-deleted IDs in
+the same transaction, uses the membership repository directly, and does not mutate `SavedView`.
+Both workflows acquire transaction locks in sorted unique ID order. Keep batch logs to counts and
+view IDs; never log financial row contents.
 
 ### Validation
 
 Run `./gradlew test --tests '*SavedViewServiceTest' --tests '*SavedViewServiceIntegrationTest'` and
-any focused repository tests changed in this phase. Run Spotless and fix all Checkstyle warnings
-shown by the focused suite.
+any focused repository tests changed in this phase. Then run `./gradlew clean spotlessApply` and
+`./gradlew clean build`; inspect all output and fix every Checkstyle warning.
 
 ### Completion criteria
 
-The service layer has no dynamic-filter path, all additions are owner-scoped and atomic, removals
-are idempotent, active counts are efficient, and the 10,000-member service case is correct without
-a timing assertion.
+The service layer has only static membership semantics, additions and deltas are owner-scoped and
+atomic, removals are idempotent, stale errors do not leak ownership, counts are consistent, and the
+full build passes.
 
-## Phase 4: Publish the Breaking Static Saved-View API
+## Phase 4: Lock the Breaking Static Saved-View API
 
 ### Workspace
 
@@ -279,13 +340,14 @@ a timing assertion.
 
 ### Goal
 
-Expose the static collection contract through validated, authorized HTTP operations and generated
-runtime OpenAPI.
+Lock the final static collection contract through exhaustive validated, authorized HTTP and
+runtime OpenAPI coverage.
 
 ### Scope
 
-Replace saved-view request/response models and routes, retain existing fine-grained permissions,
-and update controller authorization and OpenAPI integration tests.
+Audit the final request/response models and routes, close validation or authorization gaps, and
+harden controller authorization and OpenAPI integration tests without changing the chosen
+contract.
 
 ### Non-goals
 
@@ -300,44 +362,43 @@ authorization tests, and `TransactionOpenApiIntegrationTest`.
 
 ### Execution steps
 
-1. Change create to `POST /v1/views` with `{ "name": string, "transactionIds": number[] }` and
-   return `201`, `Location`, and a metadata response containing ID, name, active transaction count,
-   and timestamps. Validate a nonblank bounded name, a non-null ID list, positive non-null IDs, and
-   permit an empty list.
-2. Make update name-only. Replace the membership response with
-   `{ "transactionIds": number[] }`, sorted deterministically and containing active members only.
-   Remove criteria, open-ended, matched, pinned, excluded, and their counts from all response
-   schemas.
-3. Add `PATCH /v1/views/{id}/transactions` with non-null
-   `addTransactionIds`/`removeTransactionIds` arrays, at least one nonempty array, positive IDs, and
-   disjoint canonical sets. Return updated metadata or a compact delta result consistently; do not
-   add a full membership replacement operation.
-4. Delete all single and bulk pin/exclude routes. Keep `views:read`, `views:write`, and
-   `views:delete` method security at the same capability boundaries and source actor identity only
-   from `SecurityContextUtil`.
-5. Rewrite controller, authorization, validation, error-response, and OpenAPI tests to prove the
-   exact breaking schemas, 409 atomic stale-snapshot behavior, 404 owner isolation, removed routes,
-   and absence of dynamic fields from generated components.
+1. Verify `POST /v1/views` accepts `{ "name": string, "transactionIds": number[] }`, permits an
+   empty list, validates name and IDs, and returns `201`, `Location`, and exact metadata with active
+   transaction count.
+2. Verify `PATCH /v1/views/{id}` is name-only and `GET /v1/views/{id}/transactions` returns sorted
+   active `{ "transactionIds": number[] }`. Assert `PUT /v1/views/{id}` and all dynamic fields are
+   absent rather than deprecated.
+3. Verify `PATCH /v1/views/{id}/transactions` validates non-null, positive, disjoint add/remove
+   arrays with at least one nonempty set; returns `204 No Content`; and exposes no delta response or
+   full-membership replacement model.
+4. Audit every saved-view endpoint for `views:read`, `views:write`, or `views:delete` method
+   security, 404 owner isolation, and actor identity exclusively from `SecurityContextUtil`. Assert
+   every single/bulk pin/exclude route and record is absent.
+5. Expand controller, authorization, validation, error-response, method-not-allowed, and OpenAPI
+   tests for the exact breaking contract and `SAVED_VIEW_MEMBERSHIP_STALE`; delete any remaining
+   legacy-only fixture; then run focused and full backend validation.
 
 ### Implementation notes
 
 Do not place user identity in request bodies. The membership endpoint returns IDs rather than
 transaction objects because the browser already owns the complete self-scoped snapshot. Keep
-`PATCH` atomic and idempotent for repeated identical deltas. If an existing application error code
-is not suitable for stale membership, add the narrow service-owned error according to shared error
-handling and document it for the web client.
+`PATCH` atomic and idempotent for repeated identical deltas. Document
+`SAVED_VIEW_MEMBERSHIP_STALE` for the web client and do not add a service-local HTTP exception or
+exception handler.
 
 ### Validation
 
 Run focused controller, authorization, and OpenAPI suites, including
 `./gradlew test --tests '*SavedViewController*' --tests '*TransactionOpenApiIntegrationTest'`.
 Inspect the generated OpenAPI JSON assertions for removed pin/exclude paths and exact create/delta
-schemas.
+schemas. Then run `./gradlew clean spotlessApply` and `./gradlew clean build`; inspect all output
+for Checkstyle warnings.
 
 ### Completion criteria
 
 The runtime contract exposes only static membership, every application endpoint remains
-fine-grained-authorized, old dynamic routes are absent, and focused HTTP/OpenAPI tests pass.
+fine-grained-authorized, old dynamic routes are absent, focused HTTP/OpenAPI tests pass, and the
+full build remains clean.
 
 ## Phase 5: Document the Self Snapshot and Lock Native Admin Contracts
 
@@ -380,18 +441,24 @@ work already present in issue documents.
    performance tests. Keep `/v1/transactions/search` and `/search/count` documented as paged,
    permission-gated cross-user administration.
 2. Clarify controller/OpenAPI parameter and sort descriptions: administrative `minAmount`,
-   `maxAmount`, and `sort=amount,...` compare each row's stored numeric value in that row's native
-   currency. Mixed-currency ordering is numeric-unit ordering, not one economically comparable
-   amount; useful economic interpretation requires narrowing to one currency.
-3. Remove saved-view-only `ViewCriteriaApi`, `ViewCriteria`, converters, service DTOs, and
-   `TransactionCriteria.fromViewCriteria` after verifying they have no remaining callers. Keep JPA
-   Specifications and `TransactionFilter` for advanced administrative search.
-4. Rewrite `docs/saved-views.md` as the static collection owner document and update
+   `maxAmount`, and `sort=amount,...` compare each row's stored numeric value without currency
+   normalization. An amount-only query is valid across all currencies. `currencyIsoCode` is an
+   independent exact criterion, and combining it with amount bounds is the normal way to make the
+   numeric comparison currency-specific.
+3. Extend administrative specification/controller tests to prove amount-only search and count can
+   return numerically matching rows in different currencies, currency-only filtering still works,
+   currency plus amount uses conjunction, and amount sorting remains raw numeric ordering. These
+   are contract tests for existing behavior, not a backend behavior change.
+4. Verify repository-wide that saved-view-only `ViewCriteriaApi`, `ViewCriteria`, converters,
+   service DTOs, `TransactionCriteria.fromViewCriteria`, and their test cases are gone; delete any
+   remainder rather than retaining dead conversion fixtures. Keep JPA Specifications and
+   `TransactionFilter` for advanced administrative search.
+5. Rewrite `docs/saved-views.md` as the static collection owner document and update
    `docs/api/README.md`, `docs/domain-model.md`, and `docs/database-schema.md`. Add a resolution note
    to the divergence issue that preserves its diagnosis but supersedes its dynamic clause design.
    Remove the obsolete `docs/plans/saved-view-save-as.md` and mark the related source-plan review as
    superseded rather than rewriting it as current architecture.
-5. Run the mandatory backend formatting and full-build sequence and inspect all output for
+6. Run the mandatory backend formatting and full-build sequence and inspect all output for
    Checkstyle warnings. Fix documentation links and examples and confirm no service/repository
    import of a removed saved-view API model remains.
 
@@ -422,8 +489,8 @@ each match.
 ### Completion criteria
 
 The Transaction Service is fully build-clean on the static model, the unchanged complete self
-snapshot is explicit in owner docs, native admin amount changes are covered by their relevant
-tests/docs, and obsolete executable dynamic-view guidance is removed.
+snapshot is explicit in owner docs, native admin amount semantics are locked by relevant tests and
+documentation, and obsolete executable dynamic-view guidance is removed.
 
 ## Phase 6: Build the Display-Amount Primitive and Rate Input Contract
 
@@ -649,16 +716,17 @@ query keys, mocks, and their tests.
 ### Execution steps
 
 1. Replace criteria/open-ended/pin/exclusion types with static metadata, create `{name,
-   transactionIds}`, membership `{transactionIds}`, name update, and membership delta request/
-   result types matching the backend OpenAPI.
-2. Update `viewApi` for create, membership read, name update, and
+   transactionIds}`, membership `{transactionIds}`, name update, and membership delta request types
+   matching the backend OpenAPI. Do not model a body for the `204` delta response.
+2. Update `viewApi` for create, membership read, `PATCH` name update, and
    `PATCH /v1/views/{id}/transactions`; remove every pin/exclude adapter method.
 3. Refactor view hooks to wait for the canonical `['transactions']` snapshot, build one ID map, and
    intersect active membership locally. Delete the per-ID missing-member request fan-out; a missing
-   ID represents stale/soft-deleted membership and is not a fetch trigger.
+   ID represents transient cache skew between independently fetched server resources and is not a
+   fetch trigger. Persisted membership is cleaned when a transaction is soft-deleted.
 4. Implement mutation cache handling that invalidates or updates view metadata and membership
    together after a successful atomic operation, and refreshes both plus the transaction snapshot
-   after a stale-snapshot conflict.
+   after `SAVED_VIEW_MEMBERSHIP_STALE`.
 5. Rewrite API, hook, MSW handler, and query-cache tests for empty/large membership, deterministic
    intersections, stale IDs, atomic error handling, and zero individual transaction fetches.
 
@@ -723,8 +791,8 @@ Read `AGENTS.md`, owner docs for state/API/tests/hooks, `TransactionsPage`, `Vie
 ### Implementation notes
 
 The server revalidates active ownership because the browser snapshot can become stale between
-render and submit. On 409, refresh and explain that the visible set changed; do not retry with a
-silently reduced ID list.
+render and submit. On `422 SAVED_VIEW_MEMBERSHIP_STALE`, refresh and explain that the visible set
+changed; do not retry with a silently reduced ID list.
 
 ### Validation
 
@@ -773,8 +841,8 @@ Read the web owner docs and inspect `ViewPage`, `ViewTransactionTable`, `ViewCar
 3. Replace transfer/refund workflows that used exclusion as a hide operation with explicit member
    removal while preserving their existing discovery and confirmation behavior.
 4. Keep transaction soft delete as a separate transaction permission/action. A soft-deleted
-   member disappears because it is absent from the complete active snapshot, not because the UI
-   edits membership.
+   member disappears because the backend transactionally removes its membership and the complete
+   active snapshot omits the transaction, not because the UI sends a membership delta.
 5. Rewrite view card, settings, table, detail, restore-removal, and transfer/refund tests and remove
    dead components/types after repository-wide reference checks.
 
@@ -835,7 +903,8 @@ Phase 9.
    submission on `views:write`, identify existing members from the membership cache, and disable or
    clearly mark rows already in the target view.
 3. Submit selected IDs as one `addTransactionIds` delta, keep the user in place on validation or
-   conflict errors, and return to the view after success with refreshed membership and counts.
+   stale-membership errors, and return to the view after success with refreshed membership and
+   counts.
 4. Implement cancel and success cleanup for the target-view and return-location parameters so add
    mode cannot leak into later ordinary transaction navigation.
 5. Add permission, URL/deep-link, existing-member, filtered selection, success, stale-snapshot,
@@ -866,12 +935,13 @@ permissions.
 
 ### Goal
 
-Make the paged administrative search visibly distinct from the selected-currency user experience
+Make paged administrative search use the backend's raw amount and independent currency criteria,
 and document the complete-snapshot frontend architecture.
 
 ### Scope
 
-Update administrative amount labels/help and currency narrowing, revise web architecture/API/state
+Expose currency as administrative search criteria, explain raw mixed-currency amount semantics,
+keep display-currency controls out of the admin surface, revise web architecture/API/state
 documentation, and run focused UI validation before the generated API snapshot is refreshed.
 
 ### Non-goals
@@ -887,27 +957,30 @@ runtime OpenAPI descriptions from Phase 5.
 
 ### Execution steps
 
-1. Rename the admin column and range controls to “Native amount” and add concise help that each
-   value is in the row's displayed ISO currency. Explain that mixed-currency numeric sorting is not
-   an economic ranking.
-2. Expose the already-supported `currencyIsoCode` administrative filter in the filter panel and
-   retain it in URL state. When native amount bounds or amount sorting are active without a single
-   currency, show a nonblocking warning that narrowing currency makes the comparison meaningful.
-3. Keep the admin table server-paged and manual-sorted. Do not use the display-amount projection or
-   global selected currency on this cross-user surface.
-4. Update `docs/api-integration.md`, `docs/state-architecture.md`, and `docs/architecture.md` to state
-   that `GET /v1/transactions` is the complete active self snapshot held by TanStack Query; local
-   filtering/sorting/aggregates operate over it; table pagination is presentation only; view IDs
-   intersect that cache; and admin search remains a paged native-value exception.
-5. Update admin page/filter/table/URL tests and run repository-wide searches for documentation or
-   code that still describes user saved views as dynamic criteria.
+1. Keep the admin amount column and range controls tied to each row's stored amount and displayed
+   ISO currency. Add concise help that bounds and sorting compare raw numeric values without FX
+   normalization when the result contains multiple currencies.
+2. Expose the already-supported `currencyIsoCode` criterion in the filter panel and retain its
+   existing URL/request state. Place it with amount criteria so selecting currency plus an amount
+   range is the normal obvious workflow.
+3. Keep amount-only search valid and unblocked across currencies. Do not require a currency, clear
+   amount bounds when currency changes, or add conditional warnings and validation branches.
+4. Keep the admin table server-paged and manual-sorted. Do not add a display-currency selector or
+   use the display-amount projection/global selected currency on this cross-user surface.
+5. Update `docs/api-integration.md`, `docs/state-architecture.md`, and `docs/architecture.md` to
+   state that `GET /v1/transactions` is the complete active self snapshot held by TanStack Query;
+   local filtering/sorting/aggregates operate over it; table pagination is presentation only; view
+   IDs intersect that cache; and admin search remains a paged native-value exception.
+6. Update admin page/filter/table/URL tests for amount-only, currency-only, and combined searches,
+   then run repository-wide searches for documentation or code that still describes user saved
+   views as dynamic criteria.
 
 ### Implementation notes
 
-The admin warning clarifies semantics; it must not block valid forensic searches across currencies.
-Use “native numeric ordering” rather than implying the backend performs FX conversion. Document
-the 10,000-transaction observation as manual characterization only, and state that no transaction
-transport pagination or synchronization change is planned.
+Use “raw numeric ordering” or “stored amount” rather than implying the backend performs FX
+conversion. The separate admin layout already excludes the ordinary global currency selector;
+preserve that separation. Document the 10,000-transaction observation as manual characterization
+only, and state that no transaction transport pagination or synchronization change is planned.
 
 ### Validation
 
@@ -916,8 +989,9 @@ run `git diff --check -- AGENTS.md README.md docs src`.
 
 ### Completion criteria
 
-The admin UI cannot be mistaken for selected-currency economic sorting, and web owner docs clearly
-encode the complete-self-snapshot/static-membership architecture.
+The admin UI exposes currency as an optional search criterion, amount-only and combined searches
+match the backend contract without display-currency state, and web owner docs clearly encode the
+complete-self-snapshot/static-membership architecture.
 
 ## Phase 14: Regenerate the Orchestration-Owned Unified OpenAPI
 
