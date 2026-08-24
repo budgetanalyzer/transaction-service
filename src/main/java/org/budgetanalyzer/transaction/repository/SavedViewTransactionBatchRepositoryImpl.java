@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.repository;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.UUID;
 
@@ -23,26 +24,29 @@ public class SavedViewTransactionBatchRepositoryImpl
   }
 
   @Override
-  public void insertAll(UUID viewId, Collection<Long> transactionIds) {
+  public int insertAll(UUID viewId, Collection<Long> transactionIds) {
     var orderedTransactionIds = transactionIds.stream().sorted().toList();
     if (orderedTransactionIds.isEmpty()) {
-      return;
+      return 0;
     }
 
-    jdbcTemplate.batchUpdate(
-        INSERT_SQL,
-        new BatchPreparedStatementSetter() {
-          @Override
-          public void setValues(PreparedStatement preparedStatement, int index)
-              throws SQLException {
-            preparedStatement.setObject(1, viewId);
-            preparedStatement.setLong(2, orderedTransactionIds.get(index));
-          }
+    var updateCounts =
+        jdbcTemplate.batchUpdate(
+            INSERT_SQL,
+            new BatchPreparedStatementSetter() {
+              @Override
+              public void setValues(PreparedStatement preparedStatement, int index)
+                  throws SQLException {
+                preparedStatement.setObject(1, viewId);
+                preparedStatement.setLong(2, orderedTransactionIds.get(index));
+              }
 
-          @Override
-          public int getBatchSize() {
-            return orderedTransactionIds.size();
-          }
-        });
+              @Override
+              public int getBatchSize() {
+                return orderedTransactionIds.size();
+              }
+            });
+
+    return Arrays.stream(updateCounts).filter(updateCount -> updateCount > 0).sum();
   }
 }

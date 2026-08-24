@@ -124,6 +124,22 @@ class SavedViewTransactionRepositoryIntegrationTest {
 
   @Test
   @Transactional
+  void batchInsertReportsOnlyPersistedMembershipChanges() {
+    var transaction = transactionRepository.save(transaction("Idempotent"));
+    var savedView = savedViewRepository.saveAndFlush(savedView("Idempotent"));
+
+    assertThat(
+            savedViewTransactionRepository.insertAll(
+                savedView.getId(), List.of(transaction.getId(), transaction.getId())))
+        .isOne();
+    assertThat(
+            savedViewTransactionRepository.insertAll(
+                savedView.getId(), List.of(transaction.getId())))
+        .isZero();
+  }
+
+  @Test
+  @Transactional
   void viewDeleteCascadesMembershipRows() {
     var transaction = transactionRepository.save(transaction("Cascade"));
     var savedView = savedViewRepository.saveAndFlush(savedView("Cascade"));

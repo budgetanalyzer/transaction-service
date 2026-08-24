@@ -102,25 +102,32 @@ class SavedViewServiceIntegrationTest {
   }
 
   @Test
-  void createRejectsTheCompleteOperationWhenAnyMembershipIsUnavailable() {
+  void createRejectsMissingDeletedAndForeignMembershipWithoutPartialWrites() {
     var ownedTransaction = transactionRepository.save(transaction(USER_ID, "Owned"));
     var foreignTransaction = transactionRepository.save(transaction(OTHER_USER_ID, "Foreign"));
+    var deletedTransaction = transactionRepository.save(transaction(USER_ID, "Deleted"));
+    deletedTransaction.markDeleted(USER_ID);
+    transactionRepository.saveAndFlush(deletedTransaction);
 
-    assertThatThrownBy(
-            () ->
-                savedViewService.createView(
-                    USER_ID,
-                    new SavedViewCommand(
-                        "Rejected", List.of(ownedTransaction.getId(), foreignTransaction.getId()))))
-        .isInstanceOf(BusinessException.class)
-        .extracting(exception -> ((BusinessException) exception).getCode())
-        .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_STALE.name());
+    for (var unavailableTransactionId :
+        List.of(foreignTransaction.getId(), deletedTransaction.getId(), Long.MAX_VALUE)) {
+      assertThatThrownBy(
+              () ->
+                  savedViewService.createView(
+                      USER_ID,
+                      new SavedViewCommand(
+                          "Rejected", List.of(ownedTransaction.getId(), unavailableTransactionId))))
+          .isInstanceOf(BusinessException.class)
+          .extracting(exception -> ((BusinessException) exception).getCode())
+          .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_STALE.name());
+    }
+
     assertThat(savedViewRepository.findAll()).isEmpty();
     assertThat(savedViewTransactionRepository.findAll()).isEmpty();
   }
 
   @Test
-  void membershipDeltaIsAtomicIdempotentAndTouchesTheView() {
+  void membershipDeltaTouchesTimestampOnlyWhenPersistedMembershipChanges() {
     var firstTransaction = transactionRepository.save(transaction(USER_ID, "First"));
     var secondTransaction = transactionRepository.save(transaction(USER_ID, "Second"));
     var savedViewSummary =
@@ -143,21 +150,25 @@ class SavedViewServiceIntegrationTest {
     assertThat(savedViewRepository.findById(viewId).orElseThrow().getUpdatedAt())
         .isAfter(oldTimestamp);
 
+    setViewTimestamp(viewId, oldTimestamp);
     savedViewService.updateViewTransactions(
         viewId,
         USER_ID,
         new SavedViewMembershipDelta(List.of(secondTransaction.getId()), List.of(Long.MAX_VALUE)));
+
     assertThat(savedViewService.getView(viewId, USER_ID).transactionCount()).isEqualTo(1);
+    assertViewTimestamp(viewId, oldTimestamp);
   }
 
   @Test
-  void membershipDeltaRejectsOverlapAndStaleAddsWithoutChangingMembership() {
+  void membershipDeltaRejectsOverlapBeforeChangingMembership() {
     var transaction = transactionRepository.save(transaction(USER_ID, "Member"));
-    var foreignTransaction = transactionRepository.save(transaction(OTHER_USER_ID, "Foreign"));
     var savedViewSummary =
         savedViewService.createView(
             USER_ID, new SavedViewCommand("Protected", List.of(transaction.getId())));
     var viewId = savedViewSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(viewId, oldTimestamp);
 
     assertThatThrownBy(
             () ->
@@ -167,16 +178,46 @@ class SavedViewServiceIntegrationTest {
                     new SavedViewMembershipDelta(
                         List.of(transaction.getId()), List.of(transaction.getId()))))
         .isInstanceOf(InvalidRequestException.class);
-    assertThatThrownBy(
-            () ->
-                savedViewService.updateViewTransactions(
-                    viewId,
-                    USER_ID,
-                    new SavedViewMembershipDelta(
-                        List.of(foreignTransaction.getId()), List.of(transaction.getId()))))
-        .isInstanceOf(BusinessException.class);
+
     assertThat(savedViewService.getViewTransactions(viewId, USER_ID))
         .containsExactly(transaction.getId());
+    assertViewTimestamp(viewId, oldTimestamp);
+  }
+
+  @Test
+  void membershipDeltaRejectsCompleteAddSetForEveryStaleReason() {
+    var memberTransaction = transactionRepository.save(transaction(USER_ID, "Member"));
+    final var validAddition = transactionRepository.save(transaction(USER_ID, "Valid addition"));
+    final var foreignTransaction =
+        transactionRepository.save(transaction(OTHER_USER_ID, "Foreign"));
+    var deletedTransaction = transactionRepository.save(transaction(USER_ID, "Deleted"));
+    deletedTransaction.markDeleted(USER_ID);
+    transactionRepository.saveAndFlush(deletedTransaction);
+    var savedViewSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Protected", List.of(memberTransaction.getId())));
+    var viewId = savedViewSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(viewId, oldTimestamp);
+
+    for (var unavailableTransactionId :
+        List.of(foreignTransaction.getId(), deletedTransaction.getId(), Long.MAX_VALUE)) {
+      assertThatThrownBy(
+              () ->
+                  savedViewService.updateViewTransactions(
+                      viewId,
+                      USER_ID,
+                      new SavedViewMembershipDelta(
+                          List.of(validAddition.getId(), unavailableTransactionId),
+                          List.of(memberTransaction.getId()))))
+          .isInstanceOf(BusinessException.class)
+          .extracting(exception -> ((BusinessException) exception).getCode())
+          .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_STALE.name());
+    }
+
+    assertThat(savedViewService.getViewTransactions(viewId, USER_ID))
+        .containsExactly(memberTransaction.getId());
+    assertViewTimestamp(viewId, oldTimestamp);
   }
 
   @Test
@@ -198,17 +239,29 @@ class SavedViewServiceIntegrationTest {
 
   @Test
   void ownerChecksHideForeignViews() {
+    var transaction = transactionRepository.save(transaction(OTHER_USER_ID, "Member"));
     var savedViewSummary =
-        savedViewService.createView(OTHER_USER_ID, new SavedViewCommand("Foreign", List.of()));
+        savedViewService.createView(
+            OTHER_USER_ID, new SavedViewCommand("Foreign", List.of(transaction.getId())));
+    var viewId = savedViewSummary.savedView().getId();
 
+    assertThatThrownBy(() -> savedViewService.getView(viewId, USER_ID))
+        .isInstanceOf(ResourceNotFoundException.class);
     assertThatThrownBy(
-            () -> savedViewService.getView(savedViewSummary.savedView().getId(), USER_ID))
+            () -> savedViewService.updateView(viewId, USER_ID, new SavedViewPatch("Nope")))
+        .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(() -> savedViewService.getViewTransactions(viewId, USER_ID))
         .isInstanceOf(ResourceNotFoundException.class);
     assertThatThrownBy(
             () ->
-                savedViewService.updateView(
-                    savedViewSummary.savedView().getId(), USER_ID, new SavedViewPatch("Nope")))
+                savedViewService.updateViewTransactions(
+                    viewId,
+                    USER_ID,
+                    new SavedViewMembershipDelta(List.of(), List.of(transaction.getId()))))
         .isInstanceOf(ResourceNotFoundException.class);
+
+    assertThat(savedViewService.getViewTransactions(viewId, OTHER_USER_ID))
+        .containsExactly(transaction.getId());
   }
 
   @Test
@@ -234,6 +287,13 @@ class SavedViewServiceIntegrationTest {
     assertThat(savedViewService.getViewTransactions(secondViewSummary.savedView().getId(), USER_ID))
         .isEmpty();
     assertViewTimestamp(firstViewSummary.savedView().getId(), oldTimestamp);
+    assertViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
+
+    savedViewService.updateViewTransactions(
+        secondViewSummary.savedView().getId(),
+        USER_ID,
+        new SavedViewMembershipDelta(List.of(), List.of(deletedTransaction.getId())));
+
     assertViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
   }
 

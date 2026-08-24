@@ -128,18 +128,21 @@ public class SavedViewService {
     rejectOverlap(addTransactionIds, removeTransactionIds);
     lockAndValidateAdditions(userId, addTransactionIds);
 
-    savedViewTransactionRepository.insertAll(viewId, addTransactionIds);
+    var addedCount = savedViewTransactionRepository.insertAll(viewId, addTransactionIds);
+    var removedCount = 0;
     if (!removeTransactionIds.isEmpty()) {
-      savedViewTransactionRepository.deleteByViewIdAndTransactionIdIn(viewId, removeTransactionIds);
+      removedCount =
+          savedViewTransactionRepository.deleteByViewIdAndTransactionIdIn(
+              viewId, removeTransactionIds);
     }
-    if (!addTransactionIds.isEmpty() || !removeTransactionIds.isEmpty()) {
+    if (addedCount > 0 || removedCount > 0) {
       savedViewRepository.touch(viewId, Instant.now());
     }
     log.info(
         "Applied saved view {} membership delta with {} additions and {} removals",
         viewId,
-        addTransactionIds.size(),
-        removeTransactionIds.size());
+        addedCount,
+        removedCount);
   }
 
   private SavedView getOwnedView(UUID viewId, String userId) {

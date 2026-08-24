@@ -84,8 +84,9 @@ Content-Type: application/json
 
 The add and remove sets must be disjoint. Unknown removals are idempotent.
 Successful deltas return `204 No Content`; clients refresh membership and
-metadata caches. Explicit non-empty membership deltas update the view's
-`updated_at` timestamp.
+metadata caches. An explicit delta updates the view's `updated_at` timestamp
+only when it changes the persisted membership set. Repeating additions that
+already exist or removals that no longer exist leaves the timestamp unchanged.
 
 Required permissions are `views:read`, `views:write`, and `views:delete` for
 the corresponding operations.

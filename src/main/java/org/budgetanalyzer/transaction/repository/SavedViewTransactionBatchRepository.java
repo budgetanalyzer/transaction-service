@@ -6,6 +6,10 @@ import java.util.UUID;
 /** Batch insertion operations for static saved-view memberships. */
 public interface SavedViewTransactionBatchRepository {
 
-  /** Inserts memberships, ignoring associations that already exist. */
-  void insertAll(UUID viewId, Collection<Long> transactionIds);
+  /**
+   * Inserts memberships, ignoring associations that already exist.
+   *
+   * @return the number of membership rows inserted
+   */
+  int insertAll(UUID viewId, Collection<Long> transactionIds);
 }
