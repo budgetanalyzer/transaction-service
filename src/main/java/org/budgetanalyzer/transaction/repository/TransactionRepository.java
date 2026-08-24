@@ -6,7 +6,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,40 +21,18 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 public interface TransactionRepository
     extends JpaRepository<Transaction, Long>, SoftDeleteOperations<Transaction, Long> {
 
-  /**
-   * Finds active transactions by ID.
-   *
-   * @param ids transaction IDs to resolve
-   * @return active transactions matching the requested IDs
-   */
-  @Query("SELECT t FROM Transaction t WHERE t.id IN :ids AND t.deleted = false")
-  List<Transaction> findActiveByIdIn(@Param("ids") Collection<Long> ids);
-
-  /**
-   * Finds active transactions by owner and ID.
-   *
-   * @param ownerId the transaction owner ID
-   * @param ids transaction IDs to resolve
-   * @return active transactions owned by the requested owner and matching the requested IDs
-   */
+  /** Locks active owner-scoped transactions in deterministic ID order. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
       "SELECT t FROM Transaction t "
-          + "WHERE t.ownerId = :ownerId AND t.id IN :ids AND t.deleted = false")
-  List<Transaction> findActiveByOwnerIdAndIdIn(
+          + "WHERE t.ownerId = :ownerId AND t.id IN :ids AND t.deleted = false ORDER BY t.id")
+  List<Transaction> lockActiveByOwnerIdAndIdIn(
       @Param("ownerId") String ownerId, @Param("ids") Collection<Long> ids);
 
-  /**
-   * Finds active owner-scoped transaction IDs.
-   *
-   * @param ownerId the transaction owner ID
-   * @param ids transaction IDs to resolve
-   * @return active transaction IDs owned by the requested owner
-   */
-  @Query(
-      "SELECT t.id FROM Transaction t "
-          + "WHERE t.ownerId = :ownerId AND t.id IN :ids AND t.deleted = false")
-  List<Long> findActiveIdsByOwnerIdAndIdIn(
-      @Param("ownerId") String ownerId, @Param("ids") Collection<Long> ids);
+  /** Locks active transactions in deterministic ID order. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT t FROM Transaction t WHERE t.id IN :ids AND t.deleted = false ORDER BY t.id")
+  List<Transaction> lockActiveByIdIn(@Param("ids") Collection<Long> ids);
 
   /** Active transaction candidate returned by owner-scoped duplicate candidate lookup. */
   interface TransactionDuplicateCandidate {

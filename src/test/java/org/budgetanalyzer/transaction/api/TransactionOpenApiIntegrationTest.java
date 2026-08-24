@@ -100,6 +100,46 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
   }
 
   @Test
+  void savedViewOpenApiContainsOnlyStaticMembershipContract() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+    var createOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1views/post");
+    var updatePathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}");
+    var membershipPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}~1transactions");
+
+    assertThat(createOperationJsonNode.isMissingNode()).isFalse();
+    assertThat(updatePathJsonNode.path("patch").isMissingNode()).isFalse();
+    assertThat(updatePathJsonNode.path("put").isMissingNode()).isTrue();
+    assertThat(membershipPathJsonNode.path("get").isMissingNode()).isFalse();
+    assertThat(membershipPathJsonNode.path("patch").isMissingNode()).isFalse();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1pin").isMissingNode()).isTrue();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1exclude").isMissingNode()).isTrue();
+
+    var createRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            createOperationJsonNode.at("/requestBody/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(createRequestSchemaJsonNode))
+        .containsExactlyInAnyOrder("name", "transactionIds");
+    assertThat(createRequestSchemaJsonNode.path("properties").size()).isEqualTo(2);
+    assertThat(createRequestSchemaJsonNode.at("/properties/name").isMissingNode()).isFalse();
+    assertThat(createRequestSchemaJsonNode.at("/properties/transactionIds").isMissingNode())
+        .isFalse();
+
+    var savedViewSchemaJsonNode = openApiJsonNode.at("/components/schemas/SavedViewResponse");
+    assertThat(savedViewSchemaJsonNode.path("properties").size()).isEqualTo(5);
+    assertThat(savedViewSchemaJsonNode.at("/properties/id").isMissingNode()).isFalse();
+    assertThat(savedViewSchemaJsonNode.at("/properties/name").isMissingNode()).isFalse();
+    assertThat(savedViewSchemaJsonNode.at("/properties/transactionCount").isMissingNode())
+        .isFalse();
+    assertThat(savedViewSchemaJsonNode.at("/properties/createdAt").isMissingNode()).isFalse();
+    assertThat(savedViewSchemaJsonNode.at("/properties/updatedAt").isMissingNode()).isFalse();
+    assertThat(openApiJsonNode.at("/components/schemas/ViewCriteriaApi").isMissingNode()).isTrue();
+    assertThat(
+            openApiJsonNode.at("/components/schemas/BulkViewTransactionResponse").isMissingNode())
+        .isTrue();
+  }
+
+  @Test
   void duplicateDetectionEnhancementOpenApiSchemasAreDocumented() throws Exception {
     var openApiJsonNode = readOpenApiDocument();
 

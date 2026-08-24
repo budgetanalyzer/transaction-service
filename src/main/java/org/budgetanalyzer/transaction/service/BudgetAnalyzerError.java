@@ -50,6 +50,11 @@ public enum BudgetAnalyzerError {
   BATCH_IMPORT_SOURCE_MISMATCH,
   @Schema(
       description =
+          "A requested saved-view membership addition is missing, deleted, or not owned by the "
+              + "caller")
+  SAVED_VIEW_MEMBERSHIP_STALE,
+  @Schema(
+      description =
           "Batch import completed validation and duplicate filtering without any rows to create")
   BATCH_IMPORT_NO_TRANSACTIONS_CREATED
 }

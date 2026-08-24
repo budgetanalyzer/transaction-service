@@ -2,7 +2,9 @@ package org.budgetanalyzer.transaction.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -22,7 +24,13 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
-  void returns200ForReadEndpointWithReadPermission() throws Exception {
+  void enforcesReadPermission() throws Exception {
+    mockMvc
+        .perform(
+            get("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+        .andExpect(status().isForbidden());
+
     mockMvc
         .perform(
             get("/v1/views")
@@ -31,111 +39,133 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
-  void returns403ForReadEndpointWithoutReadPermission() throws Exception {
-    mockMvc
-        .perform(
-            get("/v1/views")
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
-        .andExpect(status().isForbidden());
-  }
+  void createsStaticViewWithCanonicalMembership() throws Exception {
+    var firstTransaction = persistTransaction(USER_ID, "Coffee");
+    var secondTransaction = persistTransaction(USER_ID, "Groceries");
 
-  @Test
-  void returns201ForWriteEndpointWithWritePermission() throws Exception {
     mockMvc
         .perform(
             post("/v1/views")
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(createViewJson()))
+                .content(
+                    "{\"name\":\"My View\",\"transactionIds\":["
+                        + secondTransaction.getId()
+                        + ","
+                        + firstTransaction.getId()
+                        + ","
+                        + firstTransaction.getId()
+                        + "]}"))
         .andExpect(status().isCreated())
         .andExpect(header().exists("Location"))
-        .andExpect(jsonPath("$.pinnedCount").value(0))
-        .andExpect(jsonPath("$.excludedCount").value(0))
+        .andExpect(jsonPath("$.name").value("My View"))
+        .andExpect(jsonPath("$.transactionCount").value(2))
+        .andExpect(jsonPath("$.criteria").doesNotExist())
+        .andExpect(jsonPath("$.pinnedCount").doesNotExist());
+  }
+
+  @Test
+  void allowsEmptyMembershipCreate() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Empty\",\"transactionIds\":[]}"))
+        .andExpect(status().isCreated())
         .andExpect(jsonPath("$.transactionCount").value(0));
   }
 
   @Test
-  void returns403ForWriteEndpointWithoutWritePermission() throws Exception {
+  void staleMembershipReturnsGeneric422WithoutDisclosingIds() throws Exception {
+    var foreignTransaction = persistTransaction(OTHER_USER_ID, "Foreign");
+
     mockMvc
         .perform(
             post("/v1/views")
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(createViewJson()))
-        .andExpect(status().isForbidden());
+                .content(
+                    "{\"name\":\"Rejected\",\"transactionIds\":["
+                        + foreignTransaction.getId()
+                        + "]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
+        .andExpect(
+            content()
+                .string(
+                    org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(
+                            foreignTransaction.getId().toString()))));
   }
 
   @Test
-  void returns200ForBulkPinWithWritePermission() throws Exception {
+  void membershipDeltaReturns204AndReadReturnsFlatIds() throws Exception {
     var savedView = persistSavedView(USER_ID);
     var firstTransaction = persistTransaction(USER_ID, "Coffee");
     var secondTransaction = persistTransaction(USER_ID, "Groceries");
 
     mockMvc
         .perform(
-            post("/v1/views/{id}/pin", savedView.getId())
+            patch("/v1/views/{id}/transactions", savedView.getId())
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(idsJson(firstTransaction.getId(), secondTransaction.getId())))
+                .content(
+                    "{\"addTransactionIds\":["
+                        + secondTransaction.getId()
+                        + ","
+                        + firstTransaction.getId()
+                        + "],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isNoContent())
+        .andExpect(content().string(""));
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.updatedCount").value(2))
-        .andExpect(jsonPath("$.notFoundIds").isEmpty());
+        .andExpect(jsonPath("$.transactionIds[0]").value(firstTransaction.getId()))
+        .andExpect(jsonPath("$.transactionIds[1]").value(secondTransaction.getId()))
+        .andExpect(jsonPath("$.matched").doesNotExist());
   }
 
   @Test
-  void returnsPartialSuccessForBulkExclude() throws Exception {
+  void rejectsOverlappingMembershipDelta() throws Exception {
     var savedView = persistSavedView(USER_ID);
-    var transaction = persistTransaction(USER_ID, "Coffee");
-    var missingTransactionId = 999999L;
 
     mockMvc
         .perform(
-            post("/v1/views/{id}/exclude", savedView.getId())
+            patch("/v1/views/{id}/transactions", savedView.getId())
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(idsJson(transaction.getId(), missingTransactionId)))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.updatedCount").value(1))
-        .andExpect(jsonPath("$.notFoundIds.length()").value(1))
-        .andExpect(jsonPath("$.notFoundIds[0]").value(missingTransactionId));
-  }
-
-  @Test
-  void returns400ForBulkPinWithEmptyIdList() throws Exception {
-    mockMvc
-        .perform(
-            post("/v1/views/{id}/pin", UUID.randomUUID())
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"ids\": []}"))
+                .content("{\"addTransactionIds\":[1],\"removeTransactionIds\":[1]}"))
         .andExpect(status().isBadRequest());
   }
 
   @Test
-  void returns403ForBulkExcludeWithoutWritePermission() throws Exception {
-    mockMvc
-        .perform(
-            post("/v1/views/{id}/exclude", UUID.randomUUID())
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"ids\": [1]}"))
-        .andExpect(status().isForbidden());
-  }
-
-  @Test
-  void returns403ForDeleteEndpointWithoutDeletePermission() throws Exception {
-    mockMvc
-        .perform(
-            delete("/v1/views/{id}", UUID.randomUUID())
-                .with(
-                    ClaimsHeaderTestBuilder.user(USER_ID)
-                        .withPermissions("views:read", "views:write")))
-        .andExpect(status().isForbidden());
-  }
-
-  @Test
-  void returns204ForDeleteEndpointWithDeletePermission() throws Exception {
+  void renameUsesPatchAndNameOnly() throws Exception {
     var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Renamed\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.name").value("Renamed"));
+  }
+
+  @Test
+  void enforcesDeletePermission() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            delete("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+        .andExpect(status().isForbidden());
 
     mockMvc
         .perform(
@@ -145,41 +175,28 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
-  void returns403ForAdminReadWithoutViewPermission() throws Exception {
+  void adminWithoutExplicitViewPermissionIsForbidden() throws Exception {
     mockMvc
         .perform(get("/v1/views").with(ClaimsHeaderTestBuilder.admin()))
         .andExpect(status().isForbidden());
   }
 
   @Test
-  void returns403ForAdminWriteWithoutViewPermission() throws Exception {
+  void validatesRequiredArraysAndPositiveIds() throws Exception {
     mockMvc
         .perform(
             post("/v1/views")
-                .with(ClaimsHeaderTestBuilder.admin())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(createViewJson()))
-        .andExpect(status().isForbidden());
-  }
+                .content("{\"name\":\"Invalid\",\"transactionIds\":[0]}"))
+        .andExpect(status().isBadRequest());
 
-  @Test
-  void returns403ForAdminDeleteWithoutViewPermission() throws Exception {
     mockMvc
-        .perform(delete("/v1/views/{id}", UUID.randomUUID()).with(ClaimsHeaderTestBuilder.admin()))
-        .andExpect(status().isForbidden());
-  }
-
-  private String createViewJson() {
-    return """
-        {
-          "name": "My View",
-          "criteria": {},
-          "openEnded": false
-        }
-        """;
-  }
-
-  private String idsJson(Long firstId, Long secondId) {
-    return "{\"ids\": [" + firstId + ", " + secondId + "]}";
+        .perform(
+            patch("/v1/views/{id}/transactions", UUID.randomUUID())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"addTransactionIds\":[]}"))
+        .andExpect(status().isBadRequest());
   }
 }

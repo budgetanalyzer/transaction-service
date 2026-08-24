@@ -9,13 +9,12 @@ import java.util.stream.Collectors;
 
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.TransactionType;
-import org.budgetanalyzer.transaction.domain.ViewCriteria;
 
 /**
- * Internal transaction query criteria shared by transaction search and saved-view matching.
+ * Internal transaction query criteria for administrative transaction search.
  *
- * <p>This model represents repository query semantics without Spring MVC binding annotations or
- * saved-view persistence concerns.
+ * <p>This model represents repository query semantics without Spring MVC binding annotations or API
+ * binding concerns.
  *
  * @param id the transaction ID to match
  * @param ownerId the owner ID to match
@@ -28,7 +27,6 @@ import org.budgetanalyzer.transaction.domain.ViewCriteria;
  * @param maxAmount inclusive amount upper bound
  * @param type transaction type to match
  * @param description text to match against transaction descriptions only
- * @param searchText saved-view text to match against transaction descriptions only
  * @param createdAfter inclusive creation timestamp lower bound
  * @param createdBefore inclusive creation timestamp upper bound
  * @param updatedAfter inclusive update timestamp lower bound
@@ -46,7 +44,6 @@ public record TransactionCriteria(
     BigDecimal maxAmount,
     TransactionType type,
     String description,
-    String searchText,
     Instant createdAfter,
     Instant createdBefore,
     Instant updatedAfter,
@@ -59,51 +56,10 @@ public record TransactionCriteria(
     currencyIsoCodes = normalizeValues(currencyIsoCodes);
   }
 
-  /**
-   * Creates criteria using the saved-view text criteria contract.
-   *
-   * <p>The supplied text value maps to description-only {@code searchText} semantics.
-   */
-  public TransactionCriteria(
-      Long id,
-      String ownerId,
-      Set<String> accountIds,
-      Set<String> bankNames,
-      LocalDate dateFrom,
-      LocalDate dateTo,
-      Set<String> currencyIsoCodes,
-      BigDecimal minAmount,
-      BigDecimal maxAmount,
-      TransactionType type,
-      String searchText,
-      Instant createdAfter,
-      Instant createdBefore,
-      Instant updatedAfter,
-      Instant updatedBefore) {
-    this(
-        id,
-        ownerId,
-        accountIds,
-        bankNames,
-        dateFrom,
-        dateTo,
-        currencyIsoCodes,
-        minAmount,
-        maxAmount,
-        type,
-        null,
-        searchText,
-        createdAfter,
-        createdBefore,
-        updatedAfter,
-        updatedBefore);
-  }
-
   /** Creates an empty criteria with all filters unset. */
   public static TransactionCriteria empty() {
     return new TransactionCriteria(
-        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-        null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
   }
 
   /**
@@ -129,7 +85,6 @@ public record TransactionCriteria(
         filter.maxAmount(),
         filter.type(),
         filter.description(),
-        null,
         filter.createdAfter(),
         filter.createdBefore(),
         filter.updatedAfter(),
@@ -155,49 +110,10 @@ public record TransactionCriteria(
         maxAmount,
         type,
         description,
-        searchText,
         createdAfter,
         createdBefore,
         updatedAfter,
         updatedBefore);
-  }
-
-  /**
-   * Creates criteria from saved-view criteria scoped to an authenticated owner.
-   *
-   * <p>Saved views cannot supply owner IDs directly. The caller injects the authenticated owner ID
-   * here. Open-ended views without a stored upper date bound use the current date as the effective
-   * upper bound.
-   *
-   * @param criteria the saved-view criteria
-   * @param ownerId the authenticated owner ID
-   * @param openEnded whether the saved view should end at the current date when dateTo is absent
-   * @return internal transaction criteria
-   */
-  public static TransactionCriteria fromViewCriteria(
-      ViewCriteria criteria, String ownerId, boolean openEnded) {
-    var effectiveDateTo = criteria.dateTo();
-    if (openEnded && effectiveDateTo == null) {
-      effectiveDateTo = LocalDate.now();
-    }
-
-    return new TransactionCriteria(
-        null,
-        ownerId,
-        criteria.accountIds(),
-        criteria.bankNames(),
-        criteria.dateFrom(),
-        effectiveDateTo,
-        criteria.currencyIsoCodes(),
-        criteria.minAmount(),
-        criteria.maxAmount(),
-        criteria.type(),
-        null,
-        criteria.searchText(),
-        null,
-        null,
-        null,
-        null);
   }
 
   private static Set<String> singletonSet(String value) {

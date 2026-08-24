@@ -91,18 +91,6 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_searchTextMatchesDescriptionOnly() {
-    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Neighborhood Bank"));
-    transactionRepository.save(createTransactionWithBank("Grocery Store", "Capital One"));
-    transactionRepository.save(createTransactionWithBank("Fuel Stop", "Bangkok Bank"));
-
-    var spec = TransactionSpecifications.withCriteria(criteriaBySearchText("coffee capital"));
-    var results = transactionRepository.findAll(spec);
-
-    assertThat(results).extracting(Transaction::getDescription).containsExactly("Coffee Shop");
-  }
-
-  @Test
   void withCriteria_descriptionMultipleWords_matchesAnyWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
@@ -700,26 +688,6 @@ class TransactionSpecificationsIntegrationTest {
         null,
         null,
         description,
-        null,
-        null,
-        null,
-        null);
-  }
-
-  private TransactionCriteria criteriaBySearchText(String searchText) {
-    return new TransactionCriteria(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        searchText,
         null,
         null,
         null,

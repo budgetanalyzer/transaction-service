@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +21,7 @@ import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.domain.FileImport;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionDuplicateIdentity;
+import org.budgetanalyzer.transaction.repository.SavedViewTransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.repository.spec.TransactionSpecifications;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
@@ -38,6 +38,7 @@ public class TransactionService {
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
   private final TransactionRepository transactionRepository;
+  private final SavedViewTransactionRepository savedViewTransactionRepository;
   private final FileImportTrackingService fileImportTrackingService;
   private final TransactionDuplicateMatcher transactionDuplicateMatcher =
       new TransactionDuplicateMatcher();
@@ -46,12 +47,15 @@ public class TransactionService {
    * Constructs a new TransactionService.
    *
    * @param transactionRepository the transaction repository
+   * @param savedViewTransactionRepository the saved-view membership repository
    * @param fileImportTrackingService the file import tracking service
    */
   public TransactionService(
       TransactionRepository transactionRepository,
+      SavedViewTransactionRepository savedViewTransactionRepository,
       FileImportTrackingService fileImportTrackingService) {
     this.transactionRepository = transactionRepository;
+    this.savedViewTransactionRepository = savedViewTransactionRepository;
     this.fileImportTrackingService = fileImportTrackingService;
   }
 
@@ -109,10 +113,10 @@ public class TransactionService {
    */
   @Transactional
   public void deleteTransaction(Long id, String userId, boolean canActOnAny) {
-    var transaction = getTransactionWithOwnerCheck(id, userId, canActOnAny);
+    var transaction = getLockedTransactionForDelete(id, userId, canActOnAny);
     transaction.markDeleted(userId);
-
     transactionRepository.save(transaction);
+    savedViewTransactionRepository.deleteByTransactionIdIn(List.of(transaction.getId()));
   }
 
   /**
@@ -153,6 +157,8 @@ public class TransactionService {
 
     if (!transactionsToDelete.isEmpty()) {
       transactionRepository.saveAll(transactionsToDelete);
+      savedViewTransactionRepository.deleteByTransactionIdIn(
+          transactionsToDelete.stream().map(Transaction::getId).toList());
     }
 
     return new BulkDeleteResult(transactionsToDelete.size(), notFoundIds);
@@ -468,17 +474,28 @@ public class TransactionService {
 
   private LinkedHashMap<Long, Transaction> activeBulkDeleteCandidatesById(
       List<Long> ids, String userId, boolean canActOnAny) {
-    var requestedUniqueIds = new LinkedHashSet<>(ids);
+    var requestedUniqueIds = ids.stream().distinct().sorted().toList();
     var transactions =
         canActOnAny
-            ? transactionRepository.findActiveByIdIn(requestedUniqueIds)
-            : transactionRepository.findActiveByOwnerIdAndIdIn(userId, requestedUniqueIds);
+            ? transactionRepository.lockActiveByIdIn(requestedUniqueIds)
+            : transactionRepository.lockActiveByOwnerIdAndIdIn(userId, requestedUniqueIds);
     var transactionsById = new LinkedHashMap<Long, Transaction>();
     for (var transaction : transactions) {
       transactionsById.put(transaction.getId(), transaction);
     }
 
     return transactionsById;
+  }
+
+  private Transaction getLockedTransactionForDelete(Long id, String userId, boolean canActOnAny) {
+    var transactions =
+        canActOnAny
+            ? transactionRepository.lockActiveByIdIn(List.of(id))
+            : transactionRepository.lockActiveByOwnerIdAndIdIn(userId, List.of(id));
+    if (transactions.isEmpty()) {
+      throw new ResourceNotFoundException("Transaction not found with id: " + id);
+    }
+    return transactions.getFirst();
   }
 
   /**

@@ -274,18 +274,13 @@ provenance.
 
 ### saved_view
 
-**Purpose:** Stores user-defined transaction views and their pinned or excluded
-transaction overrides.
+**Purpose:** Stores user-owned static transaction view metadata.
 
 ```sql
 CREATE TABLE saved_view (
     id UUID PRIMARY KEY,
     user_id VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    criteria TEXT NOT NULL,
-    open_ended BOOLEAN NOT NULL DEFAULT false,
-    pinned_ids TEXT NOT NULL DEFAULT '[]',
-    excluded_ids TEXT NOT NULL DEFAULT '[]',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -293,24 +288,34 @@ CREATE TABLE saved_view (
 CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
 ```
 
-**Key Columns:**
-- `criteria` - Saved-view filter JSON using the current `dateFrom` and `dateTo`
-  date field names
-- `pinned_ids` - JSON array of transaction IDs pinned into the view
-- `excluded_ids` - JSON array of transaction IDs excluded from the view
-- `open_ended` - Allows the view to ignore the upper date bound when resolving
-  memberships
+`user_id` is the authenticated owner. Membership and count queries use the
+association table below directly.
 
-Saved-view criteria, open-ended date behavior, and pinned/excluded membership
-rules are documented in [Saved Views](saved-views.md). At read time, the
-service resolves the union of `pinned_ids` and `excluded_ids` with one
-owner-scoped active transaction ID lookup before partitioning the result into
-membership groups and computing API counts. Soft deletion does not purge IDs
-from these arrays, so their stored sizes can include historical IDs. Saved-view
-responses count only active overrides; the persisted arrays remain
-the ID-based source of override intent. Migration
-`V16__delete_legacy_saved_views.sql` removes rows written with the old
-`startDate` and `endDate` criteria JSON shape.
+### saved_view_transaction
+
+**Purpose:** Stores the unordered static membership of each saved view.
+
+```sql
+CREATE TABLE saved_view_transaction (
+    view_id UUID NOT NULL,
+    transaction_id BIGINT NOT NULL,
+    PRIMARY KEY (view_id, transaction_id),
+    FOREIGN KEY (view_id) REFERENCES saved_view(id) ON DELETE CASCADE,
+    FOREIGN KEY (transaction_id) REFERENCES transaction(id)
+);
+
+CREATE INDEX idx_saved_view_transaction_transaction_id
+    ON saved_view_transaction(transaction_id);
+```
+
+The view foreign key cascades view deletion. The transaction foreign key is
+restrictive because transactions are soft-deleted; transaction deletion first
+removes memberships in the same database transaction. The reverse index serves
+that set-based cleanup. The table intentionally has no timestamp, membership
+type, order, or provenance column.
+
+Migration `V22__replace_saved_views_with_static_membership.sql` deletes all
+legacy saved views before dropping the dynamic criteria and override columns.
 
 ## Migration Strategy
 

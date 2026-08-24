@@ -121,44 +121,34 @@ routing for a statement format.
 
 ### SavedView
 
-**Purpose:** Stores a user-owned transaction filter with optional pinned and
-excluded transaction overrides.
+**Purpose:** Stores metadata for a user-owned named static transaction set.
 
 **Key Attributes:**
 
 - `id` (`UUID`) - Database-generated saved view identifier.
 - `userId` (`String`) - User that owns the view.
 - `name` (`String`) - User-facing view name.
-- `criteria` (`ViewCriteria`) - Transaction filter criteria.
-- `openEnded` (`boolean`) - Whether a missing upper date bound resolves to the
-  current date.
-- `pinnedIds` (`Set<Long>`) - Transaction IDs explicitly included.
-- `excludedIds` (`Set<Long>`) - Transaction IDs explicitly excluded.
 - `createdAt`, `updatedAt` (`Instant`) - Audit timestamps.
 
 **Business Rules:**
 
-- Saved-view criteria cannot supply an owner ID; the service injects the
-  authenticated user.
-- Pinning a transaction removes it from exclusions. Excluding a transaction
-  removes it from pins.
+- Membership is an unordered set stored in `SavedViewTransaction` rows.
+- Every addition must be an active transaction owned by the authenticated user.
+- Transaction soft deletion removes memberships atomically without changing
+  the saved-view audit timestamp.
 - Membership semantics are documented in [Saved Views](saved-views.md).
 
-### ViewCriteria
+### SavedViewTransaction
 
-**Purpose:** Value object for saved-view transaction filters.
+**Purpose:** Represents one static saved-view membership association.
 
 **Fields:**
 
-- `dateFrom`, `dateTo`
-- `accountIds`
-- `bankNames`
-- `currencyIsoCodes`
-- `minAmount`, `maxAmount`
-- `type`
-- `searchText`
+- `viewId` (`UUID`) - Parent saved-view identifier.
+- `transactionId` (`Long`) - Member transaction identifier.
 
-All fields are optional. Null fields are not applied as filters.
+The two scalar fields form the composite key. The entity intentionally has no
+object relationships, collection, timestamp, order, or provenance fields.
 
 ## Domain Relationships
 
@@ -167,7 +157,7 @@ Transaction 0..1 -> 1 FileImport
 FileImport -> StatementFormat by statementFormatId
 FileImport -> ParserRevision by parserRevisionId
 StatementFormat 1 -> * ParserRevision
-SavedView 1 -> * Transaction IDs through pinnedIds and excludedIds
+SavedView 1 -> * SavedViewTransaction * -> 1 Transaction
 StatementFormat -> Transaction import flow through public ID metadata
 ```
 

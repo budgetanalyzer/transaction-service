@@ -5,137 +5,110 @@
 
 ## Overview
 
-Saved views are user-owned transaction filters with optional pinned and excluded
-transaction overrides. They are exposed through `/v1/views/**` and persist in
-the `saved_view` table.
+Saved views are user-owned named static sets of transactions. They are exposed
+through `/v1/views/**`; metadata is stored in `saved_view`, and membership is
+stored in `saved_view_transaction`.
 
-All saved-view membership is owner-scoped. A view cannot supply its own owner
-ID; the service injects the authenticated user.
+There are no saved predicates, open-ended dates, pins, exclusions, membership
+order, or full-membership replacement operation. A client creates a view from
+an exact transaction ID set and later changes it with atomic additions and
+removals.
 
-## Criteria
+## Ownership And Validation
 
-Saved views persist the user-facing transaction filters below in the `criteria`
-object. All fields are optional.
+Every view belongs to the authenticated user. View lookup deliberately returns
+not found for a foreign owner, and this API has no cross-user `:any` variant.
 
-- `dateFrom`, `dateTo` - Inclusive transaction date range.
-- `searchText` - Text matched against transaction descriptions.
-- `bankNames`, `accountIds`, `currencyIsoCodes` - Multi-value fields. Any
-  supplied value can match. Blank entries are ignored.
-- `minAmount`, `maxAmount` - Inclusive transaction amount range.
-- `type` - Transaction type, `DEBIT` or `CREDIT`.
+Create and membership-add operations canonicalize duplicate IDs and lock the
+requested transaction rows in ascending ID order. Every requested addition
+must resolve to an active transaction owned by the caller. If any addition is
+missing, soft-deleted, or foreign-owned, the complete operation rolls back with
+`422 APPLICATION_ERROR` and code `SAVED_VIEW_MEMBERSHIP_STALE`. The response
+does not identify inaccessible IDs.
 
-`startDate` and `endDate` are not part of the saved-view API contract. Migration
-`V16__delete_legacy_saved_views.sql` deletes saved views persisted with that old
-criteria JSON shape.
+An empty create membership is valid. Membership is an unordered set; the read
+endpoint returns IDs in ascending order only to make responses deterministic.
 
-Example request body:
+## HTTP Contract
 
-```json
+Create a view:
+
+```http
+POST /v1/views
+Content-Type: application/json
+
 {
-  "name": "December Debits",
-  "criteria": {
-    "dateFrom": "2024-12-01",
-    "dateTo": "2024-12-31",
-    "bankNames": ["Capital One"],
-    "accountIds": ["checking-12345"],
-    "currencyIsoCodes": ["USD"],
-    "minAmount": 10.00,
-    "maxAmount": 500.00,
-    "type": "DEBIT",
-    "searchText": "coffee"
-  },
-  "openEnded": false
+  "name": "December review",
+  "transactionIds": [123, 456]
 }
 ```
 
-## Open-Ended Views
+List and get responses contain metadata and the active `transactionCount`:
 
-When `openEnded=true` and `criteria.dateTo` is omitted, the service resolves the
-upper date bound to the current date at membership lookup time. When
-`criteria.dateTo` is present, that stored value is used.
-
-## Pins And Exclusions
-
-Pins and exclusions are stored as transaction ID sets on the same `saved_view`
-row:
-
-- Pinning a transaction adds it to `pinned_ids` and removes it from
-  `excluded_ids`.
-- Excluding a transaction adds it to `excluded_ids` and removes it from
-  `pinned_ids`.
-- Deleting a saved view removes its pinned and excluded IDs with the same row.
-
-Pinned and excluded IDs are filtered to active transactions owned by the view
-owner before membership is returned. Membership resolution fetches the union of
-stored pinned and excluded IDs with one owner-scoped active-ID lookup, then
-partitions the IDs into the response groups in memory.
-
-Bulk endpoints are also owner-scoped:
-
-- `POST /v1/views/{id}/pin` with body `{ "ids": [...] }`
-- `POST /v1/views/{id}/exclude` with body `{ "ids": [...] }`
-
-Both operations process every requested ID and return:
-
-- `updatedCount` for unique successfully processed IDs. Duplicate valid IDs are
-  applied once and counted once.
-- `notFoundIds` for IDs that are missing, soft-deleted, or owned by another
-  user. These IDs keep request order, including duplicate invalid IDs.
-
-Both endpoints return `200 OK` for full or partial success, return `400 Bad
-Request` for null or empty ID lists, and return `404 Not Found` only when the
-saved view itself does not exist for the authenticated user.
-
-## Membership Response
-
-`GET /v1/views/{id}/transactions` returns transaction IDs grouped by membership
-type:
-
-- `matched` - Active transaction IDs matching the view criteria, excluding
-  active excluded IDs.
-- `pinned` - Active pinned transaction IDs not already included in `matched`.
-- `excluded` - Active excluded transaction IDs.
-
-The saved-view transaction count is derived from the same effective membership
-set:
-
-```text
-(matching IDs - active excluded IDs) + active pinned IDs
+```json
+{
+  "id": "6715a545-bab3-426d-9927-26dcea680871",
+  "name": "December review",
+  "transactionCount": 2,
+  "createdAt": "2026-01-15T12:00:00Z",
+  "updatedAt": "2026-01-15T12:00:00Z"
+}
 ```
 
-`SavedViewResponse` derives all three count fields from that same resolution:
+Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
+Delete it with `DELETE /v1/views/{id}`.
 
-- `transactionCount` is `matched + pinned`, after active exclusions are
-  applied.
-- `pinnedCount` is the number of active stored pin IDs. It includes
-  an active pin that also matches the criteria, even though that ID is presented
-  only in `matched` membership.
-- `excludedCount` is the number of active stored exclusion IDs,
-  including exclusions that do not currently match the criteria.
+Read complete membership:
 
-Soft-deleted, missing, and foreign-owner transactions are ignored in all three
-membership groups and counts. Deleting a transaction does not remove its ID
-from the persisted override arrays. If an equivalent transaction is later
-created with a new ID, the historical exclusion does not transfer to it; the
-replacement can enter an open-ended view when it matches the criteria.
+```http
+GET /v1/views/{id}/transactions
+```
 
-## Storage
+```json
+{
+  "transactionIds": [123, 456]
+}
+```
 
-The `saved_view` table stores:
+Apply an atomic delta:
 
-- `criteria` as JSON text using the current `dateFrom` and `dateTo` field names.
-- `open_ended` as a boolean.
-- `pinned_ids` as JSON text.
-- `excluded_ids` as JSON text.
+```http
+PATCH /v1/views/{id}/transactions
+Content-Type: application/json
 
-The ID arrays retain historical IDs after a transaction is soft-deleted. Their
-stored array sizes therefore are not the `pinnedCount` or `excludedCount`
-returned by the API; response counts include only active IDs.
+{
+  "addTransactionIds": [789],
+  "removeTransactionIds": [123]
+}
+```
 
-`criteria`, `pinned_ids`, and `excluded_ids` are required persistence values.
-An empty criteria object (`{}`) and empty ID arrays (`[]`) are valid explicit
-states. Null, blank, or JSON-null stored values are treated as persistence
-corruption and fail instead of being converted to broad empty filters.
+The add and remove sets must be disjoint. Unknown removals are idempotent.
+Successful deltas return `204 No Content`; clients refresh membership and
+metadata caches. Explicit non-empty membership deltas update the view's
+`updated_at` timestamp.
+
+Required permissions are `views:read`, `views:write`, and `views:delete` for
+the corresponding operations.
+
+## Soft Deletion And Concurrency
+
+The association-table invariant is that every membership references an active
+transaction. Both membership additions and transaction soft deletion acquire
+pessimistic locks on sorted unique transaction IDs. Single and bulk soft
+deletion mark the transaction rows deleted and remove all referencing
+membership rows in the same database transaction.
+
+Transaction-driven cleanup does not update saved-view timestamps. Membership
+reads and counts use `saved_view_transaction` directly; they do not join
+`transaction` to filter deleted rows. Deleting a view cascades its memberships,
+while the transaction foreign key uses normal restrictive behavior.
+
+## Destructive Cutover
+
+`V22__replace_saved_views_with_static_membership.sql` deletes every existing
+saved view before dropping the dynamic criteria and override columns. No old
+view is migrated or interpreted. Historical Flyway migrations remain immutable
+so clean database construction and checksum validation continue to work.
 
 See [Database Schema](database-schema.md#saved_view) for table and index
 details.

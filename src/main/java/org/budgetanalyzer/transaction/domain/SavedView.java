@@ -1,13 +1,9 @@
 package org.budgetanalyzer.transaction.domain;
 
 import java.time.Instant;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -16,10 +12,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
-import org.budgetanalyzer.transaction.domain.converter.LongSetConverter;
-import org.budgetanalyzer.transaction.domain.converter.ViewCriteriaConverter;
-
-/** Saved view (smart collection) for filtering and grouping transactions. */
+/** User-owned named static collection of transactions. */
 @Entity
 @Table(name = "saved_view")
 public class SavedView {
@@ -33,21 +26,6 @@ public class SavedView {
 
   @Column(nullable = false)
   private String name;
-
-  @Column(columnDefinition = "text", nullable = false)
-  @Convert(converter = ViewCriteriaConverter.class)
-  private ViewCriteria criteria;
-
-  @Column(name = "open_ended", nullable = false)
-  private boolean openEnded;
-
-  @Column(name = "pinned_ids", columnDefinition = "text", nullable = false)
-  @Convert(converter = LongSetConverter.class)
-  private Set<Long> pinnedIds = new HashSet<>();
-
-  @Column(name = "excluded_ids", columnDefinition = "text", nullable = false)
-  @Convert(converter = LongSetConverter.class)
-  private Set<Long> excludedIds = new HashSet<>();
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
@@ -91,77 +69,11 @@ public class SavedView {
     this.name = name;
   }
 
-  public ViewCriteria getCriteria() {
-    return criteria;
-  }
-
-  public void setCriteria(ViewCriteria criteria) {
-    this.criteria = criteria;
-  }
-
-  public boolean isOpenEnded() {
-    return openEnded;
-  }
-
-  public void setOpenEnded(boolean openEnded) {
-    this.openEnded = openEnded;
-  }
-
-  public Set<Long> getPinnedIds() {
-    return pinnedIds;
-  }
-
-  public void setPinnedIds(Set<Long> pinnedIds) {
-    this.pinnedIds = pinnedIds;
-  }
-
-  public Set<Long> getExcludedIds() {
-    return excludedIds;
-  }
-
-  public void setExcludedIds(Set<Long> excludedIds) {
-    this.excludedIds = excludedIds;
-  }
-
   public Instant getCreatedAt() {
     return createdAt;
   }
 
   public Instant getUpdatedAt() {
     return updatedAt;
-  }
-
-  /** Pins a transaction to this view. */
-  public void pinTransaction(Long transactionId) {
-    pinnedIds.add(transactionId);
-    excludedIds.remove(transactionId);
-  }
-
-  /** Pins multiple transactions to this view. */
-  public void pinTransactions(Collection<Long> transactionIds) {
-    pinnedIds.addAll(transactionIds);
-    excludedIds.removeAll(transactionIds);
-  }
-
-  /** Removes a pin from this view. */
-  public void unpinTransaction(Long transactionId) {
-    pinnedIds.remove(transactionId);
-  }
-
-  /** Excludes a transaction from this view. */
-  public void excludeTransaction(Long transactionId) {
-    excludedIds.add(transactionId);
-    pinnedIds.remove(transactionId);
-  }
-
-  /** Excludes multiple transactions from this view. */
-  public void excludeTransactions(Collection<Long> transactionIds) {
-    excludedIds.addAll(transactionIds);
-    pinnedIds.removeAll(transactionIds);
-  }
-
-  /** Removes an exclusion from this view. */
-  public void unexcludeTransaction(Long transactionId) {
-    excludedIds.remove(transactionId);
   }
 }

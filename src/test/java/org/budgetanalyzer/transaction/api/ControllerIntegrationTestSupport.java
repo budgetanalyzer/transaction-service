@@ -19,10 +19,10 @@ import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.domain.StatementFormat;
 import org.budgetanalyzer.transaction.domain.Transaction;
 import org.budgetanalyzer.transaction.domain.TransactionType;
-import org.budgetanalyzer.transaction.domain.ViewCriteria;
 import org.budgetanalyzer.transaction.repository.FileImportRepository;
 import org.budgetanalyzer.transaction.repository.ParserRevisionRepository;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
+import org.budgetanalyzer.transaction.repository.SavedViewTransactionRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.StatementFormatUserPreferenceRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
@@ -41,6 +41,7 @@ abstract class ControllerIntegrationTestSupport {
   @Autowired protected MockMvc mockMvc;
   @Autowired protected TransactionRepository transactionRepository;
   @Autowired protected SavedViewRepository savedViewRepository;
+  @Autowired protected SavedViewTransactionRepository savedViewTransactionRepository;
   @Autowired protected StatementFormatRepository statementFormatRepository;
   @Autowired protected ParserRevisionRepository parserRevisionRepository;
 
@@ -60,8 +61,8 @@ abstract class ControllerIntegrationTestSupport {
 
   @BeforeEach
   void resetPersistedTestState() {
-    transactionRepository.deleteAllInBatch();
     savedViewRepository.deleteAllInBatch();
+    transactionRepository.deleteAllInBatch();
     fileImportRepository.deleteAllInBatch();
     statementFormatUserPreferenceRepository.deleteAllInBatch();
     parserRevisionRepository.deleteAllInBatch();
@@ -84,7 +85,6 @@ abstract class ControllerIntegrationTestSupport {
     var savedView = new SavedView();
     savedView.setUserId(userId);
     savedView.setName("Test View");
-    savedView.setCriteria(ViewCriteria.empty());
     return savedViewRepository.save(savedView);
   }
 

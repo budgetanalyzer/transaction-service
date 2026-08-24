@@ -32,7 +32,6 @@ public class TransactionSpecifications {
    *       "amazon" OR "prime")
    *   <li>Special characters (%, _) are escaped to prevent wildcard matching
    *   <li>Description filters match only the description field
-   *   <li>Search-text filters match only the description field
    * </ul>
    *
    * <p>For date, timestamp, and numeric range fields, appropriate greater-than / less-than
@@ -84,13 +83,6 @@ public class TransactionSpecifications {
           createTextFilterPredicate(cb, root.get("description"), criteria.description());
       if (descriptionPredicate != null) {
         predicates.add(descriptionPredicate);
-      }
-
-      // Saved-view search text (case-insensitive LIKE against description)
-      Predicate searchTextPredicate =
-          createTextFilterPredicate(cb, root.get("description"), criteria.searchText());
-      if (searchTextPredicate != null) {
-        predicates.add(searchTextPredicate);
       }
 
       // Transaction type (enum)
