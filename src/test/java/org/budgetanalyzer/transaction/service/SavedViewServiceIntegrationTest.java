@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -211,28 +212,68 @@ class SavedViewServiceIntegrationTest {
   }
 
   @Test
-  void singleAndBulkTransactionDeleteCleanMembershipWithoutTouchingViews() {
-    var firstTransaction = transactionRepository.save(transaction(USER_ID, "First"));
-    var secondTransaction = transactionRepository.save(transaction(USER_ID, "Second"));
-    var savedViewSummary =
+  void singleTransactionDeleteCleansEveryMembershipWithoutTouchingViews() {
+    var deletedTransaction = transactionRepository.save(transaction(USER_ID, "Deleted"));
+    var retainedTransaction = transactionRepository.save(transaction(USER_ID, "Retained"));
+    var firstViewSummary =
         savedViewService.createView(
             USER_ID,
             new SavedViewCommand(
-                "Cleanup", List.of(firstTransaction.getId(), secondTransaction.getId())));
-    var viewId = savedViewSummary.savedView().getId();
+                "First view", List.of(deletedTransaction.getId(), retainedTransaction.getId())));
+    var secondViewSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Second view", List.of(deletedTransaction.getId())));
     var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
-    jdbcTemplate.update(
-        "UPDATE saved_view SET updated_at = ? WHERE id = ?", Timestamp.from(oldTimestamp), viewId);
+    setViewTimestamp(firstViewSummary.savedView().getId(), oldTimestamp);
+    setViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
 
-    transactionService.deleteTransaction(firstTransaction.getId(), USER_ID, false);
+    transactionService.deleteTransaction(deletedTransaction.getId(), USER_ID, false);
+
+    assertThat(savedViewService.getViewTransactions(firstViewSummary.savedView().getId(), USER_ID))
+        .containsExactly(retainedTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(secondViewSummary.savedView().getId(), USER_ID))
+        .isEmpty();
+    assertViewTimestamp(firstViewSummary.savedView().getId(), oldTimestamp);
+    assertViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
+  }
+
+  @Test
+  void bulkTransactionDeleteCleansMembershipsSetWiseWithoutTouchingViews() {
+    var firstDeletedTransaction = transactionRepository.save(transaction(USER_ID, "First"));
+    var secondDeletedTransaction = transactionRepository.save(transaction(USER_ID, "Second"));
+    var retainedTransaction = transactionRepository.save(transaction(USER_ID, "Retained"));
+    var firstViewSummary =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand(
+                "First view",
+                List.of(
+                    firstDeletedTransaction.getId(),
+                    secondDeletedTransaction.getId(),
+                    retainedTransaction.getId())));
+    var secondViewSummary =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand(
+                "Second view",
+                List.of(firstDeletedTransaction.getId(), secondDeletedTransaction.getId())));
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(firstViewSummary.savedView().getId(), oldTimestamp);
+    setViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
+
     var result =
         transactionService.bulkDeleteTransactions(
-            List.of(secondTransaction.getId()), USER_ID, false);
+            List.of(secondDeletedTransaction.getId(), firstDeletedTransaction.getId()),
+            USER_ID,
+            false);
 
-    assertThat(result.deletedCount()).isEqualTo(1);
-    assertThat(savedViewService.getViewTransactions(viewId, USER_ID)).isEmpty();
-    assertThat(savedViewRepository.findById(viewId).orElseThrow().getUpdatedAt())
-        .isEqualTo(oldTimestamp);
+    assertThat(result.deletedCount()).isEqualTo(2);
+    assertThat(savedViewService.getViewTransactions(firstViewSummary.savedView().getId(), USER_ID))
+        .containsExactly(retainedTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(secondViewSummary.savedView().getId(), USER_ID))
+        .isEmpty();
+    assertViewTimestamp(firstViewSummary.savedView().getId(), oldTimestamp);
+    assertViewTimestamp(secondViewSummary.savedView().getId(), oldTimestamp);
   }
 
   @Test
@@ -307,6 +348,16 @@ class SavedViewServiceIntegrationTest {
     assertThat(savedViewSummary.transactionCount()).isEqualTo(10_000);
     assertThat(savedViewTransactionRepository.countByViewId(savedViewSummary.savedView().getId()))
         .isEqualTo(10_000);
+  }
+
+  private void setViewTimestamp(UUID viewId, Instant timestamp) {
+    jdbcTemplate.update(
+        "UPDATE saved_view SET updated_at = ? WHERE id = ?", Timestamp.from(timestamp), viewId);
+  }
+
+  private void assertViewTimestamp(UUID viewId, Instant expectedTimestamp) {
+    assertThat(savedViewRepository.findById(viewId).orElseThrow().getUpdatedAt())
+        .isEqualTo(expectedTimestamp);
   }
 
   private Transaction transaction(String ownerId, String description) {
