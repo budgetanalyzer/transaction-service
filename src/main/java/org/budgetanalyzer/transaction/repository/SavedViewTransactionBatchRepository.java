@@ -7,9 +7,12 @@ import java.util.UUID;
 public interface SavedViewTransactionBatchRepository {
 
   /**
-   * Inserts memberships, ignoring associations that already exist.
+   * Inserts memberships that are not already persisted.
+   *
+   * <p>Callers mutating an existing view must hold its pessimistic lifecycle lock. Creation may
+   * call this method for a newly generated view identifier that has no competing writer.
    *
    * @return the number of membership rows inserted
    */
-  int insertAll(UUID viewId, Collection<Long> transactionIds);
+  int insertMissing(UUID viewId, Collection<Long> transactionIds);
 }

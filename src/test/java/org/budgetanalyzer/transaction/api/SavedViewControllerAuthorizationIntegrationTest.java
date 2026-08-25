@@ -99,7 +99,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
     var transaction = persistTransaction(USER_ID, "Coffee");
     var savedView = persistSavedView(USER_ID);
     persistSavedView(OTHER_USER_ID);
-    savedViewTransactionRepository.insertAll(savedView.getId(), List.of(transaction.getId()));
+    savedViewTransactionRepository.insertMissing(savedView.getId(), List.of(transaction.getId()));
 
     mockMvc
         .perform(

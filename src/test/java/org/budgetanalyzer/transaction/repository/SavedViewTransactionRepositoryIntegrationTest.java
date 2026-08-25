@@ -18,7 +18,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -36,6 +38,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
 
   private static final String USER_ID = "repository-test-user";
   private static final int LARGE_MEMBERSHIP_SIZE = 10_000;
+  private static final long MISSING_TRANSACTION_ID = Long.MAX_VALUE;
 
   @Container
   private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER =
@@ -48,6 +51,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
   @Autowired private SavedViewTransactionRepository savedViewTransactionRepository;
   @Autowired private TransactionRepository transactionRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private PlatformTransactionManager platformTransactionManager;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry dynamicPropertyRegistry) {
@@ -70,7 +74,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
     var firstTransaction = transactionRepository.save(transaction("First"));
     var secondTransaction = transactionRepository.save(transaction("Second"));
     var populatedView = savedViewRepository.saveAndFlush(savedView("Populated"));
-    savedViewTransactionRepository.insertAll(
+    savedViewTransactionRepository.insertMissing(
         populatedView.getId(),
         List.of(secondTransaction.getId(), firstTransaction.getId(), secondTransaction.getId()));
 
@@ -89,9 +93,9 @@ class SavedViewTransactionRepositoryIntegrationTest {
     var populatedView = savedViewRepository.saveAndFlush(savedView("Populated"));
     var secondView = savedViewRepository.saveAndFlush(savedView("Second view"));
     final var emptyView = savedViewRepository.saveAndFlush(savedView("Empty"));
-    savedViewTransactionRepository.insertAll(
+    savedViewTransactionRepository.insertMissing(
         populatedView.getId(), List.of(firstTransaction.getId(), secondTransaction.getId()));
-    savedViewTransactionRepository.insertAll(
+    savedViewTransactionRepository.insertMissing(
         secondView.getId(), List.of(secondTransaction.getId()));
 
     jdbcTemplate.update(
@@ -111,7 +115,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
   void primaryKeyRejectsDuplicateMembershipRows() {
     var transaction = transactionRepository.save(transaction("Duplicate"));
     var savedView = savedViewRepository.saveAndFlush(savedView("Duplicate"));
-    savedViewTransactionRepository.insertAll(savedView.getId(), List.of(transaction.getId()));
+    savedViewTransactionRepository.insertMissing(savedView.getId(), List.of(transaction.getId()));
 
     assertThatThrownBy(
             () ->
@@ -124,18 +128,63 @@ class SavedViewTransactionRepositoryIntegrationTest {
 
   @Test
   @Transactional
-  void batchInsertReportsOnlyPersistedMembershipChanges() {
-    var transaction = transactionRepository.save(transaction("Idempotent"));
-    var savedView = savedViewRepository.saveAndFlush(savedView("Idempotent"));
+  void batchInsertCanonicalizesMixedMembershipsAndReportsOnlyPersistedChanges() {
+    var firstTransaction = transactionRepository.save(transaction("First"));
+    var existingTransaction = transactionRepository.save(transaction("Existing"));
+    var thirdTransaction = transactionRepository.save(transaction("Third"));
+    var fourthTransaction = transactionRepository.save(transaction("Fourth"));
+    var savedView = savedViewRepository.saveAndFlush(savedView("Mixed"));
+    savedViewTransactionRepository.insertMissing(
+        savedView.getId(), List.of(existingTransaction.getId()));
+    var newTransactionIds =
+        List.of(firstTransaction.getId(), thirdTransaction.getId(), fourthTransaction.getId());
+    var mixedTransactionIds =
+        List.of(
+            fourthTransaction.getId(),
+            existingTransaction.getId(),
+            firstTransaction.getId(),
+            fourthTransaction.getId(),
+            thirdTransaction.getId(),
+            existingTransaction.getId());
+    var expectedMembershipIds =
+        List.of(
+                firstTransaction.getId(),
+                existingTransaction.getId(),
+                thirdTransaction.getId(),
+                fourthTransaction.getId())
+            .stream()
+            .sorted()
+            .toList();
+
+    assertThat(savedViewTransactionRepository.insertMissing(savedView.getId(), mixedTransactionIds))
+        .isEqualTo(newTransactionIds.size());
+    assertThat(savedViewTransactionRepository.findTransactionIds(savedView.getId()))
+        .containsExactlyElementsOf(expectedMembershipIds);
 
     assertThat(
-            savedViewTransactionRepository.insertAll(
-                savedView.getId(), List.of(transaction.getId(), transaction.getId())))
-        .isOne();
-    assertThat(
-            savedViewTransactionRepository.insertAll(
-                savedView.getId(), List.of(transaction.getId())))
+            savedViewTransactionRepository.insertMissing(
+                savedView.getId(), mixedTransactionIds.reversed()))
         .isZero();
+    assertThat(savedViewTransactionRepository.findTransactionIds(savedView.getId()))
+        .containsExactlyElementsOf(expectedMembershipIds);
+  }
+
+  @Test
+  void batchInsertPropagatesForeignKeyViolationAndRollsBack() {
+    var transaction = transactionRepository.save(transaction("Valid"));
+    var savedView = savedViewRepository.saveAndFlush(savedView("Rejected"));
+    var transactionTemplate = new TransactionTemplate(platformTransactionManager);
+
+    assertThatThrownBy(
+            () ->
+                transactionTemplate.executeWithoutResult(
+                    transactionStatus ->
+                        savedViewTransactionRepository.insertMissing(
+                            savedView.getId(),
+                            List.of(transaction.getId(), MISSING_TRANSACTION_ID))))
+        .isInstanceOf(DataIntegrityViolationException.class);
+
+    assertThat(savedViewTransactionRepository.findTransactionIds(savedView.getId())).isEmpty();
   }
 
   @Test
@@ -143,7 +192,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
   void viewDeleteCascadesMembershipRows() {
     var transaction = transactionRepository.save(transaction("Cascade"));
     var savedView = savedViewRepository.saveAndFlush(savedView("Cascade"));
-    savedViewTransactionRepository.insertAll(savedView.getId(), List.of(transaction.getId()));
+    savedViewTransactionRepository.insertMissing(savedView.getId(), List.of(transaction.getId()));
 
     jdbcTemplate.update("DELETE FROM saved_view WHERE id = ?", savedView.getId());
 
@@ -156,7 +205,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
   void transactionForeignKeyRestrictsHardDeleteWhileMembershipExists() {
     var transaction = transactionRepository.save(transaction("Restricted"));
     var savedView = savedViewRepository.saveAndFlush(savedView("Restricted"));
-    savedViewTransactionRepository.insertAll(savedView.getId(), List.of(transaction.getId()));
+    savedViewTransactionRepository.insertMissing(savedView.getId(), List.of(transaction.getId()));
 
     assertThatThrownBy(
             () -> jdbcTemplate.update("DELETE FROM transaction WHERE id = ?", transaction.getId()))
@@ -191,7 +240,7 @@ class SavedViewTransactionRepositoryIntegrationTest {
     var transactionIds = insertTransactions(LARGE_MEMBERSHIP_SIZE);
     var savedView = savedViewRepository.saveAndFlush(savedView("Large"));
 
-    savedViewTransactionRepository.insertAll(savedView.getId(), transactionIds.reversed());
+    savedViewTransactionRepository.insertMissing(savedView.getId(), transactionIds.reversed());
     jdbcTemplate.execute("ANALYZE saved_view_transaction");
     var cleanupPlan =
         String.join(

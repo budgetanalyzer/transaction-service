@@ -54,7 +54,7 @@ public class SavedViewService {
     savedView.setUserId(userId);
     savedView.setName(command.name());
     savedView = savedViewRepository.saveAndFlush(savedView);
-    savedViewTransactionRepository.insertAll(savedView.getId(), transactionIds);
+    savedViewTransactionRepository.insertMissing(savedView.getId(), transactionIds);
     log.info(
         "Created saved view {} with {} transaction memberships",
         savedView.getId(),
@@ -128,7 +128,7 @@ public class SavedViewService {
     rejectOverlap(addTransactionIds, removeTransactionIds);
     lockAndValidateAdditions(userId, addTransactionIds);
 
-    var addedCount = savedViewTransactionRepository.insertAll(viewId, addTransactionIds);
+    var addedCount = savedViewTransactionRepository.insertMissing(viewId, addTransactionIds);
     var removedCount = 0;
     if (!removeTransactionIds.isEmpty()) {
       removedCount =

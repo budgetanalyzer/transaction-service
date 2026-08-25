@@ -106,6 +106,26 @@ Creating a view from a filtered transaction table submits the exact visible ID
 set. The service does not receive or reevaluate the browser's transient filter
 definition, display currency, sort, or page state.
 
+## Membership Persistence
+
+Pure JPA remains the default persistence mechanism. Saved-view membership
+insertion is the single JDBC exception because standard JPA has no portable
+batch-insert operation, while persisting each association individually would
+add ORM and managed-entity overhead to the exercised 10,000-membership path.
+The exception stays behind the repository interface.
+
+The repository sorts and deduplicates requested transaction IDs, uses JPQL to
+find memberships that already exist, and sends only missing associations to a
+JDBC batch. The batch SQL must remain a plain, provider-neutral, parameterized
+`INSERT`; database-specific conflict clauses and JDBC driver update counts are
+not part of the inserted-count contract.
+
+Pre-query filtering is safe because every mutation of an existing view holds
+the same pessimistic saved-view lifecycle lock through the surrounding service
+transaction. Creation uses a newly generated view ID with no competing writer.
+The database primary key remains the final integrity constraint, and any batch
+failure propagates so the complete transaction rolls back.
+
 ## Soft Deletion And Concurrency
 
 Rename, membership-delta, and saved-view deletion operations share a
