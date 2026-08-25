@@ -93,6 +93,19 @@ the timestamp unchanged.
 Required permissions are `views:read`, `views:write`, and `views:delete` for
 the corresponding operations.
 
+## Browser Snapshot Integration
+
+The membership endpoint returns transaction IDs because the browser already
+holds the complete active transaction snapshot from `GET /v1/transactions`.
+The browser intersects the membership set with that snapshot, then performs
+view filtering, sorting, aggregates, and presentation pagination locally. The
+intersection tolerates cache timing; it is not the mechanism that enforces the
+active-membership database invariant.
+
+Creating a view from a filtered transaction table submits the exact visible ID
+set. The service does not receive or reevaluate the browser's transient filter
+definition, display currency, sort, or page state.
+
 ## Soft Deletion And Concurrency
 
 The association-table invariant is that every membership references an active

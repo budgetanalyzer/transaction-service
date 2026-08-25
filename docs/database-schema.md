@@ -83,7 +83,11 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 - `account_id` - Optional account identifier
 - `bank_name` - Bank where the transaction occurred
 - `date` - Business date (not creation timestamp)
-- `amount` - Always positive, type indicates direction
+- `amount` - Stored numeric value; type indicates direction. Administrative
+  `minAmount`, `maxAmount`, and amount sorting compare this stored value without
+  currency normalization. `currency_iso_code` is filtered independently, so
+  amount-only administration may span currencies and currency plus amount
+  criteria apply as a conjunction.
 - `currency_iso_code` - ISO 4217 currency code
 - `type` - DEBIT (outflow) or CREDIT (inflow)
 - `description` - Bank-provided transaction description

@@ -51,7 +51,9 @@ curl -H "X-User-Id: usr_test123" -H "X-Permissions: transactions:read" \
 GET /v1/transactions
 Response: List<TransactionResponse>
 Permission: transactions:read
-Notes: Returns only the requesting user's active (non-deleted) transactions.
+Notes: Intentionally returns the complete active (non-deleted) transaction
+collection for the authenticated owner as a plain JSON array. This is the
+browser's current-user snapshot, not one page of a server-side result.
 ```
 
 **Count User Transactions**
@@ -134,6 +136,11 @@ Response: PagedResponse<TransactionResponse>
 Permission: transactions:read:any
 Notes: Default sort is date,desc then id,desc. Default page size is 50, maximum is 100. Supported sort fields: id, ownerId, accountId, bankName, date, currencyIsoCode, amount, type, description, createdAt, updatedAt. Unsupported sort fields return 400.
 Contract: content contains TransactionResponse items (ownerId is a first-class field on every item). metadata contains page, size, numberOfElements, totalElements, totalPages, first, last.
+Amount contract: minAmount, maxAmount, and sort=amount compare each row's
+stored numeric amount without currency normalization. An amount-only query is
+valid and may match rows in different currencies. currencyIsoCode is an
+independent case-insensitive exact criterion; combining it with amount bounds
+is the normal way to make the numeric comparison currency-specific.
 ```
 
 **Count Transactions Across Users**
@@ -143,6 +150,9 @@ Query params: ownerId, id, accountId, bankName, dateFrom, dateTo, currencyIsoCod
 Response: long
 Permission: transactions:read:any
 Notes: Cross-user count endpoint. Does not require transactions:read.
+Amount contract: minAmount and maxAmount compare stored numeric values without
+currency normalization, with currencyIsoCode applied independently when
+provided.
 ```
 
 Transaction text filtering uses `description`, which matches transaction
@@ -808,8 +818,26 @@ curl \
 
 ## Pagination
 
-`GET /v1/transactions` remains an unpaged user-scoped list endpoint. The stable paged response
-contract applies to cross-user search:
+`GET /v1/transactions` is intentionally an unpaged, self-scoped snapshot. It
+returns the authenticated owner's complete active collection as a plain array.
+The browser holds that collection in its transaction query cache and owns
+interactive filtering, sorting, and aggregates. Pagination in the ordinary
+transaction table limits only the rows rendered for presentation; it does not
+change transport completeness or move filtering to this service.
+
+Manual UI testing with 10,000 active transactions was tolerable. That is an
+observed test point, not a maximum, loading SLA, performance guarantee, or
+automated volume-test target. Memoization and visual pagination do not remove
+network transfer, JSON parsing, browser memory, or exchange-rate loading costs.
+Changing the snapshot contract would require a new explicit product and
+architecture decision; no cursor, transport-pagination, or delta-sync
+migration is currently planned.
+
+Cross-user administration remains separate. `GET /v1/transactions/search`
+returns a permission-gated paged response, and
+`GET /v1/transactions/search/count` counts the same administrative criteria.
+Their amount bounds and amount sorting use stored numeric transaction values,
+not normalized economic values. The stable paged response contract is:
 
 **Request:**
 ```

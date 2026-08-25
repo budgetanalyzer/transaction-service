@@ -24,7 +24,7 @@ endpoint contracts live in [API Documentation](api/README.md).
 - `bankName` (`String`) - Bank where the transaction occurred.
 - `date` (`LocalDate`) - Business date of the transaction.
 - `currencyIsoCode` (`String`) - ISO currency code.
-- `amount` (`BigDecimal`) - Positive transaction amount.
+- `amount` (`BigDecimal`) - Stored transaction amount.
 - `type` (`TransactionType`) - `DEBIT` or `CREDIT`.
 - `description` (`String`) - Bank-provided transaction description.
 - `fileImport` (`FileImport`) - Optional source file record for token-backed
@@ -34,6 +34,12 @@ endpoint contracts live in [API Documentation](api/README.md).
 
 - Transactions are soft-deleted through `SoftDeletableEntity`.
 - Queries for normal user workflows exclude soft-deleted rows.
+- `GET /v1/transactions` intentionally exposes the authenticated owner's
+  complete active collection as the browser's locally filtered, sorted, and
+  aggregated snapshot.
+- Administrative amount bounds and amount sorting compare the stored numeric
+  `amount` without currency normalization. Currency is an independent exact
+  criterion and can be combined with those bounds.
 - Duplicate detection is owner-scoped and documented in
   [Transaction Duplicate Detection](duplicate-detection.md).
 

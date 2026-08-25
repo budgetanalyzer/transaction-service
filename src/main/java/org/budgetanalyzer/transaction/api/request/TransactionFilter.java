@@ -35,10 +35,25 @@ public record TransactionFilter(
     @Schema(description = "End date for transaction date range", example = "2025-10-14")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate dateTo,
-    @Schema(description = "ISO currency code for the transaction", example = "USD")
+    @Schema(
+            description =
+                "Exact ISO currency code criterion. On administrative endpoints this is "
+                    + "independent of minAmount and maxAmount; combine them to make an amount "
+                    + "comparison currency-specific.",
+            example = "USD")
         String currencyIsoCode,
-    @Schema(description = "Minimum transaction amount", example = "10.00") BigDecimal minAmount,
-    @Schema(description = "Maximum transaction amount", example = "500.00") BigDecimal maxAmount,
+    @Schema(
+            description =
+                "Inclusive minimum stored numeric amount. Administrative search and count do not "
+                    + "normalize currencies, so this criterion is valid across currencies.",
+            example = "10.00")
+        BigDecimal minAmount,
+    @Schema(
+            description =
+                "Inclusive maximum stored numeric amount. Administrative search and count do not "
+                    + "normalize currencies, so this criterion is valid across currencies.",
+            example = "500.00")
+        BigDecimal maxAmount,
     @Schema(
             description = "Type of the transaction",
             allowableValues = {"CREDIT", "DEBIT"},

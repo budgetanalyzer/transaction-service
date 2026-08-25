@@ -57,6 +57,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             .map(parameterJsonNode -> parameterJsonNode.path("name").asText())
             .toList();
     assertThat(parameterNames)
+        .doesNotHaveDuplicates()
         .contains(
             "page",
             "size",
@@ -77,6 +78,22 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             "updatedAfter",
             "updatedBefore")
         .doesNotContain("filter");
+
+    assertThat(searchOperationJsonNode.path("description").asText())
+        .contains(
+            "stored numeric amount",
+            "without currency normalization",
+            "amount-only query",
+            "independent exact criterion");
+    assertThat(parameterNamed(searchOperationJsonNode, "minAmount").path("description").asText())
+        .contains("stored numeric amount", "across currencies");
+    assertThat(parameterNamed(searchOperationJsonNode, "maxAmount").path("description").asText())
+        .contains("stored numeric amount", "across currencies");
+    assertThat(
+            parameterNamed(searchOperationJsonNode, "currencyIsoCode").path("description").asText())
+        .contains("independent", "currency-specific");
+    assertThat(parameterNamed(searchOperationJsonNode, "sort").path("description").asText())
+        .contains("stored numeric amounts", "without currency normalization");
   }
 
   @Test
@@ -374,6 +391,13 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var schemaName = schemaReference.substring("#/components/schemas/".length());
     return openApiJsonNode.at("/components/schemas/" + escapeJsonPointerToken(schemaName));
+  }
+
+  private JsonNode parameterNamed(JsonNode operationJsonNode, String parameterName) {
+    return StreamSupport.stream(operationJsonNode.path("parameters").spliterator(), false)
+        .filter(parameterJsonNode -> parameterName.equals(parameterJsonNode.path("name").asText()))
+        .findFirst()
+        .orElseThrow();
   }
 
   private List<String> enumValues(JsonNode schemaJsonNode) {

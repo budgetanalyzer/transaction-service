@@ -1,12 +1,33 @@
 # Transaction-Filter Contract Divergence and Systemic Design Defect
 
-**Status:** Open
+**Status:** Superseded as an implementation direction; diagnosis retained
 **Severity:** Major correctness and design defect
 **Affected surfaces:** transaction tables, transaction search, ordinary saved-view creation,
 saved-view membership, and source-assisted saved-view creation
-**Blocked plan:** [`docs/plans/saved-view-save-as.md`](../plans/saved-view-save-as.md)
-**Related review:**
-[`saved-view-create-from-source-plan-review.md`](saved-view-create-from-source-plan-review.md)
+**Superseded plan:** `docs/plans/saved-view-save-as.md` (removed)
+
+## Resolution
+
+The diagnosis below remains valid historical evidence: serializing transient
+browser filters into a differently interpreted backend predicate produced an
+unsound saved-view contract. The proposed dynamic-clause mitigation is
+superseded by the static membership architecture in
+[Static Saved Views and Display Amount](../plans/static-saved-views-and-display-amount.md).
+
+Saved views now persist exact, owner-validated transaction membership rather
+than predicates, so browser filter semantics are never translated for later
+server reevaluation. The browser owns display-currency filtering, sorting, and
+aggregates over the complete self-scoped active snapshot. Cross-user
+administrative search remains a separate paged contract whose amount criteria
+and amount sorting intentionally compare stored numeric values without currency
+normalization. The frontend display-amount work has its own explicit contract
+and must never be folded back into saved-view persistence or administrative
+native-value search.
+
+Sections below that propose versioned dynamic clauses, pin/exclusion
+reconciliation, shared saved-predicate fixtures, or source-assisted creation
+are retained only to preserve the original investigation. They are not current
+implementation guidance.
 
 ## Summary
 
@@ -281,7 +302,7 @@ Transaction mutations are a separate race from source-view mutations. Because th
 dynamic, exact reproduction of an earlier client display cannot be promised without materializing
 or snapshotting transaction state. The product contract should state the accepted boundary.
 
-## Required Contract Decisions
+## Historical Contract Decisions (Superseded)
 
 Before implementation or plan revision, decide:
 
@@ -308,7 +329,7 @@ Before implementation or plan revision, decide:
 13. Whether generic transaction-search predicates intentionally retain different semantics from
     saved views and, if so, how the internal models prevent accidental reuse.
 
-## Recommended Mitigation Direction
+## Historical Dynamic-Clause Proposal (Superseded)
 
 Treat this as its own cross-repository mitigation before returning to source-assisted creation.
 
@@ -353,7 +374,7 @@ must be preserved at the clause or compiled-operator level.
 If the product accepts correcting existing views to the behavior users saw during creation, perform
 and document a deliberate semantic migration. Do not silently reinterpret or delete saved views.
 
-## Plan Impact
+## Historical Plan Impact (Superseded)
 
 The existing source-assisted creation plan must not be patched incrementally or executed. A new
 mitigation plan should precede its replacement and should:
@@ -419,9 +440,10 @@ Repository tests explicitly cover absolute native-value filtering and USD-equiva
 separate behaviors. No runtime browser workflow or cross-service end-to-end test was run. No
 Currency Service runtime behavior was exercised.
 
-## Resolution Gate
+## Historical Resolution Gate (Superseded)
 
-This issue is resolved only when:
+The original proposal used the following gate. It is retained for historical
+context and does not apply to the static-membership architecture:
 
 1. Every affected web and backend surface documents and tests one intentional versioned contract
    for each shared filter purpose.
@@ -440,7 +462,7 @@ This issue is resolved only when:
    reviewed against the corrected architecture.
 
 
-Another Agent reviewed:
+## Architecture Review That Superseded the Clause Proposal
 
 • ## Recommendation
 
