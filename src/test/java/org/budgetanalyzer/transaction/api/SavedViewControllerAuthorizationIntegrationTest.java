@@ -1,17 +1,24 @@
 package org.budgetanalyzer.transaction.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
@@ -43,25 +50,36 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
     var firstTransaction = persistTransaction(USER_ID, "Coffee");
     var secondTransaction = persistTransaction(USER_ID, "Groceries");
 
-    mockMvc
-        .perform(
-            post("/v1/views")
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"name\":\"My View\",\"transactionIds\":["
-                        + secondTransaction.getId()
-                        + ","
-                        + firstTransaction.getId()
-                        + ","
-                        + firstTransaction.getId()
-                        + "]}"))
-        .andExpect(status().isCreated())
-        .andExpect(header().exists("Location"))
-        .andExpect(jsonPath("$.name").value("My View"))
-        .andExpect(jsonPath("$.transactionCount").value(2))
-        .andExpect(jsonPath("$.criteria").doesNotExist())
-        .andExpect(jsonPath("$.pinnedCount").doesNotExist());
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/v1/views")
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        "{\"name\":\"My View\",\"transactionIds\":["
+                            + secondTransaction.getId()
+                            + ","
+                            + firstTransaction.getId()
+                            + ","
+                            + firstTransaction.getId()
+                            + "]}"))
+            .andExpect(status().isCreated())
+            .andExpect(header().exists("Location"))
+            .andExpect(jsonPath("$.*", hasSize(5)))
+            .andExpect(jsonPath("$.id").isNotEmpty())
+            .andExpect(jsonPath("$.name").value("My View"))
+            .andExpect(jsonPath("$.transactionCount").value(2))
+            .andExpect(jsonPath("$.createdAt").isNotEmpty())
+            .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+            .andExpect(jsonPath("$.criteria").doesNotExist())
+            .andExpect(jsonPath("$.pinnedCount").doesNotExist())
+            .andReturn();
+
+    var savedView = savedViewRepository.findAll().getFirst();
+    assertThat(savedView.getUserId()).isEqualTo(USER_ID);
+    assertThat(mvcResult.getResponse().getHeader("Location"))
+        .endsWith("/v1/views/" + savedView.getId());
   }
 
   @Test
@@ -74,6 +92,33 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .content("{\"name\":\"Empty\",\"transactionIds\":[]}"))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.transactionCount").value(0));
+  }
+
+  @Test
+  void listsAndGetsExactOwnerScopedMetadataWithActiveCounts() throws Exception {
+    var transaction = persistTransaction(USER_ID, "Coffee");
+    var savedView = persistSavedView(USER_ID);
+    persistSavedView(OTHER_USER_ID);
+    savedViewTransactionRepository.insertAll(savedView.getId(), List.of(transaction.getId()));
+
+    mockMvc
+        .perform(
+            get("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$", hasSize(1)))
+        .andExpect(jsonPath("$[0].id").value(savedView.getId().toString()))
+        .andExpect(jsonPath("$[0].transactionCount").value(1));
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.*", hasSize(5)))
+        .andExpect(jsonPath("$.id").value(savedView.getId().toString()))
+        .andExpect(jsonPath("$.name").value(savedView.getName()))
+        .andExpect(jsonPath("$.transactionCount").value(1));
   }
 
   @Test
@@ -140,7 +185,8 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"addTransactionIds\":[1],\"removeTransactionIds\":[1]}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
   }
 
   @Test
@@ -155,6 +201,53 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .content("{\"name\":\"Renamed\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.name").value("Renamed"));
+  }
+
+  @Test
+  void removedPutContractReturnsStandardMethodNotAllowedResponse() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            put("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Legacy update\"}"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(
+            header()
+                .string(
+                    HttpHeaders.ALLOW,
+                    allOf(
+                        containsString("GET"), containsString("PATCH"), containsString("DELETE"))))
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.message").value("Method Not Allowed"));
+  }
+
+  @Test
+  void removedPinAndExcludeRoutesReturnStandardNotFoundResponses() throws Exception {
+    var savedViewId = UUID.randomUUID();
+    var transactionId = 123L;
+    var removedRouteRequests =
+        List.of(
+            post("/v1/views/{id}/pin", savedViewId),
+            post("/v1/views/{id}/exclude", savedViewId),
+            post("/v1/views/{id}/pin/{transactionId}", savedViewId, transactionId),
+            delete("/v1/views/{id}/pin/{transactionId}", savedViewId, transactionId),
+            post("/v1/views/{id}/exclude/{transactionId}", savedViewId, transactionId),
+            delete("/v1/views/{id}/exclude/{transactionId}", savedViewId, transactionId));
+
+    for (var removedRouteRequest : removedRouteRequests) {
+      mockMvc
+          .perform(
+              removedRouteRequest.with(
+                  ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+          .andExpect(status().isNotFound())
+          .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+          .andExpect(jsonPath("$.type").value("NOT_FOUND"))
+          .andExpect(jsonPath("$.message").value("Not Found"));
+    }
   }
 
   @Test
@@ -189,7 +282,8 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Invalid\",\"transactionIds\":[0]}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
 
     mockMvc
         .perform(
@@ -197,6 +291,231 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"addTransactionIds\":[]}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void validatesCreateAndRenameNames() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"   \",\"transactionIds\":[]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"" + "x".repeat(256) + "\",\"transactionIds\":[]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void validatesCreateMembershipArrayAndElements() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Missing IDs\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Null ID\",\"transactionIds\":[null]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void rejectsMembershipDeltaWithoutAnyChanges() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"addTransactionIds\":[],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void rejectsNullAndNonPositiveMembershipDeltaIds() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"addTransactionIds\":[null],\"removeTransactionIds\":[0,-1]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void staleMembershipDeltaReturnsGeneric422WithoutDisclosingIds() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+    var foreignTransaction = persistTransaction(OTHER_USER_ID, "Foreign");
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"addTransactionIds\":["
+                        + foreignTransaction.getId()
+                        + "],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
+        .andExpect(
+            content()
+                .string(
+                    org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(
+                            foreignTransaction.getId().toString()))));
+  }
+
+  @Test
+  void repeatedMembershipDeltaIsIdempotent() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+    var transaction = persistTransaction(USER_ID, "Coffee");
+    var requestBody =
+        "{\"addTransactionIds\":[" + transaction.getId() + "],\"removeTransactionIds\":[]}";
+
+    for (var requestNumber = 0; requestNumber < 2; requestNumber++) {
+      mockMvc
+          .perform(
+              patch("/v1/views/{id}/transactions", savedView.getId())
+                  .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(requestBody))
+          .andExpect(status().isNoContent())
+          .andExpect(content().string(""));
+    }
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.transactionIds", hasSize(1)))
+        .andExpect(jsonPath("$.transactionIds[0]").value(transaction.getId()));
+  }
+
+  @Test
+  void ownerIsolationReturns404ForEveryViewResourceOperation() throws Exception {
+    var foreignSavedView = persistSavedView(OTHER_USER_ID);
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}", foreignSavedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"));
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}", foreignSavedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Hidden\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"));
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}/transactions", foreignSavedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"));
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", foreignSavedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"addTransactionIds\":[1],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"));
+
+    mockMvc
+        .perform(
+            delete("/v1/views/{id}", foreignSavedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:delete")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"));
+  }
+
+  @Test
+  void rejectsPermissionsThatDoNotMatchEachSavedViewOperation() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Denied\",\"transactionIds\":[]}"))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Denied\"}"))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            get("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"addTransactionIds\":[1],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            delete("/v1/views/{id}", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
+        .andExpect(status().isForbidden());
   }
 }

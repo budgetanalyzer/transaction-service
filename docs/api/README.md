@@ -207,9 +207,11 @@ PATCH /v1/views/{id}/transactions
 Body: { "addTransactionIds": [789], "removeTransactionIds": [123] }
 Response: 204 No Content
 Permission: views:write
-Notes: Add/remove sets must be disjoint. Unknown removals are idempotent. The
-complete operation returns SAVED_VIEW_MEMBERSHIP_STALE when any addition is
-unavailable. Successful clients refresh view metadata and membership caches.
+Notes: Both arrays are required, IDs must be positive, the add/remove sets must
+be disjoint, and at least one array must be nonempty. Unknown removals are
+idempotent. The complete operation returns SAVED_VIEW_MEMBERSHIP_STALE when any
+addition is unavailable. Successful clients refresh view metadata and
+membership caches.
 ```
 
 ### Statement Formats

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -56,6 +57,11 @@ public class SavedViewController {
   @ApiResponses({
     @ApiResponse(
         responseCode = "201",
+        headers =
+            @Header(
+                name = "Location",
+                description = "Canonical URL of the created saved view",
+                schema = @Schema(type = "string", format = "uri")),
         content = @Content(schema = @Schema(implementation = SavedViewResponse.class))),
     @ApiResponse(
         responseCode = "400",

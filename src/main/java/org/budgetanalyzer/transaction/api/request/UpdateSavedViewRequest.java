@@ -11,7 +11,8 @@ public record UpdateSavedViewRequest(
     @Schema(
             description = "New name for the view",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "SF Trip December 2024")
+            example = "SF Trip December 2024",
+            maxLength = 255)
         @NotBlank(message = "Name is required")
         @Size(max = 255, message = "Name must be at most 255 characters")
         String name) {}
