@@ -108,6 +108,18 @@ definition, display currency, sort, or page state.
 
 ## Soft Deletion And Concurrency
 
+Rename, membership-delta, and saved-view deletion operations share a
+pessimistic lifecycle lock on the owner-scoped saved-view row. When a
+membership delta adds transactions, it acquires locks in this order:
+
+1. Saved-view row.
+2. Added transaction rows by ascending transaction ID.
+
+This order serializes every saved-view mutation with deletion. Creation has no
+existing saved-view row to lock and continues to lock only its requested
+transaction rows in ascending ID order. Read-only operations use unlocked
+owner-scoped lookups.
+
 The association-table invariant is that every membership references an active
 transaction. Both membership additions and transaction soft deletion acquire
 pessimistic locks on sorted unique transaction IDs. Single and bulk soft

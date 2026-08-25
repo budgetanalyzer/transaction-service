@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,6 +25,11 @@ public interface SavedViewRepository extends JpaRepository<SavedView, UUID> {
 
   /** Find a saved view by ID and user ID (for authorization). */
   Optional<SavedView> findByIdAndUserId(UUID id, String userId);
+
+  /** Locks a saved view by ID and user ID for a lifecycle mutation. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT v FROM SavedView v WHERE v.id = :id AND v.userId = :userId")
+  Optional<SavedView> lockByIdAndUserId(@Param("id") UUID id, @Param("userId") String userId);
 
   /** Updates the audit timestamp after an explicit membership delta. */
   @Modifying

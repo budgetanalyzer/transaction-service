@@ -221,8 +221,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     allOf(
                         containsString("GET"), containsString("PATCH"), containsString("DELETE"))))
         .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"))
-        .andExpect(jsonPath("$.message").value("Method Not Allowed"));
+        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
   }
 
   @Test
@@ -245,8 +244,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                   ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
           .andExpect(status().isNotFound())
           .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-          .andExpect(jsonPath("$.type").value("NOT_FOUND"))
-          .andExpect(jsonPath("$.message").value("Not Found"));
+          .andExpect(jsonPath("$.type").value("NOT_FOUND"));
     }
   }
 

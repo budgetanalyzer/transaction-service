@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +24,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -62,6 +65,7 @@ class SavedViewServiceIntegrationTest {
   @Autowired private SavedViewTransactionRepository savedViewTransactionRepository;
   @Autowired private TransactionRepository transactionRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private PlatformTransactionManager platformTransactionManager;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry dynamicPropertyRegistry) {
@@ -259,6 +263,8 @@ class SavedViewServiceIntegrationTest {
                     USER_ID,
                     new SavedViewMembershipDelta(List.of(), List.of(transaction.getId()))))
         .isInstanceOf(ResourceNotFoundException.class);
+    assertThatThrownBy(() -> savedViewService.deleteView(viewId, USER_ID))
+        .isInstanceOf(ResourceNotFoundException.class);
 
     assertThat(savedViewService.getViewTransactions(viewId, OTHER_USER_ID))
         .containsExactly(transaction.getId());
@@ -350,6 +356,121 @@ class SavedViewServiceIntegrationTest {
   }
 
   @Test
+  void membershipDeltaThenViewDeleteSerializeWithoutPersistenceFailure() throws Exception {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Added"));
+    var savedViewSummary =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Delta first", List.of()));
+    var viewId = savedViewSummary.savedView().getId();
+    var deltaApplied = new CountDownLatch(1);
+    var allowDeltaCommit = new CountDownLatch(1);
+    var deleteBackendPid = new CompletableFuture<Integer>();
+
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      final var deltaFuture =
+          executorService.submit(
+              () -> {
+                transactionTemplate()
+                    .executeWithoutResult(
+                        transactionStatus -> {
+                          savedViewService.updateViewTransactions(
+                              viewId,
+                              USER_ID,
+                              new SavedViewMembershipDelta(
+                                  List.of(transaction.getId()), List.of()));
+                          deltaApplied.countDown();
+                          awaitLatch(allowDeltaCommit);
+                        });
+                return true;
+              });
+      assertThat(deltaApplied.await(30, TimeUnit.SECONDS)).isTrue();
+
+      final var deleteFuture =
+          executorService.submit(
+              () -> {
+                transactionTemplate()
+                    .executeWithoutResult(
+                        transactionStatus -> {
+                          deleteBackendPid.complete(currentBackendPid());
+                          savedViewService.deleteView(viewId, USER_ID);
+                        });
+                return true;
+              });
+
+      awaitDatabaseLock(deleteBackendPid.get(30, TimeUnit.SECONDS));
+      assertThat(deleteFuture.isDone()).isFalse();
+      allowDeltaCommit.countDown();
+
+      assertThat(deltaFuture.get(30, TimeUnit.SECONDS)).isTrue();
+      assertThat(deleteFuture.get(30, TimeUnit.SECONDS)).isTrue();
+    } finally {
+      allowDeltaCommit.countDown();
+    }
+
+    assertThat(savedViewRepository.findById(viewId)).isEmpty();
+    assertThat(savedViewTransactionRepository.countByViewId(viewId)).isZero();
+  }
+
+  @Test
+  void viewDeleteThenMembershipDeltaReturnsNotFoundWithoutPersistenceFailure() throws Exception {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Added"));
+    var savedViewSummary =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Delete first", List.of()));
+    var viewId = savedViewSummary.savedView().getId();
+    var deleteApplied = new CountDownLatch(1);
+    var allowDeleteCommit = new CountDownLatch(1);
+    var deltaBackendPid = new CompletableFuture<Integer>();
+
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      final var deleteFuture =
+          executorService.submit(
+              () -> {
+                transactionTemplate()
+                    .executeWithoutResult(
+                        transactionStatus -> {
+                          savedViewService.deleteView(viewId, USER_ID);
+                          deleteApplied.countDown();
+                          awaitLatch(allowDeleteCommit);
+                        });
+                return true;
+              });
+      assertThat(deleteApplied.await(30, TimeUnit.SECONDS)).isTrue();
+
+      var deltaFuture =
+          executorService.submit(
+              () -> {
+                try {
+                  transactionTemplate()
+                      .executeWithoutResult(
+                          transactionStatus -> {
+                            deltaBackendPid.complete(currentBackendPid());
+                            savedViewService.updateViewTransactions(
+                                viewId,
+                                USER_ID,
+                                new SavedViewMembershipDelta(
+                                    List.of(transaction.getId()), List.of()));
+                          });
+                  return null;
+                } catch (RuntimeException runtimeException) {
+                  return runtimeException;
+                }
+              });
+
+      awaitDatabaseLock(deltaBackendPid.get(30, TimeUnit.SECONDS));
+      assertThat(deltaFuture.isDone()).isFalse();
+      allowDeleteCommit.countDown();
+
+      assertThat(deleteFuture.get(30, TimeUnit.SECONDS)).isTrue();
+      assertThat(deltaFuture.get(30, TimeUnit.SECONDS))
+          .isExactlyInstanceOf(ResourceNotFoundException.class);
+    } finally {
+      allowDeleteCommit.countDown();
+    }
+
+    assertThat(savedViewRepository.findById(viewId)).isEmpty();
+    assertThat(savedViewTransactionRepository.countByViewId(viewId)).isZero();
+  }
+
+  @Test
   void addVersusDeleteRaceNeverLeavesDeletedTransactionMembership() throws Exception {
     var transaction = transactionRepository.save(transaction(USER_ID, "Raced"));
     var savedViewSummary =
@@ -418,6 +539,41 @@ class SavedViewServiceIntegrationTest {
   private void assertViewTimestamp(UUID viewId, Instant expectedTimestamp) {
     assertThat(savedViewRepository.findById(viewId).orElseThrow().getUpdatedAt())
         .isEqualTo(expectedTimestamp);
+  }
+
+  private TransactionTemplate transactionTemplate() {
+    return new TransactionTemplate(platformTransactionManager);
+  }
+
+  private int currentBackendPid() {
+    return jdbcTemplate.queryForObject("SELECT pg_backend_pid()", Integer.class);
+  }
+
+  private void awaitDatabaseLock(int backendPid) throws InterruptedException {
+    var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (System.nanoTime() < deadline) {
+      var waitingForLock =
+          jdbcTemplate.queryForObject(
+              "SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = ?",
+              Boolean.class,
+              backendPid);
+      if (Boolean.TRUE.equals(waitingForLock)) {
+        return;
+      }
+      Thread.sleep(10);
+    }
+    throw new AssertionError("PostgreSQL backend did not enter a lock wait");
+  }
+
+  private void awaitLatch(CountDownLatch countDownLatch) {
+    try {
+      if (!countDownLatch.await(30, TimeUnit.SECONDS)) {
+        throw new AssertionError("Timed out waiting to release transaction");
+      }
+    } catch (InterruptedException interruptedException) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError("Interrupted while waiting to release transaction");
+    }
   }
 
   private Transaction transaction(String ownerId, String description) {

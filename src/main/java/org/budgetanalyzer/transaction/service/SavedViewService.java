@@ -95,7 +95,7 @@ public class SavedViewService {
   /** Updates only the user-facing name of an owner-scoped saved view. */
   @Transactional
   public SavedViewSummary updateView(UUID viewId, String userId, SavedViewPatch patch) {
-    var savedView = getOwnedView(viewId, userId);
+    var savedView = getLockedOwnedView(viewId, userId);
     savedView.setName(patch.name());
     savedView = savedViewRepository.save(savedView);
     log.info("Updated saved view {} name", viewId);
@@ -107,7 +107,7 @@ public class SavedViewService {
   /** Deletes an owner-scoped saved view and its cascaded memberships. */
   @Transactional
   public void deleteView(UUID viewId, String userId) {
-    savedViewRepository.delete(getOwnedView(viewId, userId));
+    savedViewRepository.delete(getLockedOwnedView(viewId, userId));
     log.info("Deleted saved view {}", viewId);
   }
 
@@ -122,7 +122,7 @@ public class SavedViewService {
   @Transactional
   public void updateViewTransactions(
       UUID viewId, String userId, SavedViewMembershipDelta membershipDelta) {
-    getOwnedView(viewId, userId);
+    getLockedOwnedView(viewId, userId);
     var addTransactionIds = canonicalIds(membershipDelta.addTransactionIds());
     var removeTransactionIds = canonicalIds(membershipDelta.removeTransactionIds());
     rejectOverlap(addTransactionIds, removeTransactionIds);
@@ -148,6 +148,13 @@ public class SavedViewService {
   private SavedView getOwnedView(UUID viewId, String userId) {
     return savedViewRepository
         .findByIdAndUserId(viewId, userId)
+        .orElseThrow(
+            () -> new ResourceNotFoundException("Saved view not found with id: " + viewId));
+  }
+
+  private SavedView getLockedOwnedView(UUID viewId, String userId) {
+    return savedViewRepository
+        .lockByIdAndUserId(viewId, userId)
         .orElseThrow(
             () -> new ResourceNotFoundException("Saved view not found with id: " + viewId));
   }
