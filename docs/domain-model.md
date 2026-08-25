@@ -134,7 +134,8 @@ routing for a statement format.
 - `id` (`UUID`) - Database-generated saved view identifier.
 - `userId` (`String`) - User that owns the view.
 - `name` (`String`) - User-facing view name.
-- `createdAt`, `updatedAt` (`Instant`) - Audit timestamps.
+- `createdAt`, `updatedAt` (`Instant`) - Audit timestamps backed by
+  timezone-aware PostgreSQL columns.
 
 **Business Rules:**
 

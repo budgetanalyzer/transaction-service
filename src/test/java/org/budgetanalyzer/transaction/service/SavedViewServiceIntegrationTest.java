@@ -4,9 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -139,8 +140,7 @@ class SavedViewServiceIntegrationTest {
             USER_ID, new SavedViewCommand("Delta", List.of(firstTransaction.getId())));
     var viewId = savedViewSummary.savedView().getId();
     var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
-    jdbcTemplate.update(
-        "UPDATE saved_view SET updated_at = ? WHERE id = ?", Timestamp.from(oldTimestamp), viewId);
+    setViewTimestamp(viewId, oldTimestamp);
 
     savedViewService.updateViewTransactions(
         viewId,
@@ -533,7 +533,9 @@ class SavedViewServiceIntegrationTest {
 
   private void setViewTimestamp(UUID viewId, Instant timestamp) {
     jdbcTemplate.update(
-        "UPDATE saved_view SET updated_at = ? WHERE id = ?", Timestamp.from(timestamp), viewId);
+        "UPDATE saved_view SET updated_at = ? WHERE id = ?",
+        OffsetDateTime.ofInstant(timestamp, ZoneOffset.UTC),
+        viewId);
   }
 
   private void assertViewTimestamp(UUID viewId, Instant expectedTimestamp) {

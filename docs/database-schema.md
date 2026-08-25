@@ -285,8 +285,8 @@ CREATE TABLE saved_view (
     id UUID PRIMARY KEY,
     user_id VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
@@ -320,6 +320,9 @@ type, order, or provenance column.
 
 Migration `V22__replace_saved_views_with_static_membership.sql` deletes all
 legacy saved views before dropping the dynamic criteria and override columns.
+Migration `V23__make_saved_view_timestamps_timezone_aware.sql` interprets the
+existing timezone-free saved-view audit values as UTC and converts both columns
+to timezone-aware instants without changing their defaults or nullability.
 
 ## Migration Strategy
 
@@ -379,9 +382,10 @@ CREATE INDEX idx_transaction_notes ON transaction USING gin(to_tsvector('english
 
 ### Dates
 
-**Type:** `DATE` for business dates, `TIMESTAMP` for audit trails
+**Type:** `DATE` for business dates, `TIMESTAMP(6) WITH TIME ZONE` for instant
+audit trails
 - `transaction.date` - Business date (DATE)
-- `created_at`, `updated_at` - Audit timestamps (TIMESTAMP)
+- `created_at`, `updated_at` - Microsecond-precision audit instants
 
 ### UUIDs
 
