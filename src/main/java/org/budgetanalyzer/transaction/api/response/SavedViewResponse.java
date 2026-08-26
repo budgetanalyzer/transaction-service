@@ -5,70 +5,38 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import org.budgetanalyzer.transaction.api.ViewCriteriaApi;
-import org.budgetanalyzer.transaction.domain.SavedView;
+import org.budgetanalyzer.transaction.service.dto.SavedViewSummary;
 
-/** Response for a saved view. */
-@Schema(description = "Saved view response")
+/** Metadata response for a static saved view. */
+@Schema(description = "Static saved-view metadata")
 public record SavedViewResponse(
-    @Schema(
-            description = "Unique identifier for the view",
-            requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Unique view identifier", requiredMode = Schema.RequiredMode.REQUIRED)
         UUID id,
     @Schema(
-            description = "Name of the view",
+            description = "User-facing view name",
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "SF Trip December 2024")
         String name,
     @Schema(
-            description = "Filter criteria for the view",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        ViewCriteriaApi criteria,
-    @Schema(
-            description = "If true, the view includes transactions up to the current date",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        boolean openEnded,
-    @Schema(
-            description = "Number of active pinned transactions",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        int pinnedCount,
-    @Schema(
-            description = "Number of active excluded transactions",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-        int excludedCount,
-    @Schema(
-            description = "Total number of effectively visible transactions in this view",
-            requiredMode = Schema.RequiredMode.REQUIRED)
+            description = "Number of active transaction memberships",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "25")
         long transactionCount,
-    @Schema(
-            description = "Timestamp when the view was created",
-            requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Creation timestamp", requiredMode = Schema.RequiredMode.REQUIRED)
         Instant createdAt,
     @Schema(
-            description = "Timestamp when the view was last updated",
+            description = "Last explicit update timestamp",
             requiredMode = Schema.RequiredMode.REQUIRED)
         Instant updatedAt) {
 
-  /**
-   * Creates a response from a saved view and its resolved active counts.
-   *
-   * @param view the saved view
-   * @param transactionCount the number of effectively visible transactions
-   * @param pinnedCount the number of active stored pins
-   * @param excludedCount the number of active stored exclusions
-   * @return the saved-view response
-   */
-  public static SavedViewResponse from(
-      SavedView view, long transactionCount, int pinnedCount, int excludedCount) {
+  /** Creates API metadata from a service-layer summary. */
+  public static SavedViewResponse from(SavedViewSummary savedViewSummary) {
+    var savedView = savedViewSummary.savedView();
     return new SavedViewResponse(
-        view.getId(),
-        view.getName(),
-        ViewCriteriaApi.from(view.getCriteria()),
-        view.isOpenEnded(),
-        pinnedCount,
-        excludedCount,
-        transactionCount,
-        view.getCreatedAt(),
-        view.getUpdatedAt());
+        savedView.getId(),
+        savedView.getName(),
+        savedViewSummary.transactionCount(),
+        savedView.getCreatedAt(),
+        savedView.getUpdatedAt());
   }
 }

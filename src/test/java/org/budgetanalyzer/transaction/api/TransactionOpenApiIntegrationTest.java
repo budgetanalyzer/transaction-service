@@ -57,6 +57,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             .map(parameterJsonNode -> parameterJsonNode.path("name").asText())
             .toList();
     assertThat(parameterNames)
+        .doesNotHaveDuplicates()
         .contains(
             "page",
             "size",
@@ -77,6 +78,22 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             "updatedAfter",
             "updatedBefore")
         .doesNotContain("filter");
+
+    assertThat(searchOperationJsonNode.path("description").asText())
+        .contains(
+            "stored numeric amount",
+            "without currency normalization",
+            "amount-only query",
+            "independent exact criterion");
+    assertThat(parameterNamed(searchOperationJsonNode, "minAmount").path("description").asText())
+        .contains("stored numeric amount", "across currencies");
+    assertThat(parameterNamed(searchOperationJsonNode, "maxAmount").path("description").asText())
+        .contains("stored numeric amount", "across currencies");
+    assertThat(
+            parameterNamed(searchOperationJsonNode, "currencyIsoCode").path("description").asText())
+        .contains("independent", "currency-specific");
+    assertThat(parameterNamed(searchOperationJsonNode, "sort").path("description").asText())
+        .contains("stored numeric amounts", "without currency normalization");
   }
 
   @Test
@@ -96,6 +113,93 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     assertThat(openApiJsonNode.at("/paths/~1v1~1admin~1transactions~1count").isMissingNode())
         .isTrue();
     assertThat(openApiJsonNode.at("/components/schemas/AdminTransactionResponse").isMissingNode())
+        .isTrue();
+  }
+
+  @Test
+  void savedViewOpenApiContainsOnlyStaticMembershipContract() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+    var collectionPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views");
+    var createOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1views/post");
+    var updatePathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}");
+    var membershipPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}~1transactions");
+
+    assertThat(propertyNames(collectionPathJsonNode)).containsExactlyInAnyOrder("get", "post");
+    assertThat(createOperationJsonNode.isMissingNode()).isFalse();
+    assertThat(propertyNames(updatePathJsonNode))
+        .containsExactlyInAnyOrder("get", "patch", "delete");
+    assertThat(propertyNames(membershipPathJsonNode)).containsExactlyInAnyOrder("get", "patch");
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1pin").isMissingNode()).isTrue();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1exclude").isMissingNode()).isTrue();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1pin~1{txnId}").isMissingNode())
+        .isTrue();
+    assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1exclude~1{txnId}").isMissingNode())
+        .isTrue();
+
+    var createRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            createOperationJsonNode.at("/requestBody/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(createRequestSchemaJsonNode))
+        .containsExactlyInAnyOrder("name", "transactionIds");
+    assertThat(propertyNames(createRequestSchemaJsonNode.path("properties")))
+        .containsExactlyInAnyOrder("name", "transactionIds");
+    assertThat(createRequestSchemaJsonNode.at("/properties/name/maxLength").asInt()).isEqualTo(255);
+    var createTransactionIdsJsonNode = createRequestSchemaJsonNode.at("/properties/transactionIds");
+    assertThat(createTransactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(createTransactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
+    assertThat(createTransactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
+    assertThat(createOperationJsonNode.at("/responses/201/headers/Location").isMissingNode())
+        .isFalse();
+
+    var updateRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            updatePathJsonNode.at("/patch/requestBody/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(updateRequestSchemaJsonNode)).containsExactly("name");
+    assertThat(propertyNames(updateRequestSchemaJsonNode.path("properties")))
+        .containsExactly("name");
+
+    var membershipResponseSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            membershipPathJsonNode.at("/get/responses/200/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(membershipResponseSchemaJsonNode))
+        .containsExactly("transactionIds");
+    assertThat(propertyNames(membershipResponseSchemaJsonNode.path("properties")))
+        .containsExactly("transactionIds");
+    assertThat(membershipResponseSchemaJsonNode.at("/properties/transactionIds/type").asText())
+        .isEqualTo("array");
+
+    var membershipDeltaSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            membershipPathJsonNode.at("/patch/requestBody/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(membershipDeltaSchemaJsonNode))
+        .containsExactlyInAnyOrder("addTransactionIds", "removeTransactionIds");
+    assertThat(propertyNames(membershipDeltaSchemaJsonNode.path("properties")))
+        .containsExactlyInAnyOrder("addTransactionIds", "removeTransactionIds");
+    for (var propertyName : List.of("addTransactionIds", "removeTransactionIds")) {
+      var transactionIdsJsonNode =
+          membershipDeltaSchemaJsonNode.path("properties").path(propertyName);
+      assertThat(transactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+      assertThat(transactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
+      assertThat(transactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
+    }
+    assertThat(membershipPathJsonNode.at("/patch/responses/204/content").isMissingNode()).isTrue();
+
+    var savedViewSchemaJsonNode = openApiJsonNode.at("/components/schemas/SavedViewResponse");
+    assertThat(propertyNames(savedViewSchemaJsonNode.path("properties")))
+        .containsExactlyInAnyOrder("id", "name", "transactionCount", "createdAt", "updatedAt");
+    assertThat(requiredPropertyNames(savedViewSchemaJsonNode))
+        .containsExactlyInAnyOrder("id", "name", "transactionCount", "createdAt", "updatedAt");
+    assertThat(openApiJsonNode.at("/components/schemas/ViewCriteriaApi").isMissingNode()).isTrue();
+    assertThat(
+            openApiJsonNode.at("/components/schemas/BulkViewTransactionResponse").isMissingNode())
+        .isTrue();
+    assertThat(openApiJsonNode.at("/components/schemas/BulkViewTransactionRequest").isMissingNode())
+        .isTrue();
+    assertThat(openApiJsonNode.at("/components/schemas/ViewTransactionResponse").isMissingNode())
         .isTrue();
   }
 
@@ -289,6 +393,13 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     return openApiJsonNode.at("/components/schemas/" + escapeJsonPointerToken(schemaName));
   }
 
+  private JsonNode parameterNamed(JsonNode operationJsonNode, String parameterName) {
+    return StreamSupport.stream(operationJsonNode.path("parameters").spliterator(), false)
+        .filter(parameterJsonNode -> parameterName.equals(parameterJsonNode.path("name").asText()))
+        .findFirst()
+        .orElseThrow();
+  }
+
   private List<String> enumValues(JsonNode schemaJsonNode) {
     return StreamSupport.stream(schemaJsonNode.path("enum").spliterator(), false)
         .map(JsonNode::asText)
@@ -298,6 +409,11 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
   private List<String> requiredPropertyNames(JsonNode schemaJsonNode) {
     return StreamSupport.stream(schemaJsonNode.path("required").spliterator(), false)
         .map(JsonNode::asText)
+        .toList();
+  }
+
+  private List<String> propertyNames(JsonNode jsonNode) {
+    return StreamSupport.stream(((Iterable<String>) jsonNode::fieldNames).spliterator(), false)
         .toList();
   }
 

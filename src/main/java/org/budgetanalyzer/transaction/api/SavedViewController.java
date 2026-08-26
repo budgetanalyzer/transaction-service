@@ -5,16 +5,14 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -22,9 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -32,24 +30,21 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
-import org.budgetanalyzer.transaction.api.request.BulkViewTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.CreateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
-import org.budgetanalyzer.transaction.api.response.BulkViewTransactionResponse;
+import org.budgetanalyzer.transaction.api.request.UpdateSavedViewTransactionsRequest;
 import org.budgetanalyzer.transaction.api.response.SavedViewResponse;
 import org.budgetanalyzer.transaction.api.response.ViewMembershipResponse;
-import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.service.SavedViewService;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
+import org.budgetanalyzer.transaction.service.dto.SavedViewMembershipDelta;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
 
-/** REST controller for managing saved views (smart collections). */
-@Tag(name = "Saved Views", description = "Create and manage saved transaction views")
+/** REST controller for user-owned static saved views. */
+@Tag(name = "Saved Views", description = "Create and manage static transaction collections")
 @RestController
 @RequestMapping(path = "/v1/views")
 public class SavedViewController {
-
-  private static final Logger log = LoggerFactory.getLogger(SavedViewController.class);
 
   private final SavedViewService savedViewService;
 
@@ -58,440 +53,140 @@ public class SavedViewController {
   }
 
   @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Create a saved view",
-      description = "Creates a new saved view for the current user")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "201",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "400",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
+  @Operation(summary = "Create a static saved view")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "201",
+        headers =
+            @Header(
+                name = "Location",
+                description = "Canonical URL of the created saved view",
+                schema = @Schema(type = "string", format = "uri")),
+        content = @Content(schema = @Schema(implementation = SavedViewResponse.class))),
+    @ApiResponse(
+        responseCode = "400",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "422",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
   @PostMapping(consumes = "application/json", produces = "application/json")
   public ResponseEntity<SavedViewResponse> createView(
       @Valid @RequestBody CreateSavedViewRequest request) {
-    var userId = getCurrentUserId();
-    log.info("Creating saved view '{}' for user {}", request.name(), userId);
-
-    var command =
-        new SavedViewCommand(request.name(), request.criteria().toDomain(), request.openEnded());
-    var view = savedViewService.createView(userId, command);
-
+    var savedViewSummary =
+        savedViewService.createView(
+            currentUserId(), new SavedViewCommand(request.name(), request.transactionIds()));
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{id}")
-            .buildAndExpand(view.getId())
+            .buildAndExpand(savedViewSummary.savedView().getId())
             .toUri();
-
-    return ResponseEntity.created(location).body(toResponse(view));
+    return ResponseEntity.created(location).body(SavedViewResponse.from(savedViewSummary));
   }
 
   @PreAuthorize("hasAuthority('views:read')")
-  @Operation(
-      summary = "List saved views",
-      description = "Gets all saved views for the current user")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    array =
-                        @ArraySchema(schema = @Schema(implementation = SavedViewResponse.class))))
-      })
+  @Operation(summary = "List static saved views")
+  @ApiResponse(
+      responseCode = "200",
+      content =
+          @Content(
+              array = @ArraySchema(schema = @Schema(implementation = SavedViewResponse.class))))
   @GetMapping(produces = "application/json")
   public List<SavedViewResponse> listViews() {
-    var userId = getCurrentUserId();
-    log.info("Listing saved views for user {}", userId);
-
-    var views = savedViewService.getViewsForUser(userId);
-    return views.stream().map(this::toResponse).toList();
+    return savedViewService.getViewsForUser(currentUserId()).stream()
+        .map(SavedViewResponse::from)
+        .toList();
   }
 
   @PreAuthorize("hasAuthority('views:read')")
-  @Operation(summary = "Get a saved view", description = "Gets a saved view by ID")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
+  @Operation(summary = "Get static saved-view metadata")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        content = @Content(schema = @Schema(implementation = SavedViewResponse.class))),
+    @ApiResponse(
+        responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
   @GetMapping(path = "/{id}", produces = "application/json")
   public SavedViewResponse getView(@PathVariable("id") UUID id) {
-    var userId = getCurrentUserId();
-    log.info("Getting saved view {} for user {}", id, userId);
-
-    var view = savedViewService.getView(id, userId);
-    return toResponse(view);
+    return SavedViewResponse.from(savedViewService.getView(id, currentUserId()));
   }
 
   @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Update a saved view",
-      description = "Updates a saved view's name or criteria")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @PutMapping(path = "/{id}", consumes = "application/json", produces = "application/json")
+  @Operation(summary = "Rename a static saved view")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        content = @Content(schema = @Schema(implementation = SavedViewResponse.class))),
+    @ApiResponse(
+        responseCode = "400",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
+  @PatchMapping(path = "/{id}", consumes = "application/json", produces = "application/json")
   public SavedViewResponse updateView(
       @PathVariable("id") UUID id, @Valid @RequestBody UpdateSavedViewRequest request) {
-    var userId = getCurrentUserId();
-    log.info("Updating saved view {} for user {}", id, userId);
-
-    var patch =
-        new SavedViewPatch(
-            request.name(),
-            request.criteria() != null ? request.criteria().toDomain() : null,
-            request.openEnded());
-    var view = savedViewService.updateView(id, userId, patch);
-    return toResponse(view);
+    return SavedViewResponse.from(
+        savedViewService.updateView(id, currentUserId(), new SavedViewPatch(request.name())));
   }
 
   @PreAuthorize("hasAuthority('views:delete')")
-  @Operation(summary = "Delete a saved view", description = "Deletes a saved view")
-  @ApiResponses(
-      value = {
-        @ApiResponse(responseCode = "204"),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
+  @Operation(summary = "Delete a static saved view")
+  @ApiResponses({
+    @ApiResponse(responseCode = "204"),
+    @ApiResponse(
+        responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
   @DeleteMapping(path = "/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteView(@PathVariable("id") UUID id) {
-    var userId = getCurrentUserId();
-    log.info("Deleting saved view {} for user {}", id, userId);
-
-    savedViewService.deleteView(id, userId);
+    savedViewService.deleteView(id, currentUserId());
   }
 
   @PreAuthorize("hasAuthority('views:read')")
-  @Operation(
-      summary = "Get view transaction IDs",
-      description =
-          "Gets IDs of active transactions in this view, grouped by membership type "
-              + "(matched, pinned, excluded). Soft-deleted transactions are excluded.")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ViewMembershipResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
+  @Operation(summary = "Get complete static saved-view membership")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        content = @Content(schema = @Schema(implementation = ViewMembershipResponse.class))),
+    @ApiResponse(
+        responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
   @GetMapping(path = "/{id}/transactions", produces = "application/json")
   public ViewMembershipResponse getViewTransactions(@PathVariable("id") UUID id) {
-    var userId = getCurrentUserId();
-    log.info("Getting transaction IDs for view {} for user {}", id, userId);
-
-    var membership = savedViewService.getViewTransactions(id, userId);
-    return ViewMembershipResponse.from(membership);
+    return new ViewMembershipResponse(savedViewService.getViewTransactions(id, currentUserId()));
   }
 
   @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Bulk pin transactions",
-      description =
-          "Pins multiple transactions to the view. Returns updatedCount for unique valid IDs and "
-              + "notFoundIds for IDs that are missing, deleted, or not owned by the caller.")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Bulk pin operation completed",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
-                    examples =
-                        @ExampleObject(
-                            name = "All pinned",
-                            summary = "All requested IDs were pinned",
-                            value =
-                                """
-                      {
-                        "updatedCount": 3,
-                        "notFoundIds": []
-                      }
-                      """))),
-        @ApiResponse(
-            responseCode = "200",
-            description = "Some transactions were not found",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
-                    examples =
-                        @ExampleObject(
-                            name = "Partial success",
-                            summary = "Some IDs were not pinned",
-                            value =
-                                """
-                      {
-                        "updatedCount": 2,
-                        "notFoundIds": [999, 1000]
-                      }
-                      """))),
-        @ApiResponse(
-            responseCode = "400",
-            description = "Invalid request (empty ID list)",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Saved view not found",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @PostMapping(path = "/{id}/pin", consumes = "application/json", produces = "application/json")
-  public BulkViewTransactionResponse bulkPinTransactions(
-      @PathVariable("id") UUID id, @Valid @RequestBody BulkViewTransactionRequest request) {
-    var userId = getCurrentUserId();
-    log.info("Bulk pin request for {} IDs on view {} by user {}", request.ids().size(), id, userId);
-
-    var result = savedViewService.bulkPinTransactions(id, userId, request.ids());
-    return new BulkViewTransactionResponse(result.updatedCount(), result.notFoundIds());
+  @Operation(summary = "Apply a static saved-view membership delta")
+  @ApiResponses({
+    @ApiResponse(responseCode = "204"),
+    @ApiResponse(
+        responseCode = "400",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "422",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
+  @PatchMapping(path = "/{id}/transactions", consumes = "application/json")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void updateViewTransactions(
+      @PathVariable("id") UUID id, @Valid @RequestBody UpdateSavedViewTransactionsRequest request) {
+    savedViewService.updateViewTransactions(
+        id,
+        currentUserId(),
+        new SavedViewMembershipDelta(request.addTransactionIds(), request.removeTransactionIds()));
   }
 
-  @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Bulk exclude transactions",
-      description =
-          "Excludes multiple transactions from the view. Returns updatedCount for unique valid "
-              + "IDs and notFoundIds for IDs that are missing, deleted, or not owned by the "
-              + "caller.")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            description = "Bulk exclude operation completed",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
-                    examples =
-                        @ExampleObject(
-                            name = "All excluded",
-                            summary = "All requested IDs were excluded",
-                            value =
-                                """
-                      {
-                        "updatedCount": 3,
-                        "notFoundIds": []
-                      }
-                      """))),
-        @ApiResponse(
-            responseCode = "200",
-            description = "Some transactions were not found",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = BulkViewTransactionResponse.class),
-                    examples =
-                        @ExampleObject(
-                            name = "Partial success",
-                            summary = "Some IDs were not excluded",
-                            value =
-                                """
-                      {
-                        "updatedCount": 2,
-                        "notFoundIds": [999, 1000]
-                      }
-                      """))),
-        @ApiResponse(
-            responseCode = "400",
-            description = "Invalid request (empty ID list)",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            description = "Saved view not found",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @PostMapping(path = "/{id}/exclude", consumes = "application/json", produces = "application/json")
-  public BulkViewTransactionResponse bulkExcludeTransactions(
-      @PathVariable("id") UUID id, @Valid @RequestBody BulkViewTransactionRequest request) {
-    var userId = getCurrentUserId();
-    log.info(
-        "Bulk exclude request for {} IDs on view {} by user {}", request.ids().size(), id, userId);
-
-    var result = savedViewService.bulkExcludeTransactions(id, userId, request.ids());
-    return new BulkViewTransactionResponse(result.updatedCount(), result.notFoundIds());
-  }
-
-  @PreAuthorize("hasAuthority('views:write')")
-  @Operation(summary = "Pin a transaction", description = "Pins a transaction to the view")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @PostMapping(path = "/{id}/pin/{txnId}", produces = "application/json")
-  public SavedViewResponse pinTransaction(
-      @PathVariable("id") UUID id, @PathVariable("txnId") Long txnId) {
-    var userId = getCurrentUserId();
-    log.info("Pinning transaction {} to view {} for user {}", txnId, id, userId);
-
-    var view = savedViewService.pinTransaction(id, userId, txnId);
-    return toResponse(view);
-  }
-
-  @PreAuthorize("hasAuthority('views:write')")
-  @Operation(summary = "Unpin a transaction", description = "Removes a pin from the view")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @DeleteMapping(path = "/{id}/pin/{txnId}", produces = "application/json")
-  public SavedViewResponse unpinTransaction(
-      @PathVariable("id") UUID id, @PathVariable("txnId") Long txnId) {
-    var userId = getCurrentUserId();
-    log.info("Unpinning transaction {} from view {} for user {}", txnId, id, userId);
-
-    var view = savedViewService.unpinTransaction(id, userId, txnId);
-    return toResponse(view);
-  }
-
-  @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Exclude a transaction",
-      description = "Excludes a transaction from the view")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @PostMapping(path = "/{id}/exclude/{txnId}", produces = "application/json")
-  public SavedViewResponse excludeTransaction(
-      @PathVariable("id") UUID id, @PathVariable("txnId") Long txnId) {
-    var userId = getCurrentUserId();
-    log.info("Excluding transaction {} from view {} for user {}", txnId, id, userId);
-
-    var view = savedViewService.excludeTransaction(id, userId, txnId);
-    return toResponse(view);
-  }
-
-  @PreAuthorize("hasAuthority('views:write')")
-  @Operation(
-      summary = "Remove exclusion",
-      description =
-          "Removes an exclusion, allowing the transaction to appear if it matches criteria")
-  @ApiResponses(
-      value = {
-        @ApiResponse(
-            responseCode = "200",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = SavedViewResponse.class))),
-        @ApiResponse(
-            responseCode = "404",
-            content =
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(implementation = ApiErrorResponse.class)))
-      })
-  @DeleteMapping(path = "/{id}/exclude/{txnId}", produces = "application/json")
-  public SavedViewResponse unexcludeTransaction(
-      @PathVariable("id") UUID id, @PathVariable("txnId") Long txnId) {
-    var userId = getCurrentUserId();
-    log.info("Removing exclusion of transaction {} from view {} for user {}", txnId, id, userId);
-
-    var view = savedViewService.unexcludeTransaction(id, userId, txnId);
-    return toResponse(view);
-  }
-
-  private SavedViewResponse toResponse(SavedView view) {
-    var resolution = savedViewService.resolveView(view);
-    return SavedViewResponse.from(
-        view,
-        resolution.transactionCount(),
-        resolution.activePinnedCount(),
-        resolution.activeExcludedCount());
-  }
-
-  private String getCurrentUserId() {
+  private String currentUserId() {
     return SecurityContextUtil.getCurrentUserId()
         .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
   }

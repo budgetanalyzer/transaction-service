@@ -32,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -311,7 +312,13 @@ public class TransactionController {
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")
-  @Operation(summary = "Get transactions", description = "Get all transactions")
+  @Operation(
+      summary = "Get transactions",
+      description =
+          "Returns the complete active transaction collection for the authenticated owner as a "
+              + "plain array. This intentionally unpaged snapshot supports browser-owned "
+              + "filtering, sorting, and aggregation; browser table pagination is presentation "
+              + "only.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -355,7 +362,23 @@ public class TransactionController {
   }
 
   @PreAuthorize("hasAuthority('transactions:read:any')")
-  @Operation(summary = "Search transactions across users")
+  @Operation(
+      summary = "Search transactions across users",
+      description =
+          "Returns a paged administrative search across active transactions. minAmount and "
+              + "maxAmount compare each row's stored numeric amount without currency "
+              + "normalization, so an amount-only query may match multiple currencies. "
+              + "currencyIsoCode is an independent exact criterion; combine it with amount "
+              + "bounds for a currency-specific numeric comparison. Sorting by amount likewise "
+              + "uses the stored numeric amount.",
+      parameters =
+          @Parameter(
+              name = "sort",
+              in = ParameterIn.QUERY,
+              description =
+                  "Sorting criteria as property,(asc|desc). Multiple values are supported. "
+                      + "sort=amount compares stored numeric amounts without currency "
+                      + "normalization."))
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -401,7 +424,12 @@ public class TransactionController {
   }
 
   @PreAuthorize("hasAuthority('transactions:read:any')")
-  @Operation(summary = "Count transactions across users")
+  @Operation(
+      summary = "Count transactions across users",
+      description =
+          "Counts active transactions matching the administrative criteria. minAmount and "
+              + "maxAmount compare stored numeric amounts without currency normalization; "
+              + "currencyIsoCode is an independent exact criterion.")
   @ApiResponses(
       value = {
         @ApiResponse(

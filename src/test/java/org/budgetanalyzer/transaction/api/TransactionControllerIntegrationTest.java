@@ -574,6 +574,107 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   }
 
   @Test
+  void searchAmountOnlyMatchesStoredValuesAcrossCurrencies() throws Exception {
+    persistDetailedTransaction(USER_ID, "Dollar match", "50.00", LocalDate.of(2025, 1, 1), "USD");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Baht match", "50.00", LocalDate.of(2025, 1, 2), "THB");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Euro outside", "500.00", LocalDate.of(2025, 1, 3), "EUR");
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("minAmount", "40.00")
+                .param("maxAmount", "60.00")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(2))
+        .andExpect(jsonPath("$.content[*].currencyIsoCode").value(hasItems("USD", "THB")));
+  }
+
+  @Test
+  void countAmountOnlyMatchesStoredValuesAcrossCurrencies() throws Exception {
+    persistDetailedTransaction(USER_ID, "Dollar match", "50.00", LocalDate.of(2025, 1, 1), "USD");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Baht match", "50.00", LocalDate.of(2025, 1, 2), "THB");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Euro outside", "500.00", LocalDate.of(2025, 1, 3), "EUR");
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search/count")
+                .param("minAmount", "40.00")
+                .param("maxAmount", "60.00")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").value(2));
+  }
+
+  @Test
+  void searchCurrencyOnlyMatchesExactCurrency() throws Exception {
+    persistDetailedTransaction(
+        USER_ID, "Dollar transaction", "50.00", LocalDate.of(2025, 1, 1), "USD");
+    var bahtTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Baht transaction", "500.00", LocalDate.of(2025, 1, 2), "THB");
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("currencyIsoCode", "thb")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(bahtTransaction.getId()));
+  }
+
+  @Test
+  void searchCurrencyAndAmountUsesConjunction() throws Exception {
+    var matchingTransaction =
+        persistDetailedTransaction(
+            USER_ID, "Matching baht", "50.00", LocalDate.of(2025, 1, 1), "THB");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Outside baht", "500.00", LocalDate.of(2025, 1, 2), "THB");
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Matching dollars", "50.00", LocalDate.of(2025, 1, 3), "USD");
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("currencyIsoCode", "THB")
+                .param("minAmount", "40.00")
+                .param("maxAmount", "60.00")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(matchingTransaction.getId()));
+  }
+
+  @Test
+  void searchAmountSortUsesStoredNumericOrderingAcrossCurrencies() throws Exception {
+    var dollarTransaction =
+        persistDetailedTransaction(
+            USER_ID, "One hundred dollars", "100.00", LocalDate.of(2025, 1, 1), "USD");
+    var bahtTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Twenty baht", "20.00", LocalDate.of(2025, 1, 2), "THB");
+    var euroTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Five euros", "5.00", LocalDate.of(2025, 1, 3), "EUR");
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("sort", "amount,asc")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(3))
+        .andExpect(jsonPath("$.content[0].id").value(euroTransaction.getId()))
+        .andExpect(jsonPath("$.content[1].id").value(bahtTransaction.getId()))
+        .andExpect(jsonPath("$.content[2].id").value(dollarTransaction.getId()));
+  }
+
+  @Test
   void searchRejectsUnsupportedSortFieldWithStableErrorContract() throws Exception {
     mockMvc
         .perform(
@@ -744,6 +845,11 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
 
   private Transaction persistDetailedTransaction(
       String ownerId, String description, String amount, LocalDate date) {
+    return persistDetailedTransaction(ownerId, description, amount, date, "USD");
+  }
+
+  private Transaction persistDetailedTransaction(
+      String ownerId, String description, String amount, LocalDate date, String currencyIsoCode) {
     var transaction = new Transaction();
     transaction.setOwnerId(ownerId);
     transaction.setAccountId("checking-123");
@@ -752,7 +858,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
     transaction.setDate(date);
     transaction.setType(TransactionType.DEBIT);
     transaction.setBankName("Test Bank");
-    transaction.setCurrencyIsoCode("USD");
+    transaction.setCurrencyIsoCode(currencyIsoCode);
     return transactionRepository.save(transaction);
   }
 }

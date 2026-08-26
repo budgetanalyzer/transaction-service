@@ -61,6 +61,10 @@ rg -n '^import org\.budgetanalyzer\.transaction\.api\.' \
   src/main/java/org/budgetanalyzer/transaction/service \
   src/main/java/org/budgetanalyzer/transaction/repository --glob '*.java'
 
+# JDBC and native persistence exceptions
+rg -n 'JdbcTemplate|NamedParameterJdbcTemplate|createNativeQuery|nativeQuery\s*=\s*true|ON CONFLICT' \
+  src/main/java --glob '*.java'
+
 # Build tasks, dependencies, and runtime configuration
 ./gradlew tasks --quiet
 rg -n 'dependencies|implementation|testImplementation|runtimeOnly' build.gradle.kts
@@ -164,6 +168,18 @@ sed -n '1,220p' src/main/resources/application.yml
   Before adding a defensive branch, identify how the state can arise and what
   the caller or system can usefully do in response; omit the branch if neither
   is concrete.
+
+### Persistence Exception
+
+- Use pure JPA for repository persistence by default. Treat saved-view
+  membership batch insertion as the only approved JDBC exception, and keep it
+  behind the repository interface.
+- For that exception, use JPQL to find existing memberships and use only
+  portable, parameterized insert SQL for the JDBC batch. Preserve the shared
+  pessimistic saved-view lifecycle-lock precondition.
+- Read [saved-views.md](docs/saved-views.md#membership-persistence) before
+  changing the exception or its concurrency assumptions. Do not broaden it to
+  other repositories or arbitrary native queries.
 
 ### Authorization and Ownership
 

@@ -91,18 +91,6 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_searchTextMatchesDescriptionOnly() {
-    transactionRepository.save(createTransactionWithBank("Coffee Shop", "Neighborhood Bank"));
-    transactionRepository.save(createTransactionWithBank("Grocery Store", "Capital One"));
-    transactionRepository.save(createTransactionWithBank("Fuel Stop", "Bangkok Bank"));
-
-    var spec = TransactionSpecifications.withCriteria(criteriaBySearchText("coffee capital"));
-    var results = transactionRepository.findAll(spec);
-
-    assertThat(results).extracting(Transaction::getDescription).containsExactly("Coffee Shop");
-  }
-
-  @Test
   void withCriteria_descriptionMultipleWords_matchesAnyWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
@@ -413,11 +401,15 @@ class TransactionSpecificationsIntegrationTest {
 
   @Test
   void withCriteria_amountRange_matchesWithinRange() {
-    // Given: transactions with different amounts
-    transactionRepository.save(createTransaction("Transaction 1", BigDecimal.valueOf(10.00)));
-    transactionRepository.save(createTransaction("Transaction 2", BigDecimal.valueOf(50.00)));
-    transactionRepository.save(createTransaction("Transaction 3", BigDecimal.valueOf(100.00)));
-    transactionRepository.save(createTransaction("Transaction 4", BigDecimal.valueOf(200.00)));
+    // Given: transactions with different stored amounts and currencies
+    transactionRepository.save(
+        createTransactionWithCurrency("Transaction 1", "USD", BigDecimal.valueOf(10.00)));
+    transactionRepository.save(
+        createTransactionWithCurrency("Transaction 2", "THB", BigDecimal.valueOf(50.00)));
+    transactionRepository.save(
+        createTransactionWithCurrency("Transaction 3", "EUR", BigDecimal.valueOf(100.00)));
+    transactionRepository.save(
+        createTransactionWithCurrency("Transaction 4", "JPY", BigDecimal.valueOf(200.00)));
 
     // When: filter by amount range (25.00 - 150.00)
     var spec =
@@ -430,6 +422,24 @@ class TransactionSpecificationsIntegrationTest {
     assertThat(results)
         .extracting(Transaction::getDescription)
         .containsExactlyInAnyOrder("Transaction 2", "Transaction 3");
+  }
+
+  @Test
+  void withCriteriaCurrencyAndAmountRangeUsesConjunction() {
+    transactionRepository.save(
+        createTransactionWithCurrency("Matching THB", "THB", BigDecimal.valueOf(50.00)));
+    transactionRepository.save(
+        createTransactionWithCurrency("Outside THB", "THB", BigDecimal.valueOf(500.00)));
+    transactionRepository.save(
+        createTransactionWithCurrency("Matching USD", "USD", BigDecimal.valueOf(50.00)));
+
+    var spec =
+        specificationFromFilter(
+            filterByCurrencyAndAmountRange(
+                "THB", BigDecimal.valueOf(25.00), BigDecimal.valueOf(75.00)));
+    var results = transactionRepository.findAll(spec);
+
+    assertThat(results).extracting(Transaction::getDescription).containsExactly("Matching THB");
   }
 
   // ==================== Combined Filter Tests ====================
@@ -706,26 +716,6 @@ class TransactionSpecificationsIntegrationTest {
         null);
   }
 
-  private TransactionCriteria criteriaBySearchText(String searchText) {
-    return new TransactionCriteria(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        searchText,
-        null,
-        null,
-        null,
-        null);
-  }
-
   private TransactionFilter filterByOwnerId(String ownerId) {
     return new TransactionFilter(
         null, ownerId, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -778,6 +768,26 @@ class TransactionSpecificationsIntegrationTest {
     return new TransactionFilter(
         null, null, null, null, null, null, null, minAmount, maxAmount, null, null, null, null,
         null, null);
+  }
+
+  private TransactionFilter filterByCurrencyAndAmountRange(
+      String currencyIsoCode, BigDecimal minAmount, BigDecimal maxAmount) {
+    return new TransactionFilter(
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        currencyIsoCode,
+        minAmount,
+        maxAmount,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
   private TransactionFilter filterByMultipleFields(
@@ -853,7 +863,12 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   private Transaction createTransactionWithCurrency(String description, String currencyCode) {
-    var transaction = createTransaction(description, BigDecimal.TEN);
+    return createTransactionWithCurrency(description, currencyCode, BigDecimal.TEN);
+  }
+
+  private Transaction createTransactionWithCurrency(
+      String description, String currencyCode, BigDecimal amount) {
+    var transaction = createTransaction(description, amount);
     transaction.setCurrencyIsoCode(currencyCode);
     return transaction;
   }

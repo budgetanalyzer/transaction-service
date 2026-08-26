@@ -22,7 +22,7 @@ The Transaction Service is responsible for:
 - OpenAPI/Swagger documentation
 - CSV and PDF transaction import
 - Duplicate detection for preview-to-batch imports
-- Saved transaction views with pinned and excluded rows
+- Static saved transaction views with explicit membership
 - JPA/Hibernate for data access
 - Spring Boot Actuator for health checks
 - Input validation and error handling

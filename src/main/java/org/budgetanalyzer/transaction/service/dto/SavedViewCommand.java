@@ -1,6 +1,6 @@
 package org.budgetanalyzer.transaction.service.dto;
 
-import org.budgetanalyzer.transaction.domain.ViewCriteria;
+import java.util.Collection;
 
-/** Service-layer command to create a saved view. */
-public record SavedViewCommand(String name, ViewCriteria criteria, boolean openEnded) {}
+/** Service command for creating a static saved view. */
+public record SavedViewCommand(String name, Collection<Long> transactionIds) {}
