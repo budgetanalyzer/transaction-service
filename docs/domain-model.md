@@ -139,6 +139,8 @@ routing for a statement format.
 
 **Business Rules:**
 
+- Names are unique per user using a case-insensitive comparison while retaining
+  their submitted casing.
 - Membership is an unordered set stored in `SavedViewTransaction` rows.
 - Every addition must be an active transaction owned by the authenticated user.
 - Transaction soft deletion removes memberships atomically without changing
