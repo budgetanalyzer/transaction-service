@@ -60,7 +60,10 @@ List and get responses contain metadata and the active `transactionCount`:
 
 Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
 Create and rename operations cannot reuse a case-insensitive name already owned
-by the same user. Delete a view with `DELETE /v1/views/{id}`.
+by the same user. A conflict returns `422 APPLICATION_ERROR` with the safe
+message `A saved view with that name already exists.` and code
+`SAVED_VIEW_NAME_ALREADY_EXISTS`. Delete a view with
+`DELETE /v1/views/{id}`.
 
 Read complete membership:
 

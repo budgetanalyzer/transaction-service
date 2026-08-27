@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
+import org.budgetanalyzer.transaction.domain.SavedView;
 
 class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrationTestSupport {
 
@@ -146,6 +149,27 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
+  void duplicateNameCreateReturnsSafeBusinessError() throws Exception {
+    persistSavedView(USER_ID);
+
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/v1/views")
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"test view\",\"transactionIds\":[]}"))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+            .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
+            .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andReturn();
+
+    assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
+  }
+
+  @Test
   void membershipDeltaReturns204AndReadReturnsFlatIds() throws Exception {
     var savedView = persistSavedView(USER_ID);
     var firstTransaction = persistTransaction(USER_ID, "Coffee");
@@ -201,6 +225,33 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 .content("{\"name\":\"Renamed\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.name").value("Renamed"));
+  }
+
+  @Test
+  void duplicateNameRenameReturnsSafeBusinessErrorAndPreservesOriginalName() throws Exception {
+    persistSavedView(USER_ID);
+    var renamedView = new SavedView();
+    renamedView.setUserId(USER_ID);
+    renamedView.setName("Original name");
+    renamedView = savedViewRepository.save(renamedView);
+
+    var mvcResult =
+        mockMvc
+            .perform(
+                patch("/v1/views/{id}", renamedView.getId())
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"TEST VIEW\"}"))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+            .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
+            .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andReturn();
+
+    assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
+    assertThat(savedViewRepository.findById(renamedView.getId()).orElseThrow().getName())
+        .isEqualTo("Original name");
   }
 
   @Test
@@ -515,5 +566,21 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             delete("/v1/views/{id}", savedView.getId())
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write")))
         .andExpect(status().isForbidden());
+  }
+
+  private void assertNoPersistenceDiagnostics(String responseBody) {
+    assertThat(responseBody.toLowerCase(Locale.ROOT))
+        .doesNotContain(
+            "uq_saved_view_user_name_ci",
+            "23505",
+            "sqlstate",
+            "insert into",
+            "update saved_view",
+            "dataintegrityviolationexception",
+            "psqlexception",
+            "sqlexception",
+            "constraint",
+            "duplicate key",
+            "violates unique");
   }
 }

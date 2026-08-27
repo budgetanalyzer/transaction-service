@@ -55,6 +55,11 @@ public enum BudgetAnalyzerError {
   SAVED_VIEW_MEMBERSHIP_STALE,
   @Schema(
       description =
+          "A saved-view name conflicts with another name owned by the same user under a "
+              + "case-insensitive comparison")
+  SAVED_VIEW_NAME_ALREADY_EXISTS,
+  @Schema(
+      description =
           "Batch import completed validation and duplicate filtering without any rows to create")
   BATCH_IMPORT_NO_TRANSACTIONS_CREATED
 }
