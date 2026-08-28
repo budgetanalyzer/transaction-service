@@ -1,5 +1,6 @@
 package org.budgetanalyzer.transaction.service;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
@@ -9,6 +10,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,9 @@ import org.budgetanalyzer.transaction.service.dto.SavedViewSummary;
 public class SavedViewService {
 
   private static final Logger log = LoggerFactory.getLogger(SavedViewService.class);
+  private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+  private static final String DUPLICATE_NAME_MESSAGE =
+      "A saved view with that name already exists.";
 
   private final SavedViewRepository savedViewRepository;
   private final SavedViewTransactionRepository savedViewTransactionRepository;
@@ -53,7 +58,7 @@ public class SavedViewService {
     var savedView = new SavedView();
     savedView.setUserId(userId);
     savedView.setName(command.name());
-    savedView = savedViewRepository.saveAndFlush(savedView);
+    savedView = persistView(savedView);
     savedViewTransactionRepository.insertMissing(savedView.getId(), transactionIds);
     log.info(
         "Created saved view {} with {} transaction memberships",
@@ -97,7 +102,7 @@ public class SavedViewService {
   public SavedViewSummary updateView(UUID viewId, String userId, SavedViewPatch patch) {
     var savedView = getLockedOwnedView(viewId, userId);
     savedView.setName(patch.name());
-    savedView = savedViewRepository.save(savedView);
+    savedView = persistView(savedView);
     log.info("Updated saved view {} name", viewId);
 
     return new SavedViewSummary(
@@ -157,6 +162,28 @@ public class SavedViewService {
         .lockByIdAndUserId(viewId, userId)
         .orElseThrow(
             () -> new ResourceNotFoundException("Saved view not found with id: " + viewId));
+  }
+
+  private SavedView persistView(SavedView savedView) {
+    try {
+      return savedViewRepository.saveAndFlush(savedView);
+    } catch (DataIntegrityViolationException dataIntegrityViolationException) {
+      if (containsUniqueViolation(dataIntegrityViolationException)) {
+        throw new BusinessException(
+            DUPLICATE_NAME_MESSAGE, BudgetAnalyzerError.SAVED_VIEW_NAME_ALREADY_EXISTS.name());
+      }
+      throw dataIntegrityViolationException;
+    }
+  }
+
+  private boolean containsUniqueViolation(Throwable throwable) {
+    for (var cause = throwable; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException sqlException
+          && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void lockAndValidateAdditions(String userId, List<Long> transactionIds) {

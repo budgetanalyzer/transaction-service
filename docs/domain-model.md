@@ -139,6 +139,10 @@ routing for a statement format.
 
 **Business Rules:**
 
+- Names are unique per user using a case-insensitive comparison while retaining
+  their submitted casing. Create and rename conflicts use the public
+  `SAVED_VIEW_NAME_ALREADY_EXISTS` business error documented in
+  [Saved Views](saved-views.md#http-contract).
 - Membership is an unordered set stored in `SavedViewTransaction` rows.
 - Every addition must be an active transaction owned by the authenticated user.
 - Transaction soft deletion removes memberships atomically without changing

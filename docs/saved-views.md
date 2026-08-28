@@ -18,6 +18,10 @@ removals.
 
 Every view belongs to the authenticated user. View lookup deliberately returns
 not found for a foreign owner, and this API has no cross-user `:any` variant.
+View names are unique within an owner using a case-insensitive comparison while
+retaining the submitted casing for display. Create and rename requests trim
+leading and trailing whitespace from names before validation and persistence.
+Different users can use the same name.
 
 Create and membership-add operations canonicalize duplicate IDs and lock the
 requested transaction rows in ascending ID order. Every requested addition
@@ -56,7 +60,12 @@ List and get responses contain metadata and the active `transactionCount`:
 ```
 
 Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
-Delete it with `DELETE /v1/views/{id}`.
+Create and rename operations trim surrounding name whitespace and cannot reuse
+a case-insensitive name already owned by the same user. A conflict returns
+`422 APPLICATION_ERROR` with the safe message
+`A saved view with that name already exists.` and code
+`SAVED_VIEW_NAME_ALREADY_EXISTS`. Delete a view with
+`DELETE /v1/views/{id}`.
 
 Read complete membership:
 

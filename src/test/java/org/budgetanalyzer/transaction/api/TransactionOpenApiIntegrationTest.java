@@ -122,6 +122,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var collectionPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views");
     var createOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1views/post");
     var updatePathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}");
+    var renameOperationJsonNode = updatePathJsonNode.path("patch");
     var membershipPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}~1transactions");
 
     assertThat(propertyNames(collectionPathJsonNode)).containsExactlyInAnyOrder("get", "post");
@@ -151,6 +152,25 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     assertThat(createTransactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     assertThat(createOperationJsonNode.at("/responses/201/headers/Location").isMissingNode())
         .isFalse();
+
+    var createErrorResponseJsonNode = createOperationJsonNode.at("/responses/422");
+    var renameErrorResponseJsonNode = renameOperationJsonNode.at("/responses/422");
+    assertThat(createErrorResponseJsonNode.path("description").asText())
+        .contains("SAVED_VIEW_MEMBERSHIP_STALE", "SAVED_VIEW_NAME_ALREADY_EXISTS");
+    assertThat(renameErrorResponseJsonNode.path("description").asText())
+        .contains("SAVED_VIEW_NAME_ALREADY_EXISTS");
+    var createErrorSchemaJsonNode =
+        createErrorResponseJsonNode.at("/content/application~1json/schema");
+    var renameErrorSchemaJsonNode =
+        renameErrorResponseJsonNode.at("/content/application~1json/schema");
+    assertThat(createErrorSchemaJsonNode.path("$ref").asText())
+        .isEqualTo("#/components/schemas/ApiErrorResponse");
+    assertThat(renameErrorSchemaJsonNode.path("$ref").asText())
+        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asText());
+    var apiErrorResponseSchemaJsonNode =
+        resolveSchemaNode(openApiJsonNode, createErrorSchemaJsonNode);
+    assertThat(propertyNames(apiErrorResponseSchemaJsonNode.path("properties")))
+        .contains("type", "message", "code");
 
     var updateRequestSchemaJsonNode =
         resolveSchemaNode(

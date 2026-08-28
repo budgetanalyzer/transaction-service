@@ -170,6 +170,11 @@ Permission: views:write
 Notes: Empty membership is valid. Duplicate IDs are canonicalized. Returns 422
 with code SAVED_VIEW_MEMBERSHIP_STALE when any requested transaction is
 missing, deleted, or not owned by the caller; no inaccessible IDs are exposed.
+Leading and trailing whitespace is removed from the name before validation and
+persistence.
+Returns 422 APPLICATION_ERROR with code SAVED_VIEW_NAME_ALREADY_EXISTS when the
+owner already has a case-insensitively matching saved-view name. Different
+owners can reuse the same name.
 ```
 
 **List Saved Views**
@@ -193,6 +198,11 @@ PATCH /v1/views/{id}
 Body: { "name": "Renamed view" }
 Response: SavedViewResponse
 Permission: views:write
+Notes: Leading and trailing whitespace is removed from the name before
+validation and persistence. Returns 422 APPLICATION_ERROR with code
+SAVED_VIEW_NAME_ALREADY_EXISTS
+when another view owned by the caller has a case-insensitively matching name.
+Different owners can reuse the same name.
 ```
 
 **Delete Saved View**

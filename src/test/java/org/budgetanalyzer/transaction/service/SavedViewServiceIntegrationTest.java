@@ -10,6 +10,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -129,6 +130,108 @@ class SavedViewServiceIntegrationTest {
 
     assertThat(savedViewRepository.findAll()).isEmpty();
     assertThat(savedViewTransactionRepository.findAll()).isEmpty();
+  }
+
+  @Test
+  void createRejectsExactAndCaseVariantDuplicateNamesWithoutPartialWrites() {
+    savedViewService.createView(USER_ID, new SavedViewCommand("Monthly", List.of()));
+
+    for (var duplicateName : List.of("Monthly", "MONTHLY")) {
+      assertThatThrownBy(
+              () ->
+                  savedViewService.createView(
+                      USER_ID, new SavedViewCommand(duplicateName, List.of())))
+          .isInstanceOf(BusinessException.class)
+          .extracting(exception -> ((BusinessException) exception).getCode())
+          .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_NAME_ALREADY_EXISTS.name());
+    }
+
+    assertThat(savedViewRepository.findByUserIdOrderByCreatedAtDesc(USER_ID))
+        .extracting(savedView -> savedView.getName())
+        .containsExactly("Monthly");
+    assertThat(savedViewTransactionRepository.findAll()).isEmpty();
+  }
+
+  @Test
+  void createAllowsDifferentOwnersToReuseCaseInsensitiveName() {
+    savedViewService.createView(USER_ID, new SavedViewCommand("Monthly", List.of()));
+
+    var otherOwnerView =
+        savedViewService.createView(OTHER_USER_ID, new SavedViewCommand("MONTHLY", List.of()));
+
+    assertThat(otherOwnerView.savedView().getName()).isEqualTo("MONTHLY");
+    assertThat(savedViewRepository.findAll()).hasSize(2);
+  }
+
+  @Test
+  void renameRejectsExactAndCaseVariantDuplicateNamesAndPreservesOriginalNames() {
+    savedViewService.createView(USER_ID, new SavedViewCommand("Existing", List.of()));
+    var exactConflictSource =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Exact source", List.of()));
+    var caseConflictSource =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Case source", List.of()));
+
+    assertDuplicateNameRename(exactConflictSource.savedView().getId(), "Existing");
+    assertDuplicateNameRename(caseConflictSource.savedView().getId(), "EXISTING");
+
+    assertThat(
+            savedViewRepository
+                .findById(exactConflictSource.savedView().getId())
+                .orElseThrow()
+                .getName())
+        .isEqualTo("Exact source");
+    assertThat(
+            savedViewRepository
+                .findById(caseConflictSource.savedView().getId())
+                .orElseThrow()
+                .getName())
+        .isEqualTo("Case source");
+  }
+
+  @Test
+  void renameAllowsChangingOnlyTheViewsStoredCasing() {
+    var savedViewSummary =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Monthly", List.of()));
+
+    var renamedView =
+        savedViewService.updateView(
+            savedViewSummary.savedView().getId(), USER_ID, new SavedViewPatch("MONTHLY"));
+
+    assertThat(renamedView.savedView().getName()).isEqualTo("MONTHLY");
+    assertThat(savedViewRepository.findById(savedViewSummary.savedView().getId()).orElseThrow())
+        .extracting(savedView -> savedView.getName())
+        .isEqualTo("MONTHLY");
+  }
+
+  @Test
+  void concurrentCreateReturnsOneDuplicateNameBusinessError() throws Exception {
+    var readyLatch = new CountDownLatch(2);
+    var startLatch = new CountDownLatch(1);
+
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      var firstFuture =
+          executorService.submit(() -> createViewAfterLatch(readyLatch, startLatch, "Concurrent"));
+      final var secondFuture =
+          executorService.submit(() -> createViewAfterLatch(readyLatch, startLatch, "CONCURRENT"));
+      assertThat(readyLatch.await(30, TimeUnit.SECONDS)).isTrue();
+      startLatch.countDown();
+
+      var results = new ArrayList<BusinessException>();
+      results.add(firstFuture.get(30, TimeUnit.SECONDS));
+      results.add(secondFuture.get(30, TimeUnit.SECONDS));
+      assertThat(results).filteredOn(Objects::isNull).hasSize(1);
+      assertThat(results)
+          .filteredOn(Objects::nonNull)
+          .singleElement()
+          .extracting(BusinessException::getCode)
+          .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_NAME_ALREADY_EXISTS.name());
+    } finally {
+      startLatch.countDown();
+    }
+
+    assertThat(savedViewRepository.findByUserIdOrderByCreatedAtDesc(USER_ID))
+        .filteredOn(savedView -> savedView.getName().equalsIgnoreCase("Concurrent"))
+        .hasSize(1);
   }
 
   @Test
@@ -529,6 +632,27 @@ class SavedViewServiceIntegrationTest {
     assertThat(savedViewSummary.transactionCount()).isEqualTo(10_000);
     assertThat(savedViewTransactionRepository.countByViewId(savedViewSummary.savedView().getId()))
         .isEqualTo(10_000);
+  }
+
+  private void assertDuplicateNameRename(UUID viewId, String duplicateName) {
+    assertThatThrownBy(
+            () -> savedViewService.updateView(viewId, USER_ID, new SavedViewPatch(duplicateName)))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getCode())
+        .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_NAME_ALREADY_EXISTS.name());
+  }
+
+  private BusinessException createViewAfterLatch(
+      CountDownLatch readyLatch, CountDownLatch startLatch, String name)
+      throws InterruptedException {
+    readyLatch.countDown();
+    startLatch.await();
+    try {
+      savedViewService.createView(USER_ID, new SavedViewCommand(name, List.of()));
+      return null;
+    } catch (BusinessException businessException) {
+      return businessException;
+    }
   }
 
   private void setViewTimestamp(UUID viewId, Instant timestamp) {

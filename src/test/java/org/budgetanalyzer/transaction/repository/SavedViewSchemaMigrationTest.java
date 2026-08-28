@@ -22,6 +22,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class SavedViewSchemaMigrationTest {
 
+  private static final String OWNER_ID = "owner";
+  private static final String OTHER_OWNER_ID = "other-owner";
+  private static final String VIEW_NAME = "Monthly";
+  private static final String CASE_VARIANT_VIEW_NAME = "MONTHLY";
+
   @Container
   private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER =
       new PostgreSQLContainer<>("postgres:17-alpine")
@@ -107,6 +112,22 @@ class SavedViewSchemaMigrationTest {
     }
   }
 
+  @Test
+  void v24EnforcesCaseInsensitiveUniqueSavedViewNamesWithinEachOwner() throws Exception {
+    var flywayThroughV23 = flyway(MigrationVersion.fromVersion("23"));
+    flywayThroughV23.clean();
+    flywayThroughV23.migrate();
+    insertSavedView(UUID.randomUUID(), OWNER_ID, VIEW_NAME);
+
+    flyway(MigrationVersion.LATEST).migrate();
+
+    var otherOwnerViewId = UUID.randomUUID();
+    insertSavedView(otherOwnerViewId, OTHER_OWNER_ID, CASE_VARIANT_VIEW_NAME);
+    assertThatThrownBy(() -> insertSavedView(UUID.randomUUID(), OWNER_ID, CASE_VARIANT_VIEW_NAME))
+        .isInstanceOf(java.sql.SQLException.class);
+    assertThat(savedViewName(otherOwnerViewId)).isEqualTo(CASE_VARIANT_VIEW_NAME);
+  }
+
   private Flyway flyway(MigrationVersion target) {
     return flywayConfiguration(target).load();
   }
@@ -156,6 +177,38 @@ class SavedViewSchemaMigrationTest {
       preparedStatement.setObject(2, createdAt);
       preparedStatement.setObject(3, updatedAt);
       preparedStatement.executeUpdate();
+    }
+  }
+
+  private void insertSavedView(UUID viewId, String ownerId, String name) throws Exception {
+    try (var connection =
+            DriverManager.getConnection(
+                POSTGRESQL_CONTAINER.getJdbcUrl(),
+                POSTGRESQL_CONTAINER.getUsername(),
+                POSTGRESQL_CONTAINER.getPassword());
+        var preparedStatement =
+            connection.prepareStatement(
+                "INSERT INTO saved_view (id, user_id, name) VALUES (?, ?, ?)")) {
+      preparedStatement.setObject(1, viewId);
+      preparedStatement.setString(2, ownerId);
+      preparedStatement.setString(3, name);
+      preparedStatement.executeUpdate();
+    }
+  }
+
+  private String savedViewName(UUID viewId) throws Exception {
+    try (var connection =
+            DriverManager.getConnection(
+                POSTGRESQL_CONTAINER.getJdbcUrl(),
+                POSTGRESQL_CONTAINER.getUsername(),
+                POSTGRESQL_CONTAINER.getPassword());
+        var preparedStatement =
+            connection.prepareStatement("SELECT name FROM saved_view WHERE id = ?")) {
+      preparedStatement.setObject(1, viewId);
+      try (var resultSet = preparedStatement.executeQuery()) {
+        resultSet.next();
+        return resultSet.getString("name");
+      }
     }
   }
 

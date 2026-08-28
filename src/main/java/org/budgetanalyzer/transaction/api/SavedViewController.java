@@ -68,6 +68,9 @@ public class SavedViewController {
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @ApiResponse(
         responseCode = "422",
+        description =
+            "SAVED_VIEW_MEMBERSHIP_STALE for unavailable membership or "
+                + "SAVED_VIEW_NAME_ALREADY_EXISTS for a same-owner name conflict",
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PostMapping(consumes = "application/json", produces = "application/json")
@@ -124,6 +127,10 @@ public class SavedViewController {
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @ApiResponse(
         responseCode = "404",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "422",
+        description = "SAVED_VIEW_NAME_ALREADY_EXISTS for a same-owner name conflict",
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PatchMapping(path = "/{id}", consumes = "application/json", produces = "application/json")

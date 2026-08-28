@@ -289,11 +289,15 @@ CREATE TABLE saved_view (
     updated_at TIMESTAMP(6) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_saved_view_user_id ON saved_view(user_id);
+CREATE UNIQUE INDEX uq_saved_view_user_name_ci
+    ON saved_view(user_id, lower(name));
 ```
 
-`user_id` is the authenticated owner. Membership and count queries use the
-association table below directly.
+`user_id` is the authenticated owner. The expression index prevents an owner
+from reusing a view name under a case-insensitive comparison without changing
+the casing stored in `name`; it also supports owner-scoped listing. Different
+owners can use the same name, and whitespace remains significant. Membership
+and count queries use the association table below directly.
 
 ### saved_view_transaction
 
@@ -323,6 +327,10 @@ legacy saved views before dropping the dynamic criteria and override columns.
 Migration `V23__make_saved_view_timestamps_timezone_aware.sql` interprets the
 existing timezone-free saved-view audit values as UTC and converts both columns
 to timezone-aware instants without changing their defaults or nullability.
+Migration `V24__enforce_unique_saved_view_names.sql` replaces the standalone
+owner index with a unique expression index on `(user_id, lower(name))`. It
+performs no duplicate cleanup, so existing case-insensitive duplicate
+owner/name pairs must be resolved before it runs.
 
 ## Migration Strategy
 

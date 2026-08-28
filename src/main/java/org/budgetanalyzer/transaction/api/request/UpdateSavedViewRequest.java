@@ -15,4 +15,12 @@ public record UpdateSavedViewRequest(
             maxLength = 255)
         @NotBlank(message = "Name is required")
         @Size(max = 255, message = "Name must be at most 255 characters")
-        String name) {}
+        String name) {
+
+  /** Trims surrounding whitespace from the submitted display name. */
+  public UpdateSavedViewRequest {
+    if (name != null) {
+      name = name.trim();
+    }
+  }
+}
