@@ -29,4 +29,12 @@ public record CreateSavedViewRequest(
                     example = "[123, 456]"),
             schema = @Schema(type = "integer", format = "int64", minimum = "1"))
         @NotNull(message = "Transaction IDs are required")
-        List<@NotNull(message = "Transaction ID is required") @Positive Long> transactionIds) {}
+        List<@NotNull(message = "Transaction ID is required") @Positive Long> transactionIds) {
+
+  /** Trims surrounding whitespace from the submitted display name. */
+  public CreateSavedViewRequest {
+    if (name != null) {
+      name = name.trim();
+    }
+  }
+}

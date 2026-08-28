@@ -98,6 +98,23 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
+  void trimsCreatedViewName() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"  Monthly review  \",\"transactionIds\":[]}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.name").value("Monthly review"));
+
+    assertThat(savedViewRepository.findAll())
+        .singleElement()
+        .extracting(SavedView::getName)
+        .isEqualTo("Monthly review");
+  }
+
+  @Test
   void listsAndGetsExactOwnerScopedMetadataWithActiveCounts() throws Exception {
     var transaction = persistTransaction(USER_ID, "Coffee");
     var savedView = persistSavedView(USER_ID);
@@ -158,7 +175,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 post("/v1/views")
                     .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"name\":\"test view\",\"transactionIds\":[]}"))
+                    .content("{\"name\":\"  test view  \",\"transactionIds\":[]}"))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
@@ -214,7 +231,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
-  void renameUsesPatchAndNameOnly() throws Exception {
+  void renameUsesPatchAndTrimsName() throws Exception {
     var savedView = persistSavedView(USER_ID);
 
     mockMvc
@@ -222,9 +239,12 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             patch("/v1/views/{id}", savedView.getId())
                 .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Renamed\"}"))
+                .content("{\"name\":\"  Renamed  \"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.name").value("Renamed"));
+
+    assertThat(savedViewRepository.findById(savedView.getId()).orElseThrow().getName())
+        .isEqualTo("Renamed");
   }
 
   @Test
@@ -241,7 +261,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                 patch("/v1/views/{id}", renamedView.getId())
                     .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"name\":\"TEST VIEW\"}"))
+                    .content("{\"name\":\"  TEST VIEW  \"}"))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
