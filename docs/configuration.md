@@ -21,6 +21,14 @@ host defaults to `localhost:5432`. If you are reusing values from
 
 This service has no RabbitMQ dependency in the Phase 1 local baseline.
 
+## Database Error Details
+
+PostgreSQL server error details are disabled at the JDBC driver boundary. This
+prevents Hibernate diagnostics from including database values, such as
+user-supplied saved-view names, while preserving SQL states used for safe
+exception translation. The setting is applied as a Hikari data-source property
+so it remains active when the JDBC URL is overridden.
+
 ## Statement Import Uploads
 
 Statement preview uses multipart upload limits from Spring Boot. The service
