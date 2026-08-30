@@ -148,6 +148,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     assertThat(createRequestSchemaJsonNode.at("/properties/name/maxLength").asInt()).isEqualTo(255);
     var createTransactionIdsJsonNode = createRequestSchemaJsonNode.at("/properties/transactionIds");
     assertThat(createTransactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(createTransactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
     assertThat(createTransactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
     assertThat(createTransactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     assertThat(createOperationJsonNode.at("/responses/201/headers/Location").isMissingNode())
@@ -203,6 +204,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
       var transactionIdsJsonNode =
           membershipDeltaSchemaJsonNode.path("properties").path(propertyName);
       assertThat(transactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+      assertThat(transactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
       assertThat(transactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
       assertThat(transactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     }

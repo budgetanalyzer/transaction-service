@@ -110,11 +110,13 @@ Coverage reports are written to `build/reports/jacoco/test/html/index.html` and
 `build/reports/jacoco/test/jacocoTestReport.xml`. `check` enforces the
 configured coverage gates.
 
+All Spring integration tests use PostgreSQL Testcontainers; no H2 fallback is
+configured. Docker must be available when running these suites.
+
 Full-context controller integration tests extend
 `ControllerIntegrationTestSupport`. The fixture starts one shared PostgreSQL
 Testcontainer, loads production security and application beans, configures
-`MockMvc`, and resets persisted test state before each test. Docker must be
-available when running these suites.
+`MockMvc`, and resets persisted test state before each test.
 
 ### Code Quality
 

@@ -6,6 +6,7 @@ import java.util.List;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Static saved-view membership additions and removals")
 public record UpdateSavedViewTransactionsRequest(
     @ArraySchema(
+            maxItems = SavedViewRequestConstraints.MAX_TRANSACTION_IDS_PER_ARRAY,
             arraySchema =
                 @Schema(
                     description = "Unordered transaction IDs to add",
@@ -23,8 +25,12 @@ public record UpdateSavedViewTransactionsRequest(
                     example = "[123, 456]"),
             schema = @Schema(type = "integer", format = "int64", minimum = "1"))
         @NotNull(message = "Add transaction IDs are required")
+        @Size(
+            max = SavedViewRequestConstraints.MAX_TRANSACTION_IDS_PER_ARRAY,
+            message = "Add transaction IDs must contain at most 10,000 entries")
         List<@NotNull(message = "Transaction ID is required") @Positive Long> addTransactionIds,
     @ArraySchema(
+            maxItems = SavedViewRequestConstraints.MAX_TRANSACTION_IDS_PER_ARRAY,
             arraySchema =
                 @Schema(
                     description = "Unordered transaction IDs to remove",
@@ -32,6 +38,9 @@ public record UpdateSavedViewTransactionsRequest(
                     example = "[789]"),
             schema = @Schema(type = "integer", format = "int64", minimum = "1"))
         @NotNull(message = "Remove transaction IDs are required")
+        @Size(
+            max = SavedViewRequestConstraints.MAX_TRANSACTION_IDS_PER_ARRAY,
+            message = "Remove transaction IDs must contain at most 10,000 entries")
         List<@NotNull(message = "Transaction ID is required") @Positive Long>
             removeTransactionIds) {
 

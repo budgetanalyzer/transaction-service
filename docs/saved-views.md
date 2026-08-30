@@ -30,6 +30,11 @@ missing, soft-deleted, or foreign-owned, the complete operation rolls back with
 `422 APPLICATION_ERROR` and code `SAVED_VIEW_MEMBERSHIP_STALE`. The response
 does not identify inaccessible IDs.
 
+Each submitted membership array is limited to 10,000 raw entries before
+sorting and duplicate canonicalization, so duplicate IDs count toward the
+limit. Create applies the limit to `transactionIds`. Membership deltas apply
+the limit independently to `addTransactionIds` and `removeTransactionIds`.
+
 An empty create membership is valid. Membership is an unordered set; the read
 endpoint returns IDs in ascending order only to make responses deterministic.
 
@@ -62,10 +67,10 @@ List and get responses contain metadata and the active `transactionCount`:
 Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
 Create and rename operations trim surrounding name whitespace and cannot reuse
 a case-insensitive name already owned by the same user. A conflict returns
-`422 APPLICATION_ERROR` with the safe message
-`A saved view with that name already exists.` and code
-`SAVED_VIEW_NAME_ALREADY_EXISTS`. Delete a view with
-`DELETE /v1/views/{id}`.
+HTTP 422 with error type `APPLICATION_ERROR` and code
+`SAVED_VIEW_NAME_ALREADY_EXISTS`. Clients must use the status, type, and code
+rather than the human-readable message for programmatic handling. Delete a
+view with `DELETE /v1/views/{id}`.
 
 Read complete membership:
 
