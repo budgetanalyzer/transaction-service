@@ -34,6 +34,8 @@ public class SavedViewService {
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
   private static final String DUPLICATE_NAME_MESSAGE =
       "A saved view with that name already exists.";
+  private static final String MEMBERSHIP_LIMIT_MESSAGE =
+      "A saved view cannot contain more than 10,000 transactions.";
 
   private final SavedViewRepository savedViewRepository;
   private final SavedViewTransactionRepository savedViewTransactionRepository;
@@ -52,7 +54,9 @@ public class SavedViewService {
   /** Creates a saved view after atomically validating its complete membership. */
   @Transactional
   public SavedViewSummary createView(String userId, SavedViewCommand command) {
+    rejectMembershipLimit(command.transactionIds());
     var transactionIds = canonicalIds(command.transactionIds());
+    rejectMembershipLimit(transactionIds);
     lockAndValidateAdditions(userId, transactionIds);
 
     var savedView = new SavedView();
@@ -128,6 +132,8 @@ public class SavedViewService {
   public void updateViewTransactions(
       UUID viewId, String userId, SavedViewMembershipDelta membershipDelta) {
     getLockedOwnedView(viewId, userId);
+    rejectMembershipLimit(membershipDelta.addTransactionIds());
+    rejectMembershipLimit(membershipDelta.removeTransactionIds());
     var addTransactionIds = canonicalIds(membershipDelta.addTransactionIds());
     var removeTransactionIds = canonicalIds(membershipDelta.removeTransactionIds());
     rejectOverlap(addTransactionIds, removeTransactionIds);
@@ -139,6 +145,10 @@ public class SavedViewService {
       removedCount =
           savedViewTransactionRepository.deleteByViewIdAndTransactionIdIn(
               viewId, removeTransactionIds);
+    }
+    if (savedViewTransactionRepository.countByViewId(viewId)
+        > SavedViewConstraints.MAX_MEMBERSHIP_SIZE) {
+      throw membershipLimitExceeded();
     }
     if (addedCount > 0 || removedCount > 0) {
       savedViewRepository.touch(viewId, Instant.now());
@@ -207,6 +217,17 @@ public class SavedViewService {
       throw new InvalidRequestException(
           "addTransactionIds and removeTransactionIds must be disjoint");
     }
+  }
+
+  private void rejectMembershipLimit(Collection<Long> transactionIds) {
+    if (transactionIds.size() > SavedViewConstraints.MAX_MEMBERSHIP_SIZE) {
+      throw membershipLimitExceeded();
+    }
+  }
+
+  private BusinessException membershipLimitExceeded() {
+    return new BusinessException(
+        MEMBERSHIP_LIMIT_MESSAGE, BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED.name());
   }
 
   private List<Long> canonicalIds(Collection<Long> transactionIds) {

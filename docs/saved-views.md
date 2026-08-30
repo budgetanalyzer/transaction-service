@@ -34,6 +34,17 @@ Each submitted membership array is limited to 10,000 raw entries before
 sorting and duplicate canonicalization, so duplicate IDs count toward the
 limit. Create applies the limit to `transactionIds`. Membership deltas apply
 the limit independently to `addTransactionIds` and `removeTransactionIds`.
+Separately, a saved view can contain at most 10,000 unique transaction
+memberships after an operation. The raw per-array ceiling limits the submitted
+request, while the final unique-membership invariant limits the persisted
+view.
+
+Exceeding either limit returns HTTP 422 with error type `APPLICATION_ERROR`
+and code `SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED`. Clients must use the status,
+type, and code rather than the human-readable message for programmatic
+handling. The owner-scoped saved-view lifecycle lock is held while a delta is
+applied and its final count is checked, making the invariant atomic across
+concurrent membership deltas. A rejected delta rolls back as a complete unit.
 
 An empty create membership is valid. Membership is an unordered set; the read
 endpoint returns IDs in ascending order only to make responses deterministic.

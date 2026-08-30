@@ -126,9 +126,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"name\":\"Oversized\",\"transactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "]}"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'transactionIds')]").exists());
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
   }
 
   @Test
@@ -282,9 +283,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"addTransactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "],\"removeTransactionIds\":[]}"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'addTransactionIds')]").exists());
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
   }
 
   @Test
@@ -320,9 +322,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"addTransactionIds\":[],\"removeTransactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "]}"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
-        .andExpect(jsonPath("$.fieldErrors[?(@.field == 'removeTransactionIds')]").exists());
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
   }
 
   @Test

@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -127,6 +128,21 @@ class SavedViewServiceIntegrationTest {
           .extracting(exception -> ((BusinessException) exception).getCode())
           .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_STALE.name());
     }
+
+    assertThat(savedViewRepository.findAll()).isEmpty();
+    assertThat(savedViewTransactionRepository.findAll()).isEmpty();
+  }
+
+  @Test
+  void createRejectsOversizedRawMembershipWithoutPartialWrites() {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Repeated"));
+    var oversizedTransactionIds =
+        Collections.nCopies(SavedViewConstraints.MAX_MEMBERSHIP_SIZE + 1, transaction.getId());
+
+    assertMembershipLimitExceeded(
+        () ->
+            savedViewService.createView(
+                USER_ID, new SavedViewCommand("Rejected", oversizedTransactionIds)));
 
     assertThat(savedViewRepository.findAll()).isEmpty();
     assertThat(savedViewTransactionRepository.findAll()).isEmpty();
@@ -324,6 +340,48 @@ class SavedViewServiceIntegrationTest {
 
     assertThat(savedViewService.getViewTransactions(viewId, USER_ID))
         .containsExactly(memberTransaction.getId());
+    assertViewTimestamp(viewId, oldTimestamp);
+  }
+
+  @Test
+  void membershipDeltaRejectsOversizedRawAdditionsWithoutChangingView() {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Repeated"));
+    var savedViewSummary =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Protected", List.of()));
+    var viewId = savedViewSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(viewId, oldTimestamp);
+    var oversizedTransactionIds =
+        Collections.nCopies(SavedViewConstraints.MAX_MEMBERSHIP_SIZE + 1, transaction.getId());
+
+    assertMembershipLimitExceeded(
+        () ->
+            savedViewService.updateViewTransactions(
+                viewId, USER_ID, new SavedViewMembershipDelta(oversizedTransactionIds, List.of())));
+
+    assertThat(savedViewTransactionRepository.countByViewId(viewId)).isZero();
+    assertViewTimestamp(viewId, oldTimestamp);
+  }
+
+  @Test
+  void membershipDeltaRejectsOversizedRawRemovalsWithoutChangingView() {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Member"));
+    var savedViewSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Protected", List.of(transaction.getId())));
+    var viewId = savedViewSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(viewId, oldTimestamp);
+    var oversizedTransactionIds =
+        Collections.nCopies(SavedViewConstraints.MAX_MEMBERSHIP_SIZE + 1, transaction.getId());
+
+    assertMembershipLimitExceeded(
+        () ->
+            savedViewService.updateViewTransactions(
+                viewId, USER_ID, new SavedViewMembershipDelta(List.of(), oversizedTransactionIds)));
+
+    assertThat(savedViewService.getViewTransactions(viewId, USER_ID))
+        .containsExactly(transaction.getId());
     assertViewTimestamp(viewId, oldTimestamp);
   }
 
@@ -618,20 +676,139 @@ class SavedViewServiceIntegrationTest {
   }
 
   @Test
-  void createSupportsTenThousandMembershipIds() {
-    var transactions = new ArrayList<Transaction>(10_000);
-    for (var index = 0; index < 10_000; index++) {
-      transactions.add(transaction(USER_ID, "Transaction " + index));
+  void concurrentMembershipDeltasCannotExceedLimit() throws Exception {
+    var transactionIds = persistTransactionIds(SavedViewConstraints.MAX_MEMBERSHIP_SIZE + 1);
+    var initialTransactionIds =
+        transactionIds.subList(0, SavedViewConstraints.MAX_MEMBERSHIP_SIZE - 1);
+    var firstAdditionId = transactionIds.get(SavedViewConstraints.MAX_MEMBERSHIP_SIZE - 1);
+    var secondAdditionId = transactionIds.get(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    var savedViewSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Concurrent limit", initialTransactionIds));
+    var viewId = savedViewSummary.savedView().getId();
+    var firstDeltaApplied = new CountDownLatch(1);
+    var allowFirstDeltaCommit = new CountDownLatch(1);
+    var secondDeltaBackendPid = new CompletableFuture<Integer>();
+
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      final var firstDeltaFuture =
+          executorService.submit(
+              () ->
+                  transactionTemplate()
+                      .execute(
+                          transactionStatus -> {
+                            savedViewService.updateViewTransactions(
+                                viewId,
+                                USER_ID,
+                                new SavedViewMembershipDelta(List.of(firstAdditionId), List.of()));
+                            var membershipCount =
+                                savedViewTransactionRepository.countByViewId(viewId);
+                            firstDeltaApplied.countDown();
+                            awaitLatch(allowFirstDeltaCommit);
+                            return membershipCount;
+                          }));
+      assertThat(firstDeltaApplied.await(30, TimeUnit.SECONDS)).isTrue();
+
+      var secondDeltaFuture =
+          executorService.submit(
+              () -> {
+                try {
+                  transactionTemplate()
+                      .executeWithoutResult(
+                          transactionStatus -> {
+                            secondDeltaBackendPid.complete(currentBackendPid());
+                            savedViewService.updateViewTransactions(
+                                viewId,
+                                USER_ID,
+                                new SavedViewMembershipDelta(List.of(secondAdditionId), List.of()));
+                          });
+                  return null;
+                } catch (BusinessException businessException) {
+                  return businessException;
+                }
+              });
+
+      awaitDatabaseLock(secondDeltaBackendPid.get(30, TimeUnit.SECONDS));
+      assertThat(secondDeltaFuture.isDone()).isFalse();
+      allowFirstDeltaCommit.countDown();
+
+      assertThat(firstDeltaFuture.get(30, TimeUnit.SECONDS))
+          .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+      assertThat(secondDeltaFuture.get(30, TimeUnit.SECONDS))
+          .isNotNull()
+          .extracting(BusinessException::getCode)
+          .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED.name());
+    } finally {
+      allowFirstDeltaCommit.countDown();
     }
-    var savedTransactions = transactionRepository.saveAll(transactions);
-    var transactionIds = savedTransactions.stream().map(Transaction::getId).toList();
+
+    assertThat(savedViewTransactionRepository.countByViewId(viewId))
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertThat(savedViewTransactionRepository.findTransactionIds(viewId))
+        .contains(firstAdditionId)
+        .doesNotContain(secondAdditionId);
+  }
+
+  @Test
+  void membershipLimitSupportsBoundaryIdempotencyOffsetsAndAtomicRejection() {
+    var transactionIds = persistTransactionIds(SavedViewConstraints.MAX_MEMBERSHIP_SIZE + 1);
+    var boundaryTransactionIds =
+        transactionIds.subList(0, SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    final var additionalTransactionId =
+        transactionIds.get(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
 
     var savedViewSummary =
-        savedViewService.createView(USER_ID, new SavedViewCommand("Large", transactionIds));
+        savedViewService.createView(USER_ID, new SavedViewCommand("Large", boundaryTransactionIds));
+    var viewId = savedViewSummary.savedView().getId();
 
-    assertThat(savedViewSummary.transactionCount()).isEqualTo(10_000);
-    assertThat(savedViewTransactionRepository.countByViewId(savedViewSummary.savedView().getId()))
-        .isEqualTo(10_000);
+    assertThat(savedViewSummary.transactionCount())
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertThat(savedViewTransactionRepository.countByViewId(viewId))
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(viewId, oldTimestamp);
+    savedViewService.updateViewTransactions(
+        viewId,
+        USER_ID,
+        new SavedViewMembershipDelta(List.of(boundaryTransactionIds.getFirst()), List.of()));
+
+    assertThat(savedViewTransactionRepository.countByViewId(viewId))
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertViewTimestamp(viewId, oldTimestamp);
+
+    savedViewService.updateViewTransactions(
+        viewId,
+        USER_ID,
+        new SavedViewMembershipDelta(
+            List.of(additionalTransactionId), List.of(boundaryTransactionIds.getFirst())));
+
+    assertThat(savedViewTransactionRepository.countByViewId(viewId))
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertThat(savedViewTransactionRepository.findTransactionIds(viewId))
+        .contains(additionalTransactionId)
+        .doesNotContain(boundaryTransactionIds.getFirst());
+
+    setViewTimestamp(viewId, oldTimestamp);
+    var membershipsBeforeRejectedDelta = savedViewTransactionRepository.findTransactionIds(viewId);
+    assertMembershipLimitExceeded(
+        () ->
+            savedViewService.updateViewTransactions(
+                viewId,
+                USER_ID,
+                new SavedViewMembershipDelta(
+                    List.of(boundaryTransactionIds.getFirst()), List.of(Long.MAX_VALUE))));
+
+    assertThat(savedViewTransactionRepository.findTransactionIds(viewId))
+        .containsExactlyElementsOf(membershipsBeforeRejectedDelta);
+    assertViewTimestamp(viewId, oldTimestamp);
+  }
+
+  private void assertMembershipLimitExceeded(Runnable operation) {
+    assertThatThrownBy(operation::run)
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getCode())
+        .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED.name());
   }
 
   private void assertDuplicateNameRename(UUID viewId, String duplicateName) {
@@ -700,6 +877,15 @@ class SavedViewServiceIntegrationTest {
       Thread.currentThread().interrupt();
       throw new AssertionError("Interrupted while waiting to release transaction");
     }
+  }
+
+  private List<Long> persistTransactionIds(int count) {
+    var transactions = new ArrayList<Transaction>(count);
+    for (var index = 0; index < count; index++) {
+      transactions.add(transaction(USER_ID, "Transaction " + index));
+    }
+
+    return transactionRepository.saveAll(transactions).stream().map(Transaction::getId).toList();
   }
 
   private Transaction transaction(String ownerId, String description) {
