@@ -167,15 +167,23 @@ POST /v1/views
 Body: { "name": "December review", "transactionIds": [123, 456] }
 Response: SavedViewResponse (201 Created)
 Permission: views:write
-Notes: Empty membership is valid. Duplicate IDs are canonicalized. Returns 422
+Notes: Empty membership is valid. The transactionIds array is limited to
+10,000 submitted entries before sorting and duplicate canonicalization, so
+duplicates count toward the limit. A saved view can contain at most 10,000
+unique transaction memberships. Exceeding either maximum returns 422
+APPLICATION_ERROR with code SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED. Returns 422
 with code SAVED_VIEW_MEMBERSHIP_STALE when any requested transaction is
 missing, deleted, or not owned by the caller; no inaccessible IDs are exposed.
 Leading and trailing whitespace is removed from the name before validation and
-persistence.
-Returns 422 APPLICATION_ERROR with code SAVED_VIEW_NAME_ALREADY_EXISTS when the
-owner already has a case-insensitively matching saved-view name. Different
-owners can reuse the same name.
+persistence. Returns 422 APPLICATION_ERROR with code
+SAVED_VIEW_NAME_ALREADY_EXISTS when the owner already has a case-insensitively
+matching saved-view name. Different owners can reuse the same name. Clients
+must use the status, type, and code rather than the human-readable message for
+programmatic error handling.
 ```
+
+See [Saved Views](../saved-views.md#ownership-and-validation) for the
+authoritative membership-limit semantics.
 
 **List Saved Views**
 ```
@@ -228,11 +236,21 @@ Body: { "addTransactionIds": [789], "removeTransactionIds": [123] }
 Response: 204 No Content
 Permission: views:write
 Notes: Both arrays are required, IDs must be positive, the add/remove sets must
-be disjoint, and at least one array must be nonempty. Unknown removals are
-idempotent. The complete operation returns SAVED_VIEW_MEMBERSHIP_STALE when any
-addition is unavailable. Successful clients refresh view metadata and
-membership caches.
+be disjoint, and at least one array must be nonempty. The addTransactionIds and
+removeTransactionIds arrays are each independently limited to 10,000 submitted
+entries before sorting and duplicate canonicalization, so duplicates count
+toward each array's limit. A saved view can contain at most 10,000 unique
+transaction memberships after the delta. Exceeding a raw array or final
+membership maximum returns 422 APPLICATION_ERROR with code
+SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED. The complete operation returns
+SAVED_VIEW_MEMBERSHIP_STALE when any addition is unavailable. Unknown removals
+are idempotent. Clients must use the status, type, and code rather than the
+human-readable message for programmatic error handling. Successful clients
+refresh view metadata and membership caches.
 ```
+
+See [Saved Views](../saved-views.md#ownership-and-validation) for the
+authoritative membership-limit and concurrency semantics.
 
 ### Statement Formats
 

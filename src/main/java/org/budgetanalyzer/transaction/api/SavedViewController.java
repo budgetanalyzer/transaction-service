@@ -70,6 +70,7 @@ public class SavedViewController {
         responseCode = "422",
         description =
             "SAVED_VIEW_MEMBERSHIP_STALE for unavailable membership or "
+                + "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED when the membership limit is exceeded or "
                 + "SAVED_VIEW_NAME_ALREADY_EXISTS for a same-owner name conflict",
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
@@ -181,7 +182,13 @@ public class SavedViewController {
         content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @ApiResponse(
         responseCode = "422",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+        description =
+            "SAVED_VIEW_MEMBERSHIP_STALE for unavailable additions or "
+                + "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED when the membership limit is exceeded",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PatchMapping(path = "/{id}/transactions", consumes = "application/json")
   @ResponseStatus(HttpStatus.NO_CONTENT)

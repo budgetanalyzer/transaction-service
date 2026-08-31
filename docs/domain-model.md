@@ -144,6 +144,13 @@ routing for a statement format.
   `SAVED_VIEW_NAME_ALREADY_EXISTS` business error documented in
   [Saved Views](saved-views.md#http-contract).
 - Membership is an unordered set stored in `SavedViewTransaction` rows.
+- Each saved view can contain at most 10,000 unique transaction memberships.
+  A request array or resulting membership that exceeds its applicable maximum
+  returns HTTP 422 `APPLICATION_ERROR` with code
+  `SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED`. Clients use the status, type, and code
+  rather than the human-readable message; detailed limit and concurrency
+  semantics are documented in
+  [Saved Views](saved-views.md#ownership-and-validation).
 - Every addition must be an active transaction owned by the authenticated user.
 - Transaction soft deletion removes memberships atomically without changing
   the saved-view audit timestamp.

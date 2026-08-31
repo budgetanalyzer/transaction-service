@@ -12,10 +12,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import org.budgetanalyzer.transaction.service.SavedViewConstraints;
+
 /** Request for atomically applying a static saved-view membership delta. */
 @Schema(description = "Static saved-view membership additions and removals")
 public record UpdateSavedViewTransactionsRequest(
     @ArraySchema(
+            maxItems = SavedViewConstraints.MAX_MEMBERSHIP_SIZE,
             arraySchema =
                 @Schema(
                     description = "Unordered transaction IDs to add",
@@ -25,6 +28,7 @@ public record UpdateSavedViewTransactionsRequest(
         @NotNull(message = "Add transaction IDs are required")
         List<@NotNull(message = "Transaction ID is required") @Positive Long> addTransactionIds,
     @ArraySchema(
+            maxItems = SavedViewConstraints.MAX_MEMBERSHIP_SIZE,
             arraySchema =
                 @Schema(
                     description = "Unordered transaction IDs to remove",

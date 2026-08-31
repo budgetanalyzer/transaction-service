@@ -148,6 +148,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     assertThat(createRequestSchemaJsonNode.at("/properties/name/maxLength").asInt()).isEqualTo(255);
     var createTransactionIdsJsonNode = createRequestSchemaJsonNode.at("/properties/transactionIds");
     assertThat(createTransactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(createTransactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
     assertThat(createTransactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
     assertThat(createTransactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     assertThat(createOperationJsonNode.at("/responses/201/headers/Location").isMissingNode())
@@ -155,17 +156,27 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var createErrorResponseJsonNode = createOperationJsonNode.at("/responses/422");
     var renameErrorResponseJsonNode = renameOperationJsonNode.at("/responses/422");
+    var membershipDeltaErrorResponseJsonNode = membershipPathJsonNode.at("/patch/responses/422");
     assertThat(createErrorResponseJsonNode.path("description").asText())
-        .contains("SAVED_VIEW_MEMBERSHIP_STALE", "SAVED_VIEW_NAME_ALREADY_EXISTS");
+        .contains(
+            "SAVED_VIEW_MEMBERSHIP_STALE",
+            "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED",
+            "SAVED_VIEW_NAME_ALREADY_EXISTS");
     assertThat(renameErrorResponseJsonNode.path("description").asText())
         .contains("SAVED_VIEW_NAME_ALREADY_EXISTS");
+    assertThat(membershipDeltaErrorResponseJsonNode.path("description").asText())
+        .contains("SAVED_VIEW_MEMBERSHIP_STALE", "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED");
     var createErrorSchemaJsonNode =
         createErrorResponseJsonNode.at("/content/application~1json/schema");
     var renameErrorSchemaJsonNode =
         renameErrorResponseJsonNode.at("/content/application~1json/schema");
+    var membershipDeltaErrorSchemaJsonNode =
+        membershipDeltaErrorResponseJsonNode.at("/content/application~1json/schema");
     assertThat(createErrorSchemaJsonNode.path("$ref").asText())
         .isEqualTo("#/components/schemas/ApiErrorResponse");
     assertThat(renameErrorSchemaJsonNode.path("$ref").asText())
+        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asText());
+    assertThat(membershipDeltaErrorSchemaJsonNode.path("$ref").asText())
         .isEqualTo(createErrorSchemaJsonNode.path("$ref").asText());
     var apiErrorResponseSchemaJsonNode =
         resolveSchemaNode(openApiJsonNode, createErrorSchemaJsonNode);
@@ -203,6 +214,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
       var transactionIdsJsonNode =
           membershipDeltaSchemaJsonNode.path("properties").path(propertyName);
       assertThat(transactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+      assertThat(transactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
       assertThat(transactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
       assertThat(transactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     }

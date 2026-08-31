@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Size;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import org.budgetanalyzer.transaction.service.SavedViewConstraints;
+
 /** Request for creating a new saved view. */
 @Schema(description = "Request to create a new saved view")
 public record CreateSavedViewRequest(
@@ -22,6 +24,7 @@ public record CreateSavedViewRequest(
         @Size(max = 255, message = "Name must be at most 255 characters")
         String name,
     @ArraySchema(
+            maxItems = SavedViewConstraints.MAX_MEMBERSHIP_SIZE,
             arraySchema =
                 @Schema(
                     description = "Unordered transaction IDs to include in the static view",

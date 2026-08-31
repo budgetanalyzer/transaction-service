@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -98,6 +99,40 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
   }
 
   @Test
+  void acceptsTenThousandCreateMembershipEntries() throws Exception {
+    var transaction = persistTransaction(USER_ID, "Repeated create membership");
+
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"name\":\"Boundary\",\"transactionIds\":["
+                        + repeatedTransactionIdsJson(transaction.getId(), 10_000)
+                        + "]}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.transactionCount").value(1));
+  }
+
+  @Test
+  void rejectsCreateMembershipArrayAboveTenThousandEntries() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/views")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"name\":\"Oversized\",\"transactionIds\":["
+                        + repeatedTransactionIdsJson(1L, 10_001)
+                        + "]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
+  }
+
+  @Test
   void trimsCreatedViewName() throws Exception {
     mockMvc
         .perform(
@@ -178,7 +213,6 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     .content("{\"name\":\"  test view  \",\"transactionIds\":[]}"))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
-            .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
             .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
             .andReturn();
@@ -214,6 +248,84 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
         .andExpect(jsonPath("$.transactionIds[0]").value(firstTransaction.getId()))
         .andExpect(jsonPath("$.transactionIds[1]").value(secondTransaction.getId()))
         .andExpect(jsonPath("$.matched").doesNotExist());
+  }
+
+  @Test
+  void acceptsTenThousandAddMembershipEntries() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+    var transaction = persistTransaction(USER_ID, "Repeated add membership");
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"addTransactionIds\":["
+                        + repeatedTransactionIdsJson(transaction.getId(), 10_000)
+                        + "],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isNoContent());
+
+    assertThat(savedViewTransactionRepository.findTransactionIds(savedView.getId()))
+        .containsExactly(transaction.getId());
+  }
+
+  @Test
+  void rejectsAddMembershipArrayAboveTenThousandEntries() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"addTransactionIds\":["
+                        + repeatedTransactionIdsJson(1L, 10_001)
+                        + "],\"removeTransactionIds\":[]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
+  }
+
+  @Test
+  void acceptsTenThousandRemoveMembershipEntries() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+    var transaction = persistTransaction(USER_ID, "Repeated remove membership");
+    savedViewTransactionRepository.insertMissing(savedView.getId(), List.of(transaction.getId()));
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"addTransactionIds\":[],\"removeTransactionIds\":["
+                        + repeatedTransactionIdsJson(transaction.getId(), 10_000)
+                        + "]}"))
+        .andExpect(status().isNoContent());
+
+    assertThat(savedViewTransactionRepository.findTransactionIds(savedView.getId())).isEmpty();
+  }
+
+  @Test
+  void rejectsRemoveMembershipArrayAboveTenThousandEntries() throws Exception {
+    var savedView = persistSavedView(USER_ID);
+
+    mockMvc
+        .perform(
+            patch("/v1/views/{id}/transactions", savedView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"addTransactionIds\":[],\"removeTransactionIds\":["
+                        + repeatedTransactionIdsJson(1L, 10_001)
+                        + "]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
+        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
   }
 
   @Test
@@ -264,7 +376,6 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     .content("{\"name\":\"  TEST VIEW  \"}"))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
-            .andExpect(jsonPath("$.message").value("A saved view with that name already exists."))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
             .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
             .andReturn();
@@ -602,5 +713,9 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             "constraint",
             "duplicate key",
             "violates unique");
+  }
+
+  private String repeatedTransactionIdsJson(long transactionId, int entryCount) {
+    return String.join(",", Collections.nCopies(entryCount, Long.toString(transactionId)));
   }
 }

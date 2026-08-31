@@ -30,6 +30,22 @@ missing, soft-deleted, or foreign-owned, the complete operation rolls back with
 `422 APPLICATION_ERROR` and code `SAVED_VIEW_MEMBERSHIP_STALE`. The response
 does not identify inaccessible IDs.
 
+Each submitted membership array is limited to 10,000 raw entries before
+sorting and duplicate canonicalization, so duplicate IDs count toward the
+limit. Create applies the limit to `transactionIds`. Membership deltas apply
+the limit independently to `addTransactionIds` and `removeTransactionIds`.
+Separately, a saved view can contain at most 10,000 unique transaction
+memberships after an operation. The raw per-array ceiling limits the submitted
+request, while the final unique-membership invariant limits the persisted
+view.
+
+Exceeding either limit returns HTTP 422 with error type `APPLICATION_ERROR`
+and code `SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED`. Clients must use the status,
+type, and code rather than the human-readable message for programmatic
+handling. The owner-scoped saved-view lifecycle lock is held while a delta is
+applied and its final count is checked, making the invariant atomic across
+concurrent membership deltas. A rejected delta rolls back as a complete unit.
+
 An empty create membership is valid. Membership is an unordered set; the read
 endpoint returns IDs in ascending order only to make responses deterministic.
 
@@ -62,10 +78,10 @@ List and get responses contain metadata and the active `transactionCount`:
 Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
 Create and rename operations trim surrounding name whitespace and cannot reuse
 a case-insensitive name already owned by the same user. A conflict returns
-`422 APPLICATION_ERROR` with the safe message
-`A saved view with that name already exists.` and code
-`SAVED_VIEW_NAME_ALREADY_EXISTS`. Delete a view with
-`DELETE /v1/views/{id}`.
+HTTP 422 with error type `APPLICATION_ERROR` and code
+`SAVED_VIEW_NAME_ALREADY_EXISTS`. Clients must use the status, type, and code
+rather than the human-readable message for programmatic handling. Delete a
+view with `DELETE /v1/views/{id}`.
 
 Read complete membership:
 

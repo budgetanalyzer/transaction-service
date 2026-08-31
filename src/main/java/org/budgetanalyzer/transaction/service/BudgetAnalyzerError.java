@@ -55,6 +55,11 @@ public enum BudgetAnalyzerError {
   SAVED_VIEW_MEMBERSHIP_STALE,
   @Schema(
       description =
+          "A saved-view membership request or resulting unique membership exceeds the maximum "
+              + "of 10,000 transactions")
+  SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED,
+  @Schema(
+      description =
           "A saved-view name conflicts with another name owned by the same user under a "
               + "case-insensitive comparison")
   SAVED_VIEW_NAME_ALREADY_EXISTS,
