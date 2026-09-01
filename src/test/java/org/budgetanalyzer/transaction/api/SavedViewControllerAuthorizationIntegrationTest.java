@@ -21,13 +21,20 @@ import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.transaction.domain.SavedView;
 
 class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrationTestSupport {
+
+  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
   void returns401WithoutAuthentication() throws Exception {
@@ -147,6 +154,177 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
         .singleElement()
         .extracting(SavedView::getName)
         .isEqualTo("Monthly review");
+  }
+
+  @Test
+  void clonesViewWithExactResponseAndCanonicalTargetLocation() throws Exception {
+    var firstTransaction = persistTransaction(USER_ID, "Coffee");
+    var secondTransaction = persistTransaction(USER_ID, "Groceries");
+    var sourceView = persistSavedView(USER_ID);
+    savedViewTransactionRepository.insertMissing(
+        sourceView.getId(), List.of(secondTransaction.getId(), firstTransaction.getId()));
+
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/transaction-service/v1/views/{sourceViewId}/clone", sourceView.getId())
+                    .contextPath("/transaction-service")
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"  Copy of December review  \"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.*", hasSize(5)))
+            .andExpect(jsonPath("$.id").isNotEmpty())
+            .andExpect(jsonPath("$.name").value("Copy of December review"))
+            .andExpect(jsonPath("$.transactionCount").value(2))
+            .andExpect(jsonPath("$.createdAt").isNotEmpty())
+            .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+            .andReturn();
+
+    var responseJson = objectMapper.readTree(mvcResult.getResponse().getContentAsString());
+    var targetViewId = UUID.fromString(responseJson.get("id").asText());
+
+    assertThat(targetViewId).isNotEqualTo(sourceView.getId());
+    assertThat(mvcResult.getResponse().getHeader(HttpHeaders.LOCATION))
+        .isEqualTo("http://localhost/transaction-service/v1/views/" + targetViewId)
+        .doesNotContain("/clone");
+    assertThat(savedViewRepository.findById(targetViewId))
+        .isPresent()
+        .get()
+        .satisfies(
+            targetView -> {
+              assertThat(targetView.getUserId()).isEqualTo(USER_ID);
+              assertThat(targetView.getName()).isEqualTo("Copy of December review");
+            });
+    assertThat(savedViewTransactionRepository.findTransactionIds(sourceView.getId()))
+        .containsExactly(firstTransaction.getId(), secondTransaction.getId());
+    assertThat(savedViewTransactionRepository.findTransactionIds(targetViewId))
+        .containsExactly(firstTransaction.getId(), secondTransaction.getId());
+  }
+
+  @Test
+  void cloneRequiresAuthenticationAndWritePermission() throws Exception {
+    var sourceView = persistSavedView(USER_ID);
+    var requestBody = "{\"name\":\"Copy\"}";
+
+    mockMvc
+        .perform(
+            post("/v1/views/{sourceViewId}/clone", sourceView.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isUnauthorized());
+
+    mockMvc
+        .perform(
+            post("/v1/views/{sourceViewId}/clone", sourceView.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void cloneValidatesMissingBlankAndOversizedNames() throws Exception {
+    var sourceView = persistSavedView(USER_ID);
+    var invalidRequestBodies =
+        List.of("{}", "{\"name\":\"   \"}", "{\"name\":\"" + "x".repeat(256) + "\"}");
+
+    for (var invalidRequestBody : invalidRequestBodies) {
+      mockMvc
+          .perform(
+              post("/v1/views/{sourceViewId}/clone", sourceView.getId())
+                  .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(invalidRequestBody))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"));
+    }
+
+    assertThat(savedViewRepository.findAll())
+        .extracting(SavedView::getId)
+        .containsExactly(sourceView.getId());
+  }
+
+  @Test
+  void cloneHidesForeignSourceAndMembership() throws Exception {
+    var foreignTransaction = persistTransaction(OTHER_USER_ID, "Foreign membership");
+    var foreignSource = persistSavedView(OTHER_USER_ID);
+    savedViewTransactionRepository.insertMissing(
+        foreignSource.getId(), List.of(foreignTransaction.getId()));
+
+    mockMvc
+        .perform(
+            post("/v1/views/{sourceViewId}/clone", foreignSource.getId())
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Hidden copy\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.transactionId").doesNotExist())
+        .andExpect(jsonPath("$.transactionIds").doesNotExist())
+        .andExpect(
+            content().string(org.hamcrest.Matchers.not(containsString("Foreign membership"))));
+
+    assertThat(savedViewRepository.findAll())
+        .extracting(SavedView::getId)
+        .containsExactly(foreignSource.getId());
+  }
+
+  @Test
+  void staleCloneMembershipReturnsSafeBusinessError() throws Exception {
+    var transaction = persistTransaction(USER_ID, "Stale membership");
+    var sourceView = persistSavedView(USER_ID);
+    savedViewTransactionRepository.insertMissing(sourceView.getId(), List.of(transaction.getId()));
+    jdbcTemplate.update("UPDATE transaction SET deleted = true WHERE id = ?", transaction.getId());
+
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/v1/views/{sourceViewId}/clone", sourceView.getId())
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"Rejected stale copy\"}"))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+            .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
+            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andExpect(
+                content()
+                    .string(
+                        org.hamcrest.Matchers.not(containsString(transaction.getId().toString()))))
+            .andReturn();
+
+    assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
+    assertThat(savedViewRepository.findAll())
+        .extracting(SavedView::getId)
+        .containsExactly(sourceView.getId());
+  }
+
+  @Test
+  void duplicateCloneNameReturnsSafeBusinessError() throws Exception {
+    final var sourceView = persistSavedView(USER_ID);
+    var existingTarget = new SavedView();
+    existingTarget.setUserId(USER_ID);
+    existingTarget.setName("Existing target");
+    existingTarget = savedViewRepository.save(existingTarget);
+
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/v1/views/{sourceViewId}/clone", sourceView.getId())
+                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"  EXISTING TARGET  \"}"))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+            .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andReturn();
+
+    assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
+    assertThat(savedViewRepository.findAll())
+        .extracting(SavedView::getId)
+        .containsExactlyInAnyOrder(sourceView.getId(), existingTarget.getId());
   }
 
   @Test
@@ -710,8 +888,13 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             "dataintegrityviolationexception",
             "psqlexception",
             "sqlexception",
+            "could not commit",
             "constraint",
             "duplicate key",
+            "rollbackexception",
+            "transactionexception",
+            "transaction rolled back",
+            "unexpectedrollbackexception",
             "violates unique");
   }
 
