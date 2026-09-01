@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.budgetanalyzer.transaction.util.TestConstants.CONCURRENT_OPERATION_TIMEOUT_SECONDS;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -398,7 +399,8 @@ class SavedViewServiceIntegrationTest {
       Future<UUID> cloneFuture = null;
 
       try {
-        assertThat(deltaApplied.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(deltaApplied.await(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            .isTrue();
         cloneFuture =
             executorService.submit(
                 () ->
@@ -414,7 +416,8 @@ class SavedViewServiceIntegrationTest {
                                   .savedView()
                                   .getId();
                             }));
-        awaitDatabaseLock(cloneBackendPid.get(30, TimeUnit.SECONDS));
+        awaitDatabaseLock(
+            cloneBackendPid.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
         assertThat(cloneFuture.isDone()).isFalse();
         allowDeltaCommit.countDown();
         awaitFutures(deltaFuture, cloneFuture);
@@ -473,7 +476,8 @@ class SavedViewServiceIntegrationTest {
       Future<Boolean> deltaFuture = null;
 
       try {
-        assertThat(cloneApplied.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(cloneApplied.await(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            .isTrue();
         deltaFuture =
             executorService.submit(
                 () -> {
@@ -489,7 +493,8 @@ class SavedViewServiceIntegrationTest {
                           });
                   return true;
                 });
-        awaitDatabaseLock(deltaBackendPid.get(30, TimeUnit.SECONDS));
+        awaitDatabaseLock(
+            deltaBackendPid.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
         assertThat(deltaFuture.isDone()).isFalse();
         allowCloneCommit.countDown();
         awaitFutures(cloneFuture, deltaFuture);
@@ -1232,7 +1237,7 @@ class SavedViewServiceIntegrationTest {
       var completed = false;
       while (!completed) {
         try {
-          future.get(30, TimeUnit.SECONDS);
+          future.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
           completed = true;
         } catch (InterruptedException interruptedException) {
           interrupted = true;

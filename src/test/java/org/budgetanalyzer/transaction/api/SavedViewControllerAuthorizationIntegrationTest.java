@@ -1,6 +1,8 @@
 package org.budgetanalyzer.transaction.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.budgetanalyzer.transaction.util.TestConstants.PERMISSION_VIEWS_READ;
+import static org.budgetanalyzer.transaction.util.TestConstants.PERMISSION_VIEWS_WRITE;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
@@ -169,7 +171,9 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             .perform(
                 post("/transaction-service/v1/views/{sourceViewId}/clone", sourceView.getId())
                     .contextPath("/transaction-service")
-                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .with(
+                        ClaimsHeaderTestBuilder.user(USER_ID)
+                            .withPermissions(PERMISSION_VIEWS_WRITE))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"  Copy of December review  \"}"))
             .andExpect(status().isCreated())
@@ -217,7 +221,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
     mockMvc
         .perform(
             post("/v1/views/{sourceViewId}/clone", sourceView.getId())
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:read"))
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions(PERMISSION_VIEWS_READ))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
         .andExpect(status().isForbidden());
@@ -233,7 +237,8 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
       mockMvc
           .perform(
               post("/v1/views/{sourceViewId}/clone", sourceView.getId())
-                  .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                  .with(
+                      ClaimsHeaderTestBuilder.user(USER_ID).withPermissions(PERMISSION_VIEWS_WRITE))
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(invalidRequestBody))
           .andExpect(status().isBadRequest())
@@ -255,7 +260,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
     mockMvc
         .perform(
             post("/v1/views/{sourceViewId}/clone", foreignSource.getId())
-                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions(PERMISSION_VIEWS_WRITE))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Hidden copy\"}"))
         .andExpect(status().isNotFound())
@@ -281,7 +286,9 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
         mockMvc
             .perform(
                 post("/v1/views/{sourceViewId}/clone", sourceView.getId())
-                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .with(
+                        ClaimsHeaderTestBuilder.user(USER_ID)
+                            .withPermissions(PERMISSION_VIEWS_WRITE))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"Rejected stale copy\"}"))
             .andExpect(status().isUnprocessableEntity())
@@ -312,7 +319,9 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
         mockMvc
             .perform(
                 post("/v1/views/{sourceViewId}/clone", sourceView.getId())
-                    .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
+                    .with(
+                        ClaimsHeaderTestBuilder.user(USER_ID)
+                            .withPermissions(PERMISSION_VIEWS_WRITE))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"  EXISTING TARGET  \"}"))
             .andExpect(status().isUnprocessableEntity())
