@@ -30,12 +30,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
+import org.budgetanalyzer.transaction.api.request.CloneSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.CreateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateSavedViewRequest;
 import org.budgetanalyzer.transaction.api.request.UpdateSavedViewTransactionsRequest;
 import org.budgetanalyzer.transaction.api.response.SavedViewResponse;
 import org.budgetanalyzer.transaction.api.response.ViewMembershipResponse;
 import org.budgetanalyzer.transaction.service.SavedViewService;
+import org.budgetanalyzer.transaction.service.dto.CloneSavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewMembershipDelta;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
@@ -83,6 +85,51 @@ public class SavedViewController {
     var location =
         ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{id}")
+            .buildAndExpand(savedViewSummary.savedView().getId())
+            .toUri();
+    return ResponseEntity.created(location).body(SavedViewResponse.from(savedViewSummary));
+  }
+
+  @PreAuthorize("hasAuthority('views:write')")
+  @Operation(
+      summary = "Clone a static saved view",
+      description = "Creates an independent copy of an owner-scoped saved view under a new name")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "201",
+        headers =
+            @Header(
+                name = "Location",
+                description = "Canonical URL of the cloned saved view",
+                schema = @Schema(type = "string", format = "uri")),
+        content = @Content(schema = @Schema(implementation = SavedViewResponse.class))),
+    @ApiResponse(
+        responseCode = "400",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "404",
+        description = "Source saved view not found for the authenticated owner",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "422",
+        description =
+            "SAVED_VIEW_MEMBERSHIP_STALE when the source membership is unavailable or "
+                + "SAVED_VIEW_NAME_ALREADY_EXISTS for a same-owner target name conflict",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
+  @PostMapping(
+      path = "/{sourceViewId}/clone",
+      consumes = "application/json",
+      produces = "application/json")
+  public ResponseEntity<SavedViewResponse> cloneView(
+      @PathVariable("sourceViewId") UUID sourceViewId,
+      @Valid @RequestBody CloneSavedViewRequest request) {
+    var savedViewSummary =
+        savedViewService.cloneView(
+            sourceViewId, currentUserId(), new CloneSavedViewCommand(request.name()));
+    var location =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/v1/views/{id}")
             .buildAndExpand(savedViewSummary.savedView().getId())
             .toUri();
     return ResponseEntity.created(location).body(SavedViewResponse.from(savedViewSummary));

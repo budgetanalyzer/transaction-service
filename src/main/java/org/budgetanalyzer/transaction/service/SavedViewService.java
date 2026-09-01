@@ -21,6 +21,7 @@ import org.budgetanalyzer.transaction.domain.SavedView;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.SavedViewTransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.CloneSavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewMembershipDelta;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
@@ -59,17 +60,31 @@ public class SavedViewService {
     rejectMembershipLimit(transactionIds);
     lockAndValidateAdditions(userId, transactionIds);
 
-    var savedView = new SavedView();
-    savedView.setUserId(userId);
-    savedView.setName(command.name());
-    savedView = persistView(savedView);
-    savedViewTransactionRepository.insertMissing(savedView.getId(), transactionIds);
+    var savedViewSummary = persistNewView(userId, command.name(), transactionIds);
     log.info(
         "Created saved view {} with {} transaction memberships",
-        savedView.getId(),
+        savedViewSummary.savedView().getId(),
         transactionIds.size());
 
-    return new SavedViewSummary(savedView, transactionIds.size());
+    return savedViewSummary;
+  }
+
+  /** Clones an owner-scoped saved view into an independent saved view. */
+  @Transactional
+  public SavedViewSummary cloneView(
+      UUID sourceViewId, String userId, CloneSavedViewCommand command) {
+    getLockedOwnedView(sourceViewId, userId);
+    var transactionIds = savedViewTransactionRepository.findTransactionIds(sourceViewId);
+    lockAndValidateAdditions(userId, transactionIds);
+
+    var savedViewSummary = persistNewView(userId, command.name(), transactionIds);
+    log.info(
+        "Cloned saved view {} into {} with {} transaction memberships",
+        sourceViewId,
+        savedViewSummary.savedView().getId(),
+        transactionIds.size());
+
+    return savedViewSummary;
   }
 
   /** Returns all saved views for an owner with grouped membership counts. */
@@ -184,6 +199,16 @@ public class SavedViewService {
       }
       throw dataIntegrityViolationException;
     }
+  }
+
+  private SavedViewSummary persistNewView(String userId, String name, List<Long> transactionIds) {
+    var savedView = new SavedView();
+    savedView.setUserId(userId);
+    savedView.setName(name);
+    savedView = persistView(savedView);
+    savedViewTransactionRepository.insertMissing(savedView.getId(), transactionIds);
+
+    return new SavedViewSummary(savedView, transactionIds.size());
   }
 
   private boolean containsUniqueViolation(Throwable throwable) {

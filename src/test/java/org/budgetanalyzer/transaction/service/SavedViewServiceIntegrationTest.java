@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.budgetanalyzer.transaction.util.TestConstants.CONCURRENT_OPERATION_TIMEOUT_SECONDS;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,8 +16,11 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +46,7 @@ import org.budgetanalyzer.transaction.domain.TransactionType;
 import org.budgetanalyzer.transaction.repository.SavedViewRepository;
 import org.budgetanalyzer.transaction.repository.SavedViewTransactionRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
+import org.budgetanalyzer.transaction.service.dto.CloneSavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewCommand;
 import org.budgetanalyzer.transaction.service.dto.SavedViewMembershipDelta;
 import org.budgetanalyzer.transaction.service.dto.SavedViewPatch;
@@ -177,6 +182,339 @@ class SavedViewServiceIntegrationTest {
 
     assertThat(otherOwnerView.savedView().getName()).isEqualTo("MONTHLY");
     assertThat(savedViewRepository.findAll()).hasSize(2);
+  }
+
+  @Test
+  void cloneCopiesPopulatedMembershipIntoIndependentView() {
+    var firstTransaction = transactionRepository.save(transaction(USER_ID, "First"));
+    var secondTransaction = transactionRepository.save(transaction(USER_ID, "Second"));
+    final var thirdTransaction = transactionRepository.save(transaction(USER_ID, "Third"));
+    var sourceSummary =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand(
+                "Source", List.of(secondTransaction.getId(), firstTransaction.getId())));
+    var sourceViewId = sourceSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(sourceViewId, oldTimestamp);
+
+    var targetSummary =
+        savedViewService.cloneView(
+            sourceViewId, USER_ID, new CloneSavedViewCommand("Independent target"));
+    var targetViewId = targetSummary.savedView().getId();
+
+    assertThat(targetViewId).isNotEqualTo(sourceViewId);
+    assertThat(targetSummary.savedView().getUserId()).isEqualTo(USER_ID);
+    assertThat(targetSummary.savedView().getName()).isEqualTo("Independent target");
+    assertThat(targetSummary.transactionCount()).isEqualTo(2);
+    assertThat(savedViewService.getViewTransactions(sourceViewId, USER_ID))
+        .containsExactly(firstTransaction.getId(), secondTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(targetViewId, USER_ID))
+        .containsExactly(firstTransaction.getId(), secondTransaction.getId());
+    assertViewTimestamp(sourceViewId, oldTimestamp);
+
+    savedViewService.updateViewTransactions(
+        sourceViewId,
+        USER_ID,
+        new SavedViewMembershipDelta(
+            List.of(thirdTransaction.getId()), List.of(firstTransaction.getId())));
+    savedViewService.updateViewTransactions(
+        targetViewId,
+        USER_ID,
+        new SavedViewMembershipDelta(List.of(), List.of(secondTransaction.getId())));
+
+    assertThat(savedViewService.getViewTransactions(sourceViewId, USER_ID))
+        .containsExactly(secondTransaction.getId(), thirdTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(targetViewId, USER_ID))
+        .containsExactly(firstTransaction.getId());
+  }
+
+  @Test
+  void cloneCopiesEmptyView() {
+    var sourceSummary =
+        savedViewService.createView(USER_ID, new SavedViewCommand("Empty source", List.of()));
+
+    var targetSummary =
+        savedViewService.cloneView(
+            sourceSummary.savedView().getId(), USER_ID, new CloneSavedViewCommand("Empty target"));
+
+    assertThat(targetSummary.savedView().getId()).isNotEqualTo(sourceSummary.savedView().getId());
+    assertThat(targetSummary.transactionCount()).isZero();
+    assertThat(savedViewService.getViewTransactions(targetSummary.savedView().getId(), USER_ID))
+        .isEmpty();
+    assertThat(savedViewRepository.findAll()).hasSize(2);
+    assertThat(savedViewTransactionRepository.findAll()).isEmpty();
+  }
+
+  @Test
+  void cloneSupportsMaximumSizeSourceMembership() {
+    var transactionIds = persistTransactionIds(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    var sourceSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Maximum source", transactionIds));
+
+    var targetSummary =
+        savedViewService.cloneView(
+            sourceSummary.savedView().getId(),
+            USER_ID,
+            new CloneSavedViewCommand("Maximum target"));
+
+    assertThat(targetSummary.savedView().getId()).isNotEqualTo(sourceSummary.savedView().getId());
+    assertThat(targetSummary.transactionCount())
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertThat(savedViewTransactionRepository.countByViewId(sourceSummary.savedView().getId()))
+        .isEqualTo(SavedViewConstraints.MAX_MEMBERSHIP_SIZE);
+    assertThat(savedViewTransactionRepository.findTransactionIds(targetSummary.savedView().getId()))
+        .containsExactlyElementsOf(transactionIds);
+  }
+
+  @Test
+  void cloneHidesMissingAndForeignSourcesWithoutPartialWrites() {
+    var foreignTransaction = transactionRepository.save(transaction(OTHER_USER_ID, "Foreign"));
+    var foreignSource =
+        savedViewService.createView(
+            OTHER_USER_ID,
+            new SavedViewCommand("Foreign source", List.of(foreignTransaction.getId())));
+
+    for (var inaccessibleSourceViewId :
+        List.of(foreignSource.savedView().getId(), UUID.randomUUID())) {
+      assertThatThrownBy(
+              () ->
+                  savedViewService.cloneView(
+                      inaccessibleSourceViewId,
+                      USER_ID,
+                      new CloneSavedViewCommand("Hidden target")))
+          .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    assertThat(savedViewRepository.findAll())
+        .singleElement()
+        .extracting(savedView -> savedView.getId())
+        .isEqualTo(foreignSource.savedView().getId());
+    assertThat(savedViewTransactionRepository.findAll())
+        .singleElement()
+        .satisfies(
+            membership -> {
+              assertThat(membership.getViewId()).isEqualTo(foreignSource.savedView().getId());
+              assertThat(membership.getTransactionId()).isEqualTo(foreignTransaction.getId());
+            });
+  }
+
+  @Test
+  void cloneRejectsStaleMembershipWithoutPartialWrites() {
+    var deletedTransaction = transactionRepository.save(transaction(USER_ID, "Deleted"));
+    var foreignTransaction = transactionRepository.save(transaction(USER_ID, "Changed owner"));
+    var deletedSource =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Deleted source", List.of(deletedTransaction.getId())));
+    var foreignSource =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand("Changed owner source", List.of(foreignTransaction.getId())));
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(deletedSource.savedView().getId(), oldTimestamp);
+    setViewTimestamp(foreignSource.savedView().getId(), oldTimestamp);
+    jdbcTemplate.update(
+        "UPDATE transaction SET deleted = true WHERE id = ?", deletedTransaction.getId());
+    jdbcTemplate.update(
+        "UPDATE transaction SET owner_id = ? WHERE id = ?",
+        OTHER_USER_ID,
+        foreignTransaction.getId());
+
+    assertStaleClone(deletedSource.savedView().getId(), "Rejected deleted target");
+    assertStaleClone(foreignSource.savedView().getId(), "Rejected foreign target");
+
+    assertThat(savedViewRepository.findAll()).hasSize(2);
+    assertThat(savedViewTransactionRepository.findAll()).hasSize(2);
+    assertThat(savedViewRepository.findByUserIdOrderByCreatedAtDesc(USER_ID))
+        .extracting(savedView -> savedView.getName())
+        .containsExactlyInAnyOrder("Deleted source", "Changed owner source");
+    assertViewTimestamp(deletedSource.savedView().getId(), oldTimestamp);
+    assertViewTimestamp(foreignSource.savedView().getId(), oldTimestamp);
+  }
+
+  @Test
+  void cloneRejectsDuplicateTargetNameWithoutPartialWrites() {
+    var transaction = transactionRepository.save(transaction(USER_ID, "Member"));
+    var sourceSummary =
+        savedViewService.createView(
+            USER_ID, new SavedViewCommand("Source", List.of(transaction.getId())));
+    savedViewService.createView(USER_ID, new SavedViewCommand("Existing", List.of()));
+    var sourceViewId = sourceSummary.savedView().getId();
+    var oldTimestamp = Instant.parse("2020-01-01T00:00:00Z");
+    setViewTimestamp(sourceViewId, oldTimestamp);
+
+    assertThatThrownBy(
+            () ->
+                savedViewService.cloneView(
+                    sourceViewId, USER_ID, new CloneSavedViewCommand("EXISTING")))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getCode())
+        .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_NAME_ALREADY_EXISTS.name());
+
+    assertThat(savedViewRepository.findAll()).hasSize(2);
+    assertThat(savedViewTransactionRepository.findAll())
+        .singleElement()
+        .satisfies(
+            membership -> {
+              assertThat(membership.getViewId()).isEqualTo(sourceViewId);
+              assertThat(membership.getTransactionId()).isEqualTo(transaction.getId());
+            });
+    assertThat(savedViewService.getViewTransactions(sourceViewId, USER_ID))
+        .containsExactly(transaction.getId());
+    assertViewTimestamp(sourceViewId, oldTimestamp);
+  }
+
+  @Test
+  void membershipDeltaThenCloneCopiesCommittedPostDeltaSnapshot() throws Exception {
+    var originalTransaction = transactionRepository.save(transaction(USER_ID, "Original"));
+    var addedTransaction = transactionRepository.save(transaction(USER_ID, "Added"));
+    var sourceSummary =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand("Delta-first source", List.of(originalTransaction.getId())));
+    var sourceViewId = sourceSummary.savedView().getId();
+    var deltaApplied = new CountDownLatch(1);
+    var allowDeltaCommit = new CountDownLatch(1);
+    var cloneBackendPid = new CompletableFuture<Integer>();
+
+    UUID targetViewId;
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      var deltaFuture =
+          executorService.submit(
+              () -> {
+                transactionTemplate()
+                    .executeWithoutResult(
+                        transactionStatus -> {
+                          savedViewService.updateViewTransactions(
+                              sourceViewId,
+                              USER_ID,
+                              new SavedViewMembershipDelta(
+                                  List.of(addedTransaction.getId()), List.of()));
+                          deltaApplied.countDown();
+                          awaitLatch(allowDeltaCommit);
+                        });
+                return true;
+              });
+      Future<UUID> cloneFuture = null;
+
+      try {
+        assertThat(deltaApplied.await(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            .isTrue();
+        cloneFuture =
+            executorService.submit(
+                () ->
+                    transactionTemplate()
+                        .execute(
+                            transactionStatus -> {
+                              cloneBackendPid.complete(currentBackendPid());
+                              return savedViewService
+                                  .cloneView(
+                                      sourceViewId,
+                                      USER_ID,
+                                      new CloneSavedViewCommand("Post-delta target"))
+                                  .savedView()
+                                  .getId();
+                            }));
+        awaitDatabaseLock(
+            cloneBackendPid.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        assertThat(cloneFuture.isDone()).isFalse();
+        allowDeltaCommit.countDown();
+        awaitFutures(deltaFuture, cloneFuture);
+
+        assertThat(deltaFuture.get()).isTrue();
+        targetViewId = cloneFuture.get();
+      } finally {
+        allowDeltaCommit.countDown();
+        awaitFutures(deltaFuture, cloneFuture);
+      }
+    }
+
+    assertThat(targetViewId).isNotEqualTo(sourceViewId);
+    assertThat(savedViewRepository.findAll())
+        .extracting(savedView -> savedView.getId())
+        .containsExactlyInAnyOrder(sourceViewId, targetViewId);
+    assertThat(savedViewService.getViewTransactions(sourceViewId, USER_ID))
+        .containsExactly(originalTransaction.getId(), addedTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(targetViewId, USER_ID))
+        .containsExactly(originalTransaction.getId(), addedTransaction.getId());
+  }
+
+  @Test
+  void cloneThenMembershipDeltaPreservesPreDeltaTargetSnapshot() throws Exception {
+    var originalTransaction = transactionRepository.save(transaction(USER_ID, "Original"));
+    var addedTransaction = transactionRepository.save(transaction(USER_ID, "Added"));
+    var sourceSummary =
+        savedViewService.createView(
+            USER_ID,
+            new SavedViewCommand("Clone-first source", List.of(originalTransaction.getId())));
+    var sourceViewId = sourceSummary.savedView().getId();
+    var cloneApplied = new CountDownLatch(1);
+    var allowCloneCommit = new CountDownLatch(1);
+    var deltaBackendPid = new CompletableFuture<Integer>();
+
+    UUID targetViewId;
+    try (var executorService = Executors.newFixedThreadPool(2)) {
+      var cloneFuture =
+          executorService.submit(
+              () ->
+                  transactionTemplate()
+                      .execute(
+                          transactionStatus -> {
+                            var clonedViewId =
+                                savedViewService
+                                    .cloneView(
+                                        sourceViewId,
+                                        USER_ID,
+                                        new CloneSavedViewCommand("Pre-delta target"))
+                                    .savedView()
+                                    .getId();
+                            cloneApplied.countDown();
+                            awaitLatch(allowCloneCommit);
+                            return clonedViewId;
+                          }));
+      Future<Boolean> deltaFuture = null;
+
+      try {
+        assertThat(cloneApplied.await(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            .isTrue();
+        deltaFuture =
+            executorService.submit(
+                () -> {
+                  transactionTemplate()
+                      .executeWithoutResult(
+                          transactionStatus -> {
+                            deltaBackendPid.complete(currentBackendPid());
+                            savedViewService.updateViewTransactions(
+                                sourceViewId,
+                                USER_ID,
+                                new SavedViewMembershipDelta(
+                                    List.of(addedTransaction.getId()), List.of()));
+                          });
+                  return true;
+                });
+        awaitDatabaseLock(
+            deltaBackendPid.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        assertThat(deltaFuture.isDone()).isFalse();
+        allowCloneCommit.countDown();
+        awaitFutures(cloneFuture, deltaFuture);
+
+        targetViewId = cloneFuture.get();
+        assertThat(deltaFuture.get()).isTrue();
+      } finally {
+        allowCloneCommit.countDown();
+        awaitFutures(cloneFuture, deltaFuture);
+      }
+    }
+
+    assertThat(targetViewId).isNotEqualTo(sourceViewId);
+    assertThat(savedViewRepository.findAll())
+        .extracting(savedView -> savedView.getId())
+        .containsExactlyInAnyOrder(sourceViewId, targetViewId);
+    assertThat(savedViewService.getViewTransactions(sourceViewId, USER_ID))
+        .containsExactly(originalTransaction.getId(), addedTransaction.getId());
+    assertThat(savedViewService.getViewTransactions(targetViewId, USER_ID))
+        .containsExactly(originalTransaction.getId());
   }
 
   @Test
@@ -811,6 +1149,16 @@ class SavedViewServiceIntegrationTest {
         .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED.name());
   }
 
+  private void assertStaleClone(UUID sourceViewId, String targetName) {
+    assertThatThrownBy(
+            () ->
+                savedViewService.cloneView(
+                    sourceViewId, USER_ID, new CloneSavedViewCommand(targetName)))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getCode())
+        .isEqualTo(BudgetAnalyzerError.SAVED_VIEW_MEMBERSHIP_STALE.name());
+  }
+
   private void assertDuplicateNameRename(UUID viewId, String duplicateName) {
     assertThatThrownBy(
             () -> savedViewService.updateView(viewId, USER_ID, new SavedViewPatch(duplicateName)))
@@ -876,6 +1224,48 @@ class SavedViewServiceIntegrationTest {
     } catch (InterruptedException interruptedException) {
       Thread.currentThread().interrupt();
       throw new AssertionError("Interrupted while waiting to release transaction");
+    }
+  }
+
+  private void awaitFutures(Future<?>... futures) {
+    AssertionError failure = null;
+    var interrupted = false;
+    for (var future : futures) {
+      if (future == null) {
+        continue;
+      }
+      var completed = false;
+      while (!completed) {
+        try {
+          future.get(CONCURRENT_OPERATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+          completed = true;
+        } catch (InterruptedException interruptedException) {
+          interrupted = true;
+          var interruptedFailure =
+              new AssertionError("Interrupted while waiting for concurrent operation");
+          interruptedFailure.initCause(interruptedException);
+          if (failure == null) {
+            failure = interruptedFailure;
+          } else {
+            failure.addSuppressed(interruptedFailure);
+          }
+        } catch (ExecutionException | TimeoutException operationException) {
+          completed = true;
+          var operationFailure = new AssertionError("Concurrent operation did not complete");
+          operationFailure.initCause(operationException);
+          if (failure == null) {
+            failure = operationFailure;
+          } else {
+            failure.addSuppressed(operationFailure);
+          }
+        }
+      }
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+    if (failure != null) {
+      throw failure;
     }
   }
 

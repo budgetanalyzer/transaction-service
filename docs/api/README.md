@@ -185,6 +185,23 @@ programmatic error handling.
 See [Saved Views](../saved-views.md#ownership-and-validation) for the
 authoritative membership-limit semantics.
 
+**Clone Saved View**
+```
+POST /v1/views/{sourceViewId}/clone
+Body: { "name": "Copy of December review" }
+Response: SavedViewResponse (201 Created)
+Location: Absolute canonical URI ending in /v1/views/{targetId}
+Permission: views:write
+Notes: Creates a permanently independent target from one lifecycle-lock-
+serialized source-membership snapshot. The source must belong to the caller;
+missing and foreign sources both return 404. The source membership is
+revalidated as active and owner-scoped, and any validation or persistence
+failure rolls back target creation. An exact 10,000-member source is supported.
+```
+
+See [Saved Views](../saved-views.md#http-contract) for clone validation, error,
+atomicity, and concurrency semantics.
+
 **List Saved Views**
 ```
 GET /v1/views

@@ -75,6 +75,44 @@ List and get responses contain metadata and the active `transactionCount`:
 }
 ```
 
+Clone a view under a new name:
+
+```http
+POST /v1/views/6715a545-bab3-426d-9927-26dcea680871/clone
+Content-Type: application/json
+
+{
+  "name": "Copy of December review"
+}
+```
+
+A successful clone returns `201 Created`, a `SavedViewResponse` for the target,
+and an absolute `Location` URI ending in `/v1/views/{targetId}` that points to
+the target's canonical get route, not the clone route. The name is required,
+is trimmed before validation and persistence, and has a maximum length of 255
+characters. Cloning requires `views:write`. A missing or foreign-owned source
+returns the same owner-scoped `404 Not Found` response, without revealing
+whether another owner has that ID.
+
+The source membership is copied as one serialized snapshot. Clone and explicit
+membership deltas acquire the same pessimistic lifecycle lock on the source
+view, so a clone observes the source state wholly before or wholly after a
+concurrent delta, never a partial delta. After taking the snapshot, clone locks
+and validates every referenced transaction as active and owned by the caller
+before the target row and memberships are persisted. An unavailable source
+membership returns HTTP 422 with error type `APPLICATION_ERROR` and code
+`SAVED_VIEW_MEMBERSHIP_STALE`. A case-insensitive target-name conflict returns
+HTTP 422 with code `SAVED_VIEW_NAME_ALREADY_EXISTS`; invalid request fields
+return HTTP 400 `VALIDATION_ERROR`.
+
+The source invariant limits membership to 10,000 unique transactions, and a
+source at exactly that boundary can be cloned. Transaction validation, target
+creation, and membership insertion share one transaction; any failure rolls
+back the target as a complete unit. The target is a separate saved-view row
+with copied membership and no continuing relationship to the source. Later
+renames, membership changes, or deletion of either view do not propagate to
+the other.
+
 Rename a view with `PATCH /v1/views/{id}` and body `{ "name": "New name" }`.
 Create and rename operations trim surrounding name whitespace and cannot reuse
 a case-insensitive name already owned by the same user. A conflict returns
@@ -153,8 +191,9 @@ failure propagates so the complete transaction rolls back.
 
 ## Soft Deletion And Concurrency
 
-Rename, membership-delta, and saved-view deletion operations share a
-pessimistic lifecycle lock on the owner-scoped saved-view row. When a
+Rename, clone, membership-delta, and saved-view deletion operations share a
+pessimistic lifecycle lock on the owner-scoped saved-view row. Clone holds the
+source lock through snapshot validation and target persistence. When a
 membership delta adds transactions, it acquires locks in this order:
 
 1. Saved-view row.
