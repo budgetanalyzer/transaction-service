@@ -31,21 +31,21 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void attempt_withValidCapitalOnePdf_matches() {
+  void attemptWithValidCapitalOnePdfMatches() {
     var parserAttempt = attempt(pdfContent, "cap-one-credit-yearly-summary-sample.pdf", null);
 
     assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
   }
 
   @Test
-  void attempt_withCsvFile_returnsNotApplicable() {
+  void attemptWithCsvFileReturnsNotApplicable() {
     var parserAttempt = attempt(pdfContent, "transactions.csv", null);
 
     assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void attempt_withNonMatchingPdf_returnsNotApplicable() {
+  void attemptWithNonMatchingPdfReturnsNotApplicable() {
     // Random bytes won't match
     var randomBytes = new byte[] {0x25, 0x50, 0x44, 0x46}; // PDF magic bytes only
 
@@ -55,12 +55,12 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void getHandlerKey_returnsCorrectKey() {
+  void getHandlerKeyReturnsCorrectKey() {
     assertThat(extractor.getHandlerKey()).isEqualTo("capital-one-credit-yearly-statement");
   }
 
   @Test
-  void extract_withSamplePdf_extractsTransactions() {
+  void extractWithSamplePdfExtractsTransactions() {
     var transactions = transactions(null);
 
     // Fixture contains 15 transactions across 7 categories
@@ -68,7 +68,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_setsCorrectBankAndCurrency() {
+  void extractWithSamplePdfSetsCorrectBankAndCurrency() {
     var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
@@ -78,7 +78,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withAccountId_setsAccountIdOnAllTransactions() {
+  void extractWithAccountIdSetsAccountIdOnAllTransactions() {
     var accountId = "test-account-123";
     var transactions = transactions(accountId);
 
@@ -88,7 +88,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_parsesYear2024Correctly() {
+  void extractWithSamplePdfParsesYear2024Correctly() {
     var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
@@ -97,7 +97,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_extractsKnownTransactions() {
+  void extractWithSamplePdfExtractsKnownTransactions() {
     var transactions = transactions(null);
 
     // Find the TAQUERIA DEL SOL transaction from the dining category
@@ -112,7 +112,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_handlesCreditsCorrectly() {
+  void extractWithSamplePdfHandlesCreditsCorrectly() {
     var transactions = transactions(null);
 
     // Find the REFUND FROM ONLINE SHOP credit (-$37.27)
@@ -132,7 +132,7 @@ class CapOneCreditYearlySummaryExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_extractsCategories() {
+  void extractWithSamplePdfExtractsCategories() {
     var transactions = transactions(null);
 
     // Verify we have multiple categories

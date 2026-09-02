@@ -51,7 +51,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withBangkokBankStatementPdf_matches() throws IOException {
+  void attemptWithBangkokBankStatementPdfMatches() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(List.of(List.of(withdrawal("01/01/26", "COFFEE SHOP", "150.00"))));
 
@@ -61,7 +61,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withBangkokBankStatementPdfFixture_matches() throws IOException {
+  void attemptWithBangkokBankStatementPdfFixtureMatches() throws IOException {
     var pdfContent = Files.readAllBytes(SAMPLE_PDF_PATH);
 
     var parserAttempt = attempt(pdfContent, "bkk-bank-statement-pdf-sample.pdf", null);
@@ -70,7 +70,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withCsvFile_returnsNotApplicable() throws IOException {
+  void attemptWithCsvFileReturnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Date Particulars Withdrawal Deposit");
 
@@ -80,7 +80,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withNullFilename_returnsNotApplicable() throws IOException {
+  void attemptWithNullFilenameReturnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Date Particulars Withdrawal Deposit");
 
@@ -90,7 +90,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withBangkokBankNonStatementPdf_returnsNotApplicable() throws IOException {
+  void attemptWithBangkokBankNonStatementPdfReturnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Product Terms", "Date Particulars Withdrawal Deposit");
 
@@ -100,7 +100,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void attempt_withBangkokBankStatementMissingTable_returnsNotApplicable() throws IOException {
+  void attemptWithBangkokBankStatementMissingTableReturnsNotApplicable() throws IOException {
     var pdfContent =
         pdfWithLines("Bangkok Bank", "Statement of Account", "Opening Balance 1,000.00");
 
@@ -110,12 +110,12 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void getHandlerKey_returnsCorrectKey() {
+  void getHandlerKeyReturnsCorrectKey() {
     assertThat(extractor.getHandlerKey()).isEqualTo("bkk-bank-statement-pdf");
   }
 
   @Test
-  void extract_withMultiPageStatement_extractsTransactionsFromRepeatedTables() throws IOException {
+  void extractWithMultiPageStatementExtractsTransactionsFromRepeatedTables() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(
             List.of(
@@ -155,7 +155,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withBalanceForwardRow_ignoresRow() throws IOException {
+  void extractWithBalanceForwardRowIgnoresRow() throws IOException {
     var pdfContent =
         bangkokBankPdfWithBalanceColumn(
             List.of(
@@ -177,7 +177,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withRightAlignedWideDeposit_usesDepositColumn() throws IOException {
+  void extractWithRightAlignedWideDepositUsesDepositColumn() throws IOException {
     var pdfContent =
         bangkokBankPdfWithBalanceColumn(
             List.of(
@@ -199,7 +199,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withTrailingBalanceColumn_ignoresBalanceAmounts() throws IOException {
+  void extractWithTrailingBalanceColumnIgnoresBalanceAmounts() throws IOException {
     var pdfContent =
         bangkokBankPdfWithBalanceColumn(
             List.of(
@@ -225,8 +225,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withBangkokBankStatementPdfFixture_extractsExpectedTransactions()
-      throws IOException {
+  void extractWithBangkokBankStatementPdfFixtureExtractsExpectedTransactions() throws IOException {
     var pdfContent = Files.readAllBytes(SAMPLE_PDF_PATH);
 
     var transactions = transactions(pdfContent, "checking-001");
@@ -259,7 +258,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_ignoresTransactionShapedLinesBeforeFirstTableHeader() throws IOException {
+  void extractIgnoresTransactionShapedLinesBeforeFirstTableHeader() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(
             List.of(
@@ -275,7 +274,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withBothAmountColumnsPopulated_throwsPdfParsingError() throws IOException {
+  void extractWithBothAmountColumnsPopulatedThrowsPdfParsingError() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(
             List.of(List.of(bothAmounts("01/01/26", "AMBIGUOUS TRANSFER", "150.00", "25.00"))));
@@ -285,7 +284,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withTransactionRowMissingAmount_throwsPdfParsingError() throws IOException {
+  void extractWithTransactionRowMissingAmountThrowsPdfParsingError() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(List.of(List.of(noAmount("01/01/26", "MISSING AMOUNT"))));
 
@@ -294,7 +293,7 @@ class BangkokBankStatementPdfExtractorTest {
   }
 
   @Test
-  void extract_withMalformedTransactionDate_throwsPdfParsingError() throws IOException {
+  void extractWithMalformedTransactionDateThrowsPdfParsingError() throws IOException {
     var pdfContent =
         bangkokBankPdfWithPages(List.of(List.of(withdrawal("32/01/26", "BAD DATE", "150.00"))));
 
