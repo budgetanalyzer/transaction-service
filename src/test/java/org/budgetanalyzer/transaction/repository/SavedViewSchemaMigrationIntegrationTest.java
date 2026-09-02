@@ -20,7 +20,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-class SavedViewSchemaMigrationTest {
+class SavedViewSchemaMigrationIntegrationTest {
 
   private static final String OWNER_ID = "owner";
   private static final String OTHER_OWNER_ID = "other-owner";

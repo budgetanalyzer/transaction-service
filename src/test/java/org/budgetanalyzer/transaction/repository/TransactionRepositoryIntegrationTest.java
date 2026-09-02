@@ -45,7 +45,7 @@ class TransactionRepositoryIntegrationTest {
   // ==================== Create (Save) ====================
 
   @Test
-  void save_newTransaction_persistsToDatabase() {
+  void saveNewTransactionPersistsToDatabase() {
     // Given: a new transaction
     var transaction = createTransaction("Grocery Store", BigDecimal.valueOf(45.50));
 
@@ -64,7 +64,7 @@ class TransactionRepositoryIntegrationTest {
   // ==================== Read (Find) ====================
 
   @Test
-  void findById_existingTransaction_returnsTransaction() {
+  void findByIdExistingTransactionReturnsTransaction() {
     // Given: a transaction exists
     var transaction =
         transactionRepository.save(createTransaction("Coffee Shop", BigDecimal.valueOf(4.50)));
@@ -80,7 +80,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findByIdNotDeleted_existingNonDeletedTransaction_returnsTransaction() {
+  void findByIdNotDeletedExistingNonDeletedTransactionReturnsTransaction() {
     // Given: a non-deleted transaction exists
     var transaction =
         transactionRepository.save(createTransaction("Restaurant", BigDecimal.valueOf(75.00)));
@@ -96,7 +96,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findByIdNotDeleted_deletedTransaction_returnsEmpty() {
+  void findByIdNotDeletedDeletedTransactionReturnsEmpty() {
     // Given: a deleted transaction exists
     var transaction =
         transactionRepository.save(createTransaction("To Delete", BigDecimal.valueOf(100.00)));
@@ -114,7 +114,7 @@ class TransactionRepositoryIntegrationTest {
   // ==================== Update ====================
 
   @Test
-  void save_updateExistingTransaction_persistsChanges() {
+  void saveUpdateExistingTransactionPersistsChanges() {
     // Given: an existing transaction
     var transaction =
         transactionRepository.save(createTransaction("Old Description", BigDecimal.valueOf(50.00)));
@@ -140,7 +140,7 @@ class TransactionRepositoryIntegrationTest {
   // ==================== Soft Delete ====================
 
   @Test
-  void softDelete_marksTransactionAsDeleted() {
+  void softDeleteMarksTransactionAsDeleted() {
     // Given: a transaction exists
     var transaction =
         transactionRepository.save(createTransaction("To Soft Delete", BigDecimal.valueOf(25.00)));
@@ -166,7 +166,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findAllNotDeleted_excludesSoftDeletedTransactions() {
+  void findAllNotDeletedExcludesSoftDeletedTransactions() {
     // Given: 3 transactions, one is deleted
     transactionRepository.save(createTransaction("Active 1", BigDecimal.valueOf(10.00)));
     transactionRepository.save(createTransaction("Active 2", BigDecimal.valueOf(20.00)));
@@ -192,7 +192,7 @@ class TransactionRepositoryIntegrationTest {
   // ==================== Duplicate Detection ====================
 
   @Test
-  void findDuplicateCandidates_returnsMatchingCandidateWhenDescriptionDiffers() {
+  void findDuplicateCandidatesReturnsMatchingCandidateWhenDescriptionDiffers() {
     // Given: a transaction exists with the same financial identity and a different description
     var transaction =
         createTransactionWithDetails(
@@ -222,7 +222,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_doesNotMatchDifferentExactFields() {
+  void findDuplicateCandidatesDoesNotMatchDifferentExactFields() {
     // Given: a transaction exists for one financial identity
     var transaction =
         createTransactionWithDetails(
@@ -275,7 +275,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_ignoresAccountId() {
+  void findDuplicateCandidatesIgnoresAccountId() {
     // Given: a transaction exists with one account ID
     var transaction =
         createTransactionWithDetails(
@@ -300,7 +300,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_doesNotFindCandidatesForDifferentOwner() {
+  void findDuplicateCandidatesDoesNotFindCandidatesForDifferentOwner() {
     // Given: a transaction exists for user-1
     var transaction =
         createTransactionWithDetails(
@@ -316,7 +316,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_excludesDeletedTransactions() {
+  void findDuplicateCandidatesExcludesDeletedTransactions() {
     // Given: a deleted transaction exists
     var transaction =
         createTransactionWithDetails(
@@ -335,7 +335,7 @@ class TransactionRepositoryIntegrationTest {
   }
 
   @Test
-  void findDuplicateCandidates_matchesNonAsciiAndSeparatorLikeFieldValues() {
+  void findDuplicateCandidatesMatchesNonAsciiAndSeparatorLikeFieldValues() {
     // Given: a transaction exists with values that would be ambiguous in an encoded key
     var transaction =
         createTransactionWithDetails(

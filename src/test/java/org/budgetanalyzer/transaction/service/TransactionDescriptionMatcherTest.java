@@ -19,7 +19,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_matchesPunctuationAndWhitespaceOnlyVariants() {
+  void matchMatchesPunctuationAndWhitespaceOnlyVariants() {
     assertThat(
             transactionDescriptionMatcher.matches(
                 "Whole-Foods Market #123", "Whole Foods Market 123"))
@@ -27,7 +27,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_matchesCaseOnlyVariants() {
+  void matchMatchesCaseOnlyVariants() {
     assertThat(
             transactionDescriptionMatcher.matches("monthly subscription", "MONTHLY SUBSCRIPTION"))
         .isTrue();
@@ -48,7 +48,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_matchesSameNumericReferenceWithPunctuationAndWhitespaceDifferences() {
+  void matchMatchesSameNumericReferenceWithPunctuationAndWhitespaceDifferences() {
     assertThat(
             transactionDescriptionMatcher.matches(
                 "TRANSFER REF# 1234567890", "TRANSFER REF 1234567890"))
@@ -74,7 +74,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_doesNotMatchClearlyDifferentDescriptions() {
+  void matchDoesNotMatchClearlyDifferentDescriptions() {
     assertThat(transactionDescriptionMatcher.matches("RENT PAYMENT MAY", "STARBUCKS STORE 1234"))
         .isFalse();
   }
@@ -90,7 +90,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void normalize_removesPunctuationWhitespaceCaseAndDiacritics() {
+  void normalizeRemovesPunctuationWhitespaceCaseAndDiacritics() {
     var accentedDescription = " Caf" + Character.toString(0x00E9) + " - Market #42 ";
 
     assertThat(TransactionDescriptionMatcher.normalize(accentedDescription))
@@ -98,7 +98,7 @@ class TransactionDescriptionMatcherTest {
   }
 
   @Test
-  void match_requiresDescriptions() {
+  void matchRequiresDescriptions() {
     assertThatNullPointerException()
         .isThrownBy(() -> transactionDescriptionMatcher.matches(null, "Coffee"))
         .withMessage("incomingDescription");

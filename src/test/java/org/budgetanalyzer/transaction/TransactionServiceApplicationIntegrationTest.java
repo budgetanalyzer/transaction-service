@@ -14,7 +14,7 @@ import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 @SpringBootTest
 @Import(TestClaimsSecurityConfig.class)
 @Testcontainers
-class TransactionServiceApplicationTests {
+class TransactionServiceApplicationIntegrationTest {
 
   @Container
   private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER =

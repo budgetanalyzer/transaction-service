@@ -339,7 +339,7 @@ class TransactionImportServiceIntegrationTest {
   }
 
   @Test
-  void previewFile_capitalOneMonthlyCreditPdfRecordsWinningParserRevisionInToken()
+  void previewFileCapitalOneMonthlyCreditPdfRecordsWinningParserRevisionInToken()
       throws IOException {
     var statementFormat =
         statementFormatRepository.findAll().stream()
@@ -375,7 +375,7 @@ class TransactionImportServiceIntegrationTest {
   }
 
   @Test
-  void previewFile_savedPdfTextTableFormatUsesPersistedParserRevision() throws IOException {
+  void previewFileSavedPdfTextTableFormatUsesPersistedParserRevision() throws IOException {
     var pdfContent =
         pdfWithRows(
             List.of(

@@ -62,7 +62,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Description Filter Tests ====================
 
   @Test
-  void withCriteria_descriptionSingleWord_matchesContainingWord() {
+  void withCriteriaDescriptionSingleWordMatchesContainingWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Amazon Web Services", BigDecimal.TEN));
@@ -80,7 +80,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionDoesNotMatchBankName() {
+  void withCriteriaDescriptionDoesNotMatchBankName() {
     transactionRepository.save(createTransactionWithBank("Coffee Shop", "Capital One"));
     transactionRepository.save(createTransactionWithBank("Grocery Store", "Bangkok Bank"));
 
@@ -91,7 +91,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionMultipleWords_matchesAnyWord() {
+  void withCriteriaDescriptionMultipleWordsMatchesAnyWord() {
     // Given: transactions with various descriptions
     transactionRepository.save(createTransaction("Amazon Prime Video", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Whole Foods Market", BigDecimal.TEN));
@@ -109,7 +109,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionWithPercent_escapesWildcard() {
+  void withCriteriaDescriptionWithPercentEscapesWildcard() {
     // Given: transactions with percent signs
     transactionRepository.save(createTransaction("100% Bonus", BigDecimal.TEN));
     transactionRepository.save(createTransaction("1000 Points", BigDecimal.TEN));
@@ -125,7 +125,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionWithUnderscore_escapesWildcard() {
+  void withCriteriaDescriptionWithUnderscoreEscapesWildcard() {
     // Given: transactions with underscores
     transactionRepository.save(createTransaction("test_case payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("testAcase payment", BigDecimal.TEN));
@@ -141,7 +141,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionCaseInsensitive_matchesRegardlessOfCase() {
+  void withCriteriaDescriptionCaseInsensitiveMatchesRegardlessOfCase() {
     // Given: transactions with mixed case
     transactionRepository.save(createTransaction("STARBUCKS COFFEE", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Starbucks Coffee", BigDecimal.TEN));
@@ -156,7 +156,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionMultipleSpaces_treatsAsMultipleWords() {
+  void withCriteriaDescriptionMultipleSpacesTreatsAsMultipleWords() {
     // Given: transactions
     transactionRepository.save(createTransaction("Amazon Prime", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Target Store", BigDecimal.TEN));
@@ -174,7 +174,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionBlank_returnsAllTransactions() {
+  void withCriteriaDescriptionBlankReturnsAllTransactions() {
     // Given: transactions exist
     transactionRepository.save(createTransaction("Transaction 1", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Transaction 2", BigDecimal.TEN));
@@ -190,7 +190,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Account ID Filter Tests ====================
 
   @Test
-  void withCriteria_accountIdSingleWord_matchesContainingWord() {
+  void withCriteriaAccountIdSingleWordMatchesContainingWord() {
     // Given: transactions with different account IDs
     transactionRepository.save(
         createTransactionWithAccount("Transaction 1", "acc_123456", BigDecimal.TEN));
@@ -211,7 +211,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_accountIdMultipleWords_matchesAnyWord() {
+  void withCriteriaAccountIdMultipleWordsMatchesAnyWord() {
     // Given: transactions with different account IDs
     transactionRepository.save(
         createTransactionWithAccount("Transaction 1", "checking_account", BigDecimal.TEN));
@@ -232,7 +232,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_accountIdsMatchesAnyProvidedValue() {
+  void withCriteriaAccountIdsMatchesAnyProvidedValue() {
     transactionRepository.save(
         createTransactionWithAccount("Checking transaction", "checking-123", BigDecimal.TEN));
     transactionRepository.save(
@@ -252,7 +252,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Bank Name Filter Tests ====================
 
   @Test
-  void withCriteria_bankNameSingleWord_matchesContainingWord() {
+  void withCriteriaBankNameSingleWordMatchesContainingWord() {
     // Given: transactions from different banks
     transactionRepository.save(createTransactionWithBank("Transaction 1", "Chase Bank"));
     transactionRepository.save(createTransactionWithBank("Transaction 2", "Chase Credit Union"));
@@ -270,7 +270,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_bankNameMultipleWords_matchesAnyWord() {
+  void withCriteriaBankNameMultipleWordsMatchesAnyWord() {
     // Given: transactions from different banks
     transactionRepository.save(createTransactionWithBank("Transaction 1", "Wells Fargo"));
     transactionRepository.save(createTransactionWithBank("Transaction 2", "Bank of America"));
@@ -288,7 +288,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_bankNamesMatchesAnyProvidedValue() {
+  void withCriteriaBankNamesMatchesAnyProvidedValue() {
     transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
     transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
     transactionRepository.save(createTransactionWithBank("Truist transaction", "Truist"));
@@ -305,7 +305,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Currency Code Filter Tests ====================
 
   @Test
-  void withCriteria_currencyIsoCode_exactMatchCaseInsensitive() {
+  void withCriteriaCurrencyIsoCodeExactMatchCaseInsensitive() {
     // Given: transactions with different currencies
     transactionRepository.save(createTransactionWithCurrency("Transaction 1", "USD"));
     transactionRepository.save(createTransactionWithCurrency("Transaction 2", "EUR"));
@@ -321,7 +321,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_currencyIsoCodesMatchesAnyProvidedValueCaseInsensitive() {
+  void withCriteriaCurrencyIsoCodesMatchesAnyProvidedValueCaseInsensitive() {
     transactionRepository.save(createTransactionWithCurrency("Dollar transaction", "USD"));
     transactionRepository.save(createTransactionWithCurrency("Baht transaction", "THB"));
     transactionRepository.save(createTransactionWithCurrency("Euro transaction", "EUR"));
@@ -336,7 +336,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_blankSetValuesAreIgnored() {
+  void withCriteriaBlankSetValuesAreIgnored() {
     transactionRepository.save(createTransactionWithBank("Capital transaction", "Capital One"));
     transactionRepository.save(createTransactionWithBank("Bangkok transaction", "Bangkok Bank"));
 
@@ -356,7 +356,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Transaction Type Filter Tests ====================
 
   @Test
-  void withCriteria_type_matchesExactType() {
+  void withCriteriaTypeMatchesExactType() {
     // Given: transactions with different types
     transactionRepository.save(createTransactionWithType("Debit 1", TransactionType.DEBIT));
     transactionRepository.save(createTransactionWithType("Debit 2", TransactionType.DEBIT));
@@ -374,7 +374,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Date Range Filter Tests ====================
 
   @Test
-  void withCriteria_dateRange_matchesWithinRange() {
+  void withCriteriaDateRangeMatchesWithinRange() {
     // Given: transactions on different dates
     var jan1 = LocalDate.of(2025, 1, 1);
     var jan15 = LocalDate.of(2025, 1, 15);
@@ -400,7 +400,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Amount Range Filter Tests ====================
 
   @Test
-  void withCriteria_amountRange_matchesWithinRange() {
+  void withCriteriaAmountRangeMatchesWithinRange() {
     // Given: transactions with different stored amounts and currencies
     transactionRepository.save(
         createTransactionWithCurrency("Transaction 1", "USD", BigDecimal.valueOf(10.00)));
@@ -445,7 +445,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Combined Filter Tests ====================
 
   @Test
-  void withCriteria_multipleFilters_appliesAllWithAnd() {
+  void withCriteriaMultipleFiltersAppliesAllWithAnd() {
     // Given: various transactions
     transactionRepository.save(
         createComplexTransaction("Amazon Prime", "acc_123", "Chase", BigDecimal.valueOf(15.99)));
@@ -466,7 +466,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_appliesOwnerTypeDateAmountAndTimestampFilters() {
+  void withCriteriaAppliesOwnerTypeDateAmountAndTimestampFilters() {
     // Given: transactions that differ across the shared criteria fields
     final var createdAfter = Instant.now().minusSeconds(60);
     var matchingTransaction =
@@ -536,7 +536,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_emptyFilter_returnsAllTransactions() {
+  void withCriteriaEmptyFilterReturnsAllTransactions() {
     // Given: transactions exist
     transactionRepository.save(createTransaction("Transaction 1", BigDecimal.TEN));
     transactionRepository.save(createTransaction("Transaction 2", BigDecimal.TEN));
@@ -553,7 +553,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Owner Filter Tests ====================
 
   @Test
-  void byOwner_matchesOnlyOwnedTransactions() {
+  void byOwnerMatchesOnlyOwnedTransactions() {
     // Given: transactions owned by different users
     var owned1 = createTransaction("Owned 1", BigDecimal.TEN);
     owned1.setOwnerId("user-A");
@@ -581,7 +581,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Owner ID Filter (via withCriteria) Tests ====================
 
   @Test
-  void withCriteria_ownerId_matchesExactOwnerId() {
+  void withCriteriaOwnerIdMatchesExactOwnerId() {
     // Given: transactions owned by different users
     var ownedByA = createTransaction("Transaction A", BigDecimal.TEN);
     ownedByA.setOwnerId("user-A");
@@ -602,7 +602,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_ownerId_isCaseSensitive() {
+  void withCriteriaOwnerIdIsCaseSensitive() {
     // Given: transactions whose ownerIds differ only in case
     var upperCase = createTransaction("Upper Case Owner", BigDecimal.TEN);
     upperCase.setOwnerId("User-A");
@@ -623,7 +623,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_ownerIdCombinedWithOtherFilters_appliesBothFilters() {
+  void withCriteriaOwnerIdCombinedWithOtherFiltersAppliesBothFilters() {
     // Given: transactions across owners and banks
     var chaseTransactionForUserA = createTransaction("Chase Payment", BigDecimal.TEN);
     chaseTransactionForUserA.setOwnerId("user-A");
@@ -657,7 +657,7 @@ class TransactionSpecificationsIntegrationTest {
   // ==================== Edge Cases ====================
 
   @Test
-  void withCriteria_descriptionWithBackslash_escapesCorrectly() {
+  void withCriteriaDescriptionWithBackslashEscapesCorrectly() {
     // Given: transaction with backslash in description
     transactionRepository.save(createTransaction("Payment\\Receipt", BigDecimal.TEN));
     transactionRepository.save(createTransaction("PaymentAReceipt", BigDecimal.TEN));
@@ -672,7 +672,7 @@ class TransactionSpecificationsIntegrationTest {
   }
 
   @Test
-  void withCriteria_descriptionSingleCharacter_matchesCorrectly() {
+  void withCriteriaDescriptionSingleCharacterMatchesCorrectly() {
     // Given: transactions
     transactionRepository.save(createTransaction("A Payment", BigDecimal.TEN));
     transactionRepository.save(createTransaction("B Payment", BigDecimal.TEN));

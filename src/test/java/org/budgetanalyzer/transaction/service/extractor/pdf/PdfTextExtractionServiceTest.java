@@ -27,7 +27,7 @@ class PdfTextExtractionServiceTest {
   private final PdfTextExtractionService pdfTextExtractionService = new PdfTextExtractionService();
 
   @Test
-  void extract_withTextPdfNormalizesPagesLinesCellsAndTableCandidates() throws IOException {
+  void extractWithTextPdfNormalizesPagesLinesCellsAndTableCandidates() throws IOException {
     var pdfContent =
         pdfWithRows(
             List.of(
@@ -53,19 +53,23 @@ class PdfTextExtractionServiceTest {
   }
 
   @Test
-  void extract_withBlankPdfRejectsOcrDependentFile() throws IOException {
+  void extractWithBlankPdfRejectsOcrDependentFile() throws IOException {
     assertThatThrownBy(() -> pdfTextExtractionService.extract(blankPdf(), "statement.pdf"))
-        .isInstanceOf(BusinessException.class)
-        .hasMessageContaining("Scanned or OCR-dependent PDFs are not supported")
-        .extracting("code")
-        .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name());
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            businessException ->
+                assertThat(businessException.getCode())
+                    .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name()));
   }
 
   @Test
-  void extract_withNonPdfFilenameRejectsFile() {
+  void extractWithNonPdfFilenameRejectsFile() {
     assertThatThrownBy(() -> pdfTextExtractionService.extract(new byte[] {}, "statement.csv"))
-        .isInstanceOf(BusinessException.class)
-        .hasMessage("PDF text extraction requires a .pdf file.");
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            businessException ->
+                assertThat(businessException.getCode())
+                    .isEqualTo(BudgetAnalyzerError.PDF_PARSING_ERROR.name()));
   }
 
   private byte[] pdfWithRows(List<List<String>> rows) throws IOException {

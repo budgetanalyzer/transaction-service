@@ -31,21 +31,21 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void attempt_withValidCapitalOneMonthlyPdf_matches() {
+  void attemptWithValidCapitalOneMonthlyPdfMatches() {
     var parserAttempt = attempt(pdfContent, "cap-one-bank-monthly-sample.pdf", null);
 
     assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.MATCHED);
   }
 
   @Test
-  void attempt_withCsvFile_returnsNotApplicable() {
+  void attemptWithCsvFileReturnsNotApplicable() {
     var parserAttempt = attempt(pdfContent, "transactions.csv", null);
 
     assertThat(parserAttempt.status()).isEqualTo(ParserAttemptStatus.NOT_APPLICABLE);
   }
 
   @Test
-  void attempt_withNonMatchingPdf_returnsNotApplicable() throws IOException {
+  void attemptWithNonMatchingPdfReturnsNotApplicable() throws IOException {
     // Year-end summary PDF should not match
     var yearlyPdf =
         Files.readAllBytes(
@@ -57,12 +57,12 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void getHandlerKey_returnsCorrectKey() {
+  void getHandlerKeyReturnsCorrectKey() {
     assertThat(extractor.getHandlerKey()).isEqualTo("capital-one-bank-monthly-statement");
   }
 
   @Test
-  void extract_withSamplePdf_extractsTransactions() {
+  void extractWithSamplePdfExtractsTransactions() {
     var transactions = transactions(null);
 
     // November 2025 fixture has 6 transactions (excluding opening/closing balance)
@@ -70,7 +70,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_setsCorrectBankAndCurrency() {
+  void extractWithSamplePdfSetsCorrectBankAndCurrency() {
     var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
@@ -80,7 +80,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withAccountId_setsAccountIdOnAllTransactions() {
+  void extractWithAccountIdSetsAccountIdOnAllTransactions() {
     var accountId = "test-account-123";
     var transactions = transactions(accountId);
 
@@ -90,7 +90,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_parsesYear2025Correctly() {
+  void extractWithSamplePdfParsesYear2025Correctly() {
     var transactions = transactions(null);
 
     for (var previewTransaction : transactions) {
@@ -99,7 +99,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_extractsBillPayTransaction() {
+  void extractWithSamplePdfExtractsBillPayTransaction() {
     var transactions = transactions(null);
 
     // Find the ONLINE BILL PAY transaction
@@ -113,7 +113,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_extractsDepositTransaction() {
+  void extractWithSamplePdfExtractsDepositTransaction() {
     var transactions = transactions(null);
 
     // Find the EMPLOYER DIRECT DEPOSIT
@@ -131,7 +131,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_handlesCreditsCorrectly() {
+  void extractWithSamplePdfHandlesCreditsCorrectly() {
     var transactions = transactions(null);
 
     // Find credit transactions
@@ -142,7 +142,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_handlesDebitsCorrectly() {
+  void extractWithSamplePdfHandlesDebitsCorrectly() {
     var transactions = transactions(null);
 
     // Find debit transactions
@@ -153,7 +153,7 @@ class CapOneBankMonthlyExtractorTest {
   }
 
   @Test
-  void extract_withSamplePdf_extractsInterestTransaction() {
+  void extractWithSamplePdfExtractsInterestTransaction() {
     var transactions = transactions(null);
 
     // Find the Monthly Interest Paid transaction

@@ -1,9 +1,9 @@
 package org.budgetanalyzer.transaction.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -17,41 +17,55 @@ class BatchValidationExceptionTest {
   void extendsBusinessException() {
     var exception = new BatchValidationException(List.of());
 
-    assertInstanceOf(BusinessException.class, exception);
+    assertThat(exception).isInstanceOf(BusinessException.class);
   }
 
   @Test
   void hasCorrectErrorCode() {
     var exception = new BatchValidationException(List.of());
 
-    assertEquals(BudgetAnalyzerError.BATCH_VALIDATION_FAILED.name(), exception.getCode());
+    assertThat(exception.getCode()).isEqualTo(BudgetAnalyzerError.BATCH_VALIDATION_FAILED.name());
   }
 
   @Test
-  void containsFieldErrors() {
+  void containsStructuredFieldErrors() {
     var errors =
         List.of(
             FieldError.forIndexedField(0, "amount", "Amount cannot be null", null),
-            FieldError.forIndexedField(2, "date", "Invalid date format", null));
+            FieldError.forIndexedField(2, "date", "Invalid date format", "not-a-date"));
 
     var exception = new BatchValidationException(errors);
 
-    assertTrue(exception.hasFieldErrors());
-    assertEquals(2, exception.getFieldErrors().size());
-    assertEquals(0, exception.getFieldErrors().get(0).getIndex());
-    assertEquals("amount", exception.getFieldErrors().get(0).getField());
-    assertEquals("Amount cannot be null", exception.getFieldErrors().get(0).getMessage());
+    assertThat(exception.hasFieldErrors()).isTrue();
+    assertThat(exception.getFieldErrors())
+        .hasSize(2)
+        .satisfiesExactly(
+            fieldError -> {
+              assertThat(fieldError.getIndex()).isZero();
+              assertThat(fieldError.getField()).isEqualTo("amount");
+              assertThat(fieldError.getRejectedValue()).isNull();
+            },
+            fieldError -> {
+              assertThat(fieldError.getIndex()).isEqualTo(2);
+              assertThat(fieldError.getField()).isEqualTo("date");
+              assertThat(fieldError.getRejectedValue()).isEqualTo("not-a-date");
+            });
   }
 
   @Test
-  void messageIncludesErrorCount() {
-    var errors =
-        List.of(
-            FieldError.forIndexedField(0, "amount", "Amount cannot be null", null),
-            FieldError.forIndexedField(2, "date", "Invalid date format", null));
+  void fieldErrorsAreDefensivelyCopiedAndUnmodifiable() {
+    var errors = new ArrayList<FieldError>();
+    errors.add(FieldError.forIndexedField(0, "amount", "Amount cannot be null", null));
 
     var exception = new BatchValidationException(errors);
+    errors.clear();
 
-    assertEquals("Batch validation failed with 2 error(s)", exception.getMessage());
+    assertThat(exception.getFieldErrors()).hasSize(1);
+    assertThatThrownBy(
+            () ->
+                exception
+                    .getFieldErrors()
+                    .add(FieldError.forIndexedField(1, "date", "Invalid date format", null)))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 }

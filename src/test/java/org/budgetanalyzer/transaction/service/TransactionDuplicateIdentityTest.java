@@ -15,7 +15,7 @@ import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 class TransactionDuplicateIdentityTest {
 
   @Test
-  void fromPreviewTransaction_includesFinancialIdentityFieldsExceptAccountId() {
+  void fromPreviewTransactionIncludesFinancialIdentityFieldsExceptAccountId() {
     var previewTransaction =
         new PreviewTransaction(
             LocalDate.of(2024, 1, 15),
@@ -38,7 +38,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void fromPreviewTransaction_usesSameIdentityForDifferentDescriptions() {
+  void fromPreviewTransactionUsesSameIdentityForDifferentDescriptions() {
     var firstPreviewTransaction = previewTransaction("Coffee", "checking");
     var secondPreviewTransaction = previewTransaction("Coffee Shop", "checking");
 
@@ -51,7 +51,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void fromPreviewTransaction_usesSameIdentityForDifferentAccountIds() {
+  void fromPreviewTransactionUsesSameIdentityForDifferentAccountIds() {
     var firstPreviewTransaction = previewTransaction("Coffee", "checking");
     var secondPreviewTransaction = previewTransaction("Coffee", "savings");
 
@@ -64,7 +64,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_distinguishesDifferentBankNames() {
+  void constructorDistinguishesDifferentBankNames() {
     var firstTransactionDuplicateIdentity =
         new TransactionDuplicateIdentity(
             "Test Bank",
@@ -84,7 +84,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_distinguishesDifferentDates() {
+  void constructorDistinguishesDifferentDates() {
     var firstTransactionDuplicateIdentity = duplicateIdentity();
     var secondTransactionDuplicateIdentity =
         new TransactionDuplicateIdentity(
@@ -98,7 +98,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_distinguishesDifferentAmounts() {
+  void constructorDistinguishesDifferentAmounts() {
     var firstTransactionDuplicateIdentity = duplicateIdentity(new BigDecimal("12.30"));
     var secondTransactionDuplicateIdentity = duplicateIdentity(new BigDecimal("12.31"));
 
@@ -106,7 +106,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_distinguishesDifferentTypes() {
+  void constructorDistinguishesDifferentTypes() {
     var firstTransactionDuplicateIdentity = duplicateIdentity();
     var secondTransactionDuplicateIdentity =
         new TransactionDuplicateIdentity(
@@ -120,7 +120,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_distinguishesDifferentCurrencyIsoCodes() {
+  void constructorDistinguishesDifferentCurrencyIsoCodes() {
     var firstTransactionDuplicateIdentity = duplicateIdentity();
     var secondTransactionDuplicateIdentity =
         new TransactionDuplicateIdentity(
@@ -134,7 +134,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_canonicalizesAmountToScaleTwo() {
+  void constructorCanonicalizesAmountToScaleTwo() {
     var wholeAmountIdentity = duplicateIdentity(new BigDecimal("12"));
     var scaledAmountIdentity = duplicateIdentity(new BigDecimal("12.00"));
     var roundedAmountIdentity = duplicateIdentity(new BigDecimal("12.005"));
@@ -145,7 +145,7 @@ class TransactionDuplicateIdentityTest {
   }
 
   @Test
-  void constructor_requiresAmountForCanonicalization() {
+  void constructorRequiresAmountForCanonicalization() {
     assertThatNullPointerException()
         .isThrownBy(
             () ->

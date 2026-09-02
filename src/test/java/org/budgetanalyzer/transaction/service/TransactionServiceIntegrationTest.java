@@ -363,7 +363,7 @@ class TransactionServiceIntegrationTest {
   }
 
   @Test
-  void batchImport_sameTransactionsSubmittedTwice_rejectsSecondSubmission() {
+  void batchImportSameTransactionsSubmittedTwiceRejectsSecondSubmission() {
     var transactions =
         List.of(
             previewTransaction(LocalDate.of(2025, 11, 18), "COFFEE SHOP", "9.97"),
@@ -392,7 +392,7 @@ class TransactionServiceIntegrationTest {
   }
 
   @Test
-  void batchImport_duplicateSubmittedWithOverride_importsDuplicate() {
+  void batchImportDuplicateSubmittedWithOverrideImportsDuplicate() {
     var transaction = previewTransaction(LocalDate.of(2025, 11, 18), "COFFEE SHOP", "9.97");
     var duplicate =
         new PreviewTransaction(
@@ -490,7 +490,7 @@ class TransactionServiceIntegrationTest {
   }
 
   @Test
-  void bulkDeleteTransactions_duplicateInputIdsDeletesOnceAndReportsSecondAsNotFound() {
+  void bulkDeleteTransactionsDuplicateInputIdsDeletesOnceAndReportsSecondAsNotFound() {
     var transaction = new Transaction();
     transaction.setAccountId("checking");
     transaction.setBankName("Capital One");

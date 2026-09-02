@@ -19,7 +19,7 @@ class PdfTextTableParserConfigValidatorTest {
       new PdfTextTableParserConfigValidator();
 
   @Test
-  void validate_withSignedAmountConfigReturnsNoErrors() {
+  void validateWithSignedAmountConfigReturnsNoErrors() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(
             PdfTextTableFileType.TEXT_PDF,
@@ -41,7 +41,7 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
-  void validate_withSignedAmountAndTypeHeaderDoesNotRequireNegativeMeans() {
+  void validateWithSignedAmountAndTypeHeaderDoesNotRequireNegativeMeans() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(
             PdfTextTableFileType.TEXT_PDF,
@@ -63,7 +63,7 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
-  void validate_withSignedAmountAndNoDirectionSourceReturnsFieldErrors() {
+  void validateWithSignedAmountAndNoDirectionSourceReturnsFieldErrors() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(
             PdfTextTableFileType.TEXT_PDF,
@@ -85,7 +85,7 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
-  void validate_withDebitCreditColumnsReturnsNoErrors() {
+  void validateWithDebitCreditColumnsReturnsNoErrors() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(
             PdfTextTableFileType.TEXT_PDF,
@@ -107,7 +107,7 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
-  void validate_withMissingRequiredFieldsReturnsFieldErrors() {
+  void validateWithMissingRequiredFieldsReturnsFieldErrors() {
     var pdfTextTableParserConfig =
         new PdfTextTableParserConfig(
             PdfTextTableFileType.TEXT_PDF,
@@ -139,9 +139,21 @@ class PdfTextTableParserConfigValidatorTest {
   }
 
   @Test
-  void validateOrThrow_withInvalidConfigThrowsBusinessException() {
+  void validateOrThrowWithInvalidConfigThrowsBusinessException() {
     assertThatThrownBy(() -> pdfTextTableParserConfigValidator.validateOrThrow(null))
-        .isInstanceOf(BusinessException.class)
-        .hasMessage("PDF text-table parser configuration validation failed.");
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            businessException -> {
+              assertThat(businessException.getCode())
+                  .isEqualTo(BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name());
+              assertThat(businessException.getFieldErrors())
+                  .singleElement()
+                  .satisfies(
+                      fieldError -> {
+                        assertThat(fieldError.getIndex()).isNull();
+                        assertThat(fieldError.getField()).isEqualTo("parserConfig");
+                        assertThat(fieldError.getRejectedValue()).isNull();
+                      });
+            });
   }
 }

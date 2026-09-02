@@ -37,7 +37,7 @@ class PreviewImportTokenServiceTest {
       JsonMapper.builder().addModule(new JavaTimeModule()).build();
 
   @Test
-  void createAndVerifyToken_validToken_returnsPayload() {
+  void createAndVerifyTokenValidTokenReturnsPayload() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
 
     var token =
@@ -58,7 +58,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void createToken_tokenSegmentsDoNotRevealPayload() throws Exception {
+  void createTokenTokenSegmentsDoNotRevealPayload() throws Exception {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
 
     var token =
@@ -74,7 +74,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_tamperedCiphertext_throwsInvalidToken() {
+  void verifyTokenTamperedCiphertextThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
@@ -86,7 +86,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_tamperedInitializationVector_throwsInvalidToken() {
+  void verifyTokenTamperedInitializationVectorThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
@@ -100,7 +100,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_expiredToken_throwsExpiredToken() {
+  void verifyTokenExpiredTokenThrowsExpiredToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
@@ -116,7 +116,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_missingRequiredField_throwsInvalidToken() throws Exception {
+  void verifyTokenMissingRequiredFieldThrowsInvalidToken() throws Exception {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         encryptedToken(
@@ -136,7 +136,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_wrongSegmentCount_throwsInvalidToken() {
+  void verifyTokenWrongSegmentCountThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
 
     assertInvalidToken(previewImportTokenService, "v2.only-two");
@@ -144,7 +144,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_wrongVersion_throwsInvalidToken() {
+  void verifyTokenWrongVersionThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
@@ -157,14 +157,14 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_invalidBase64_throwsInvalidToken() {
+  void verifyTokenInvalidBase64ThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
 
     assertInvalidToken(previewImportTokenService, "v2.not*base64.ciphertext");
   }
 
   @Test
-  void verifyToken_decryptFailure_throwsInvalidToken() {
+  void verifyTokenDecryptFailureThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var initializationVector =
         BASE64_URL_ENCODER.encodeToString("123456789012".getBytes(StandardCharsets.UTF_8));
@@ -175,7 +175,7 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyToken_ownerMismatch_throwsInvalidToken() {
+  void verifyTokenOwnerMismatchThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
