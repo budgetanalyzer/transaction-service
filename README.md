@@ -133,6 +133,7 @@ are in [docs/api/](docs/api/README.md).
 Focused docs:
 
 - [Configuration](docs/configuration.md)
+- [Dependency Automation](docs/dependency-automation.md)
 - [Statement Import System](docs/statement-import.md)
 - [Transaction Duplicate Detection](docs/duplicate-detection.md)
 - [Saved Views](docs/saved-views.md)
