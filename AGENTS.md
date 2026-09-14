@@ -124,6 +124,10 @@ sed -n '1,220p' src/main/resources/application.yml
   `gradle/libs.versions.toml`, and
   `gradle/wrapper/gradle-wrapper.properties` before changing the toolchain,
   plugins, dependencies, wrapper, formatting, tests, or coverage gates.
+- **Dependency automation workflows:** Read
+  [dependency-automation.md](docs/dependency-automation.md) before changing
+  Renovate, graph submission, build workflow triggers, trial evidence
+  measurement, caches, or artifact uploads.
 - **Dependency resolution:** Read
   [service-common artifact resolution](../orchestration/docs/development/service-common-artifact-resolution.md)
   when changing or debugging `service-common` resolution for local, CI, or
