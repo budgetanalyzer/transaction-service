@@ -81,6 +81,10 @@ Default GitHub Actions `build.yml` runs and release builds resolve the pinned
 orchestration:
 [service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
 
+Maven Central is used only for external dependencies and explicitly excludes
+`org.budgetanalyzer`. Internal artifacts resolve only from Maven Local or the
+authenticated `service-common` GitHub Packages repository.
+
 This service imports `org.budgetanalyzer:spring-platform` for shared Spring
 dependency management and keeps `org.budgetanalyzer:service-web` explicit for
 runtime utilities.
