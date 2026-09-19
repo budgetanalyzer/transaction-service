@@ -11,9 +11,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.LocalDate;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
@@ -40,6 +45,158 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   @Autowired private PreviewImportTokenService previewImportTokenService;
 
   @Test
+  void createsMinimalManualTransactionWithCanonicalLocationAndNullProvenance() throws Exception {
+    var mvcResult =
+        mockMvc
+            .perform(
+                post("/v1/transactions")
+                    .with(writeUser())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "date": "2024-01-15",
+                          "description": "Coffee Shop",
+                          "amount": 4.50,
+                          "currencyIsoCode": "usd",
+                          "type": "DEBIT"
+                        }
+                        """))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").isNumber())
+            .andExpect(jsonPath("$.ownerId").value(USER_ID))
+            .andExpect(jsonPath("$.date").value("2024-01-15"))
+            .andExpect(jsonPath("$.description").value("Coffee Shop"))
+            .andExpect(jsonPath("$.amount").value(4.50))
+            .andExpect(jsonPath("$.currencyIsoCode").value("USD"))
+            .andExpect(jsonPath("$.type").value("DEBIT"))
+            .andExpect(jsonPath("$.bankName").doesNotExist())
+            .andExpect(jsonPath("$.accountId").doesNotExist())
+            .andExpect(jsonPath("$.createdAt").isNotEmpty())
+            .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+            .andReturn();
+
+    var responseJsonNode = objectMapper.readTree(mvcResult.getResponse().getContentAsByteArray());
+    var transactionId = responseJsonNode.path("id").asLong();
+    var location = URI.create(mvcResult.getResponse().getHeader("Location"));
+    assertThat(location.isAbsolute()).isTrue();
+    assertThat(location.getPath()).isEqualTo("/v1/transactions/" + transactionId);
+
+    var persisted = transactionRepository.findById(transactionId).orElseThrow();
+    assertThat(persisted.getOwnerId()).isEqualTo(USER_ID);
+    assertThat(persisted.getBankName()).isNull();
+    assertThat(persisted.getAccountId()).isNull();
+    assertThat(persisted.getFileImport()).isNull();
+    assertThat(persisted.isDeleted()).isFalse();
+  }
+
+  @Test
+  void createsManualTransactionWithOptionalBankAndAccount() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "date": "2024-01-15",
+                      "description": "Grocery Store",
+                      "amount": 25.75,
+                      "currencyIsoCode": "USD",
+                      "type": "CREDIT",
+                      "bankName": "Test Bank",
+                      "accountId": "checking-123"
+                    }
+                    """))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.bankName").value("Test Bank"))
+        .andExpect(jsonPath("$.accountId").value("checking-123"));
+
+    assertThat(transactionRepository.findAll())
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.getBankName()).isEqualTo("Test Bank");
+              assertThat(transaction.getAccountId()).isEqualTo("checking-123");
+            });
+  }
+
+  @Test
+  void storesBlankManualBankAndAccountAsNull() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "date": "2024-01-15",
+                      "description": "Cash Purchase",
+                      "amount": 10.00,
+                      "currencyIsoCode": "USD",
+                      "type": "DEBIT",
+                      "bankName": "  ",
+                      "accountId": ""
+                    }
+                    """))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.bankName").doesNotExist())
+        .andExpect(jsonPath("$.accountId").doesNotExist());
+
+    assertThat(transactionRepository.findAll())
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.getBankName()).isNull();
+              assertThat(transaction.getAccountId()).isNull();
+            });
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidManualCreationRequests")
+  void rejectsInvalidManualCreationRequestFields(String requestJson, String expectedField)
+      throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("VALIDATION_ERROR"))
+        .andExpect(jsonPath("$.fieldErrors[*].field").value(hasItems(expectedField)));
+  }
+
+  @Test
+  void rejectsUnsupportedManualTransactionTypeAsInvalidRequest() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validManualCreateJson().replace("DEBIT", "TRANSFER")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.type").value("INVALID_REQUEST"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidManualBusinessRuleRequests")
+  void returnsCodedBusinessErrorForInvalidManualTransaction(String requestJson, String expectedCode)
+      throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(writeUser())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
+        .andExpect(jsonPath("$.code").value(expectedCode));
+  }
+
+  @Test
   void returnsOnlyOwnerTransactionsWithStableResponseFields() throws Exception {
     var ownTransaction = persistTransaction(USER_ID, "Coffee Shop");
     persistTransaction(OTHER_USER_ID, "Other User Purchase");
@@ -57,6 +214,23 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
         .andExpect(jsonPath("$[0].currencyIsoCode").value("USD"))
         .andExpect(jsonPath("$[0].createdAt").isNotEmpty())
         .andExpect(jsonPath("$[0].updatedAt").isNotEmpty());
+  }
+
+  @Test
+  void listReturnsBanklessTransactionForAuthenticatedOwnerWithoutBankProperty() throws Exception {
+    var ownTransaction =
+        persistDetailedTransaction(
+            USER_ID, "Bankless purchase", "6.25", LocalDate.of(2025, 1, 4), "USD", null);
+    persistDetailedTransaction(
+        OTHER_USER_ID, "Other bankless purchase", "7.25", LocalDate.of(2025, 1, 5), "USD", null);
+
+    mockMvc
+        .perform(get("/v1/transactions").with(readUser()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value(ownTransaction.getId()))
+        .andExpect(jsonPath("$[0].ownerId").value(USER_ID))
+        .andExpect(jsonPath("$[0].bankName").doesNotExist());
   }
 
   @Test
@@ -574,6 +748,67 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
   }
 
   @Test
+  void crossUserSearchReturnsBanklessTransactionAndBankFilterExcludesIt() throws Exception {
+    var banklessTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Bankless purchase", "6.25", LocalDate.of(2025, 1, 4), "USD", null);
+    var bankedTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Banked purchase", "8.25", LocalDate.of(2025, 1, 5));
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("ownerId", OTHER_USER_ID)
+                .param("description", "bankless")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(banklessTransaction.getId()))
+        .andExpect(jsonPath("$.content[0].bankName").doesNotExist());
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("ownerId", OTHER_USER_ID)
+                .param("bankName", "Test Bank")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(bankedTransaction.getId()))
+        .andExpect(jsonPath("$.content[0].bankName").value("Test Bank"));
+  }
+
+  @Test
+  void searchSortByBankNameReturnsBankedAndBanklessTransactions() throws Exception {
+    var banklessTransaction =
+        persistDetailedTransaction(
+            USER_ID, "Bankless purchase", "6.25", LocalDate.of(2025, 1, 4), "USD", null);
+    var firstBankedTransaction =
+        persistDetailedTransaction(
+            USER_ID, "First banked purchase", "7.25", LocalDate.of(2025, 1, 5));
+    var secondBankedTransaction =
+        persistDetailedTransaction(
+            OTHER_USER_ID, "Second banked purchase", "8.25", LocalDate.of(2025, 1, 6));
+
+    mockMvc
+        .perform(
+            get("/v1/transactions/search")
+                .param("sort", "bankName,asc")
+                .param("sort", "id,asc")
+                .with(ClaimsHeaderTestBuilder.admin()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(3))
+        .andExpect(
+            jsonPath("$.content[*].id")
+                .value(
+                    hasItems(
+                        banklessTransaction.getId().intValue(),
+                        firstBankedTransaction.getId().intValue(),
+                        secondBankedTransaction.getId().intValue())));
+  }
+
+  @Test
   void searchAmountOnlyMatchesStoredValuesAcrossCurrencies() throws Exception {
     persistDetailedTransaction(USER_ID, "Dollar match", "50.00", LocalDate.of(2025, 1, 1), "USD");
     persistDetailedTransaction(
@@ -726,6 +961,83 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
     return ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:delete");
   }
 
+  private static Stream<Arguments> invalidManualCreationRequests() {
+    return Stream.of(
+        Arguments.of(
+            """
+            {"description":"Coffee","amount":4.50,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "date"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","amount":4.50,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "description"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":" ","amount":4.50,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "description"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "amount"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":0,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "amount"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":4.501,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "amount"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":1234567890123456789012345678901234567.00,"currencyIsoCode":"USD","type":"DEBIT"}
+            """,
+            "amount"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":4.50,"type":"DEBIT"}
+            """,
+            "currencyIsoCode"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":4.50,"currencyIsoCode":"US","type":"DEBIT"}
+            """,
+            "currencyIsoCode"),
+        Arguments.of(
+            """
+            {"date":"2024-01-15","description":"Coffee","amount":4.50,"currencyIsoCode":"USD"}
+            """,
+            "type"));
+  }
+
+  private static Stream<Arguments> invalidManualBusinessRuleRequests() {
+    return Stream.of(
+        Arguments.of(validManualCreateJson().replace("USD", "ZZZ"), "TRANSACTION_CURRENCY_INVALID"),
+        Arguments.of(
+            validManualCreateJson().replace("2024-01-15", "1999-12-31"),
+            "TRANSACTION_DATE_TOO_OLD"),
+        Arguments.of(
+            validManualCreateJson().replace("2024-01-15", LocalDate.now().plusDays(2).toString()),
+            "TRANSACTION_DATE_TOO_FAR_IN_FUTURE"));
+  }
+
+  private static String validManualCreateJson() {
+    return """
+        {
+          "date": "2024-01-15",
+          "description": "Coffee",
+          "amount": 4.50,
+          "currencyIsoCode": "USD",
+          "type": "DEBIT"
+        }
+        """;
+  }
+
   private MockMultipartFile csvFile(
       String filename, String date, String description, String amount) {
     return new MockMultipartFile(
@@ -850,6 +1162,17 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
 
   private Transaction persistDetailedTransaction(
       String ownerId, String description, String amount, LocalDate date, String currencyIsoCode) {
+    return persistDetailedTransaction(
+        ownerId, description, amount, date, currencyIsoCode, "Test Bank");
+  }
+
+  private Transaction persistDetailedTransaction(
+      String ownerId,
+      String description,
+      String amount,
+      LocalDate date,
+      String currencyIsoCode,
+      String bankName) {
     var transaction = new Transaction();
     transaction.setOwnerId(ownerId);
     transaction.setAccountId("checking-123");
@@ -857,7 +1180,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
     transaction.setAmount(new BigDecimal(amount));
     transaction.setDate(date);
     transaction.setType(TransactionType.DEBIT);
-    transaction.setBankName("Test Bank");
+    transaction.setBankName(bankName);
     transaction.setCurrencyIsoCode(currencyIsoCode);
     return transactionRepository.save(transaction);
   }

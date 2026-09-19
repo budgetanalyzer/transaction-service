@@ -225,6 +225,28 @@ class TransactionImportServiceIntegrationTest {
   }
 
   @Test
+  void previewFilesDoesNotMatchBanklessManualTransactionToBankedImportIdentity() {
+    var statementFormat = bangkokStatementCsvFormat();
+    var banklessTransaction = transaction(LocalDate.of(2025, 1, 10), "COFFEE SHOP", "4.50");
+    banklessTransaction.setBankName(null);
+    transactionRepository.save(banklessTransaction);
+    var multipartFile = csvFile("banked-import.csv", VALID_CSV_CONTENT);
+
+    var previewResult =
+        transactionImportService.previewFiles(
+            statementFormat.getId(), "checking-001", List.of(multipartFile), USER_ID);
+
+    assertThat(previewResult.files().getFirst().transactions())
+        .singleElement()
+        .satisfies(
+            transaction -> {
+              assertThat(transaction.bankName()).isEqualTo("Bangkok Bank");
+              assertThat(transaction.duplicate()).isFalse();
+              assertThat(transaction.duplicateReason()).isNull();
+            });
+  }
+
+  @Test
   void previewFilesReportsExactReuploadForCurrentOwnerOnly() {
     var statementFormat = bangkokStatementCsvFormat();
     var parserRevision = parserRevision(statementFormat);

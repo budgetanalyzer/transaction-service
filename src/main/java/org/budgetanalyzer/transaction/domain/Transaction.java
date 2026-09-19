@@ -29,8 +29,8 @@ public class Transaction extends SoftDeletableEntity {
   /** Identifier for the account associated with the transaction. */
   private String accountId;
 
-  /** Name of the bank where the transaction occurred. */
-  @NotNull private String bankName;
+  /** Name of the bank where the transaction occurred, or null when no bank was recorded. */
+  private String bankName;
 
   /** Date of the transaction. */
   @NotNull private LocalDate date;

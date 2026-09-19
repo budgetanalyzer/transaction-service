@@ -18,6 +18,7 @@ The Transaction Service is responsible for:
 ## Features
 
 - RESTful API for transaction management
+- Authenticated single-transaction creation for manually recorded purchases
 - PostgreSQL persistence with Flyway migrations
 - OpenAPI/Swagger documentation
 - CSV and PDF transaction import

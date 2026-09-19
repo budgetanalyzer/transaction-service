@@ -18,6 +18,51 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
   @Autowired private ObjectMapper objectMapper;
 
   @Test
+  void manualCreationOpenApiDocumentsRequestResponseAndBankOptionality() throws Exception {
+    var openApiJsonNode = readOpenApiDocument();
+    var transactionsPathJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions");
+    var createOperationJsonNode = transactionsPathJsonNode.path("post");
+
+    assertThat(propertyNames(transactionsPathJsonNode)).containsExactlyInAnyOrder("get", "post");
+    assertThat(createOperationJsonNode.isMissingNode()).isFalse();
+    assertThat(createOperationJsonNode.at("/responses/400").isMissingNode()).isFalse();
+    assertThat(createOperationJsonNode.at("/responses/422").isMissingNode()).isFalse();
+
+    var createdResponseJsonNode = createOperationJsonNode.at("/responses/201");
+    assertThat(createdResponseJsonNode.at("/headers/Location").isMissingNode()).isFalse();
+    assertThat(createdResponseJsonNode.at("/headers/Location/schema/format").asText())
+        .isEqualTo("uri");
+    var responseSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode, createdResponseJsonNode.at("/content/application~1json/schema"));
+    assertThat(responseSchemaJsonNode)
+        .isEqualTo(openApiJsonNode.at("/components/schemas/TransactionResponse"));
+
+    var createRequestSchemaJsonNode =
+        resolveSchemaNode(
+            openApiJsonNode,
+            createOperationJsonNode.at("/requestBody/content/application~1json/schema"));
+    assertThat(requiredPropertyNames(createRequestSchemaJsonNode))
+        .containsExactlyInAnyOrder("date", "description", "amount", "currencyIsoCode", "type");
+    assertThat(propertyNames(createRequestSchemaJsonNode.path("properties")))
+        .containsExactlyInAnyOrder(
+            "date", "description", "amount", "currencyIsoCode", "type", "bankName", "accountId");
+    assertThat(createRequestSchemaJsonNode.at("/properties/ownerId").isMissingNode()).isTrue();
+
+    var transactionResponseSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/TransactionResponse");
+    assertThat(requiredPropertyNames(transactionResponseSchemaJsonNode))
+        .contains("id", "ownerId", "date", "currencyIsoCode", "amount", "type", "description")
+        .doesNotContain("bankName", "accountId");
+    assertThat(transactionResponseSchemaJsonNode.at("/properties/bankName/nullable").asBoolean())
+        .isFalse();
+
+    var batchImportTransactionSchemaJsonNode =
+        openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
+    assertThat(requiredPropertyNames(batchImportTransactionSchemaJsonNode)).contains("bankName");
+  }
+
+  @Test
   void crossUserSearchOpenApiDocumentsPagedTransactionResponse() throws Exception {
     var openApiJsonNode = readOpenApiDocument();
 

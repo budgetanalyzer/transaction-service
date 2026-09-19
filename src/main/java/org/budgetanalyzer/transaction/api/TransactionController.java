@@ -16,8 +16,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,10 +32,12 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -42,12 +47,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
+import org.budgetanalyzer.service.api.ApiErrorType;
 import org.budgetanalyzer.service.api.PagedResponse;
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.InvalidRequestException;
 import org.budgetanalyzer.service.security.SecurityContextUtil;
 import org.budgetanalyzer.transaction.api.request.BatchImportRequest;
 import org.budgetanalyzer.transaction.api.request.BulkDeleteRequest;
+import org.budgetanalyzer.transaction.api.request.CreateTransactionRequest;
 import org.budgetanalyzer.transaction.api.request.TransactionFilter;
 import org.budgetanalyzer.transaction.api.request.TransactionUpdateRequest;
 import org.budgetanalyzer.transaction.api.response.BatchImportResponse;
@@ -59,6 +66,7 @@ import org.budgetanalyzer.transaction.service.PreviewImportTokenService;
 import org.budgetanalyzer.transaction.service.TransactionImportService;
 import org.budgetanalyzer.transaction.service.TransactionService;
 import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.CreateTransactionCommand;
 import org.budgetanalyzer.transaction.service.dto.PreviewImportToken;
 
 @Tag(name = "Transactions", description = "Import and manipulate transactions")
@@ -92,6 +100,64 @@ public class TransactionController {
     this.transactionImportService = transactionImportService;
     this.transactionService = transactionService;
     this.previewImportTokenService = previewImportTokenService;
+  }
+
+  @PreAuthorize("hasAuthority('transactions:write')")
+  @Operation(
+      summary = "Create a manual transaction",
+      description =
+          "Creates one active transaction owned by the authenticated user without file import "
+              + "provenance or duplicate suppression.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "201",
+        description = "Transaction created successfully",
+        headers =
+            @Header(
+                name = "Location",
+                description = "Canonical URL of the created transaction",
+                schema = @Schema(type = "string", format = "uri")),
+        content = @Content(schema = @Schema(implementation = TransactionResponse.class))),
+    @ApiResponse(
+        responseCode = "400",
+        description = "Request validation failed",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "422",
+        description =
+            "TRANSACTION_CURRENCY_INVALID, TRANSACTION_DATE_TOO_OLD, or "
+                + "TRANSACTION_DATE_TOO_FAR_IN_FUTURE",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
+  @PostMapping(consumes = "application/json", produces = "application/json")
+  public ResponseEntity<TransactionResponse> createTransaction(
+      @Valid @RequestBody CreateTransactionRequest request) {
+    var command =
+        new CreateTransactionCommand(
+            request.date(),
+            request.description(),
+            request.amount(),
+            request.currencyIsoCode(),
+            request.type(),
+            nullIfBlank(request.bankName()),
+            nullIfBlank(request.accountId()));
+    var created = transactionService.createTransaction(command, getCurrentUserId());
+    var location =
+        ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{id}")
+            .buildAndExpand(created.getId())
+            .toUri();
+    return ResponseEntity.created(location).body(TransactionResponse.from(created));
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ApiErrorResponse handleUnreadableRequest(HttpMessageNotReadableException exception) {
+    log.warn("Rejected malformed transaction request: {}", exception.getClass().getSimpleName());
+    return ApiErrorResponse.builder(
+            ApiErrorType.INVALID_REQUEST,
+            "Request body is malformed or contains unsupported values")
+        .build();
   }
 
   @PreAuthorize("hasAuthority('transactions:read')")
@@ -597,6 +663,10 @@ public class TransactionController {
   private String getCurrentUserId() {
     return SecurityContextUtil.getCurrentUserId()
         .orElseThrow(() -> new IllegalStateException("User ID not found in security context"));
+  }
+
+  private String nullIfBlank(String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 
   private void validateSortFields(Pageable pageable) {

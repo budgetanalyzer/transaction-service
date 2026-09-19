@@ -23,6 +23,55 @@ class TransactionControllerAuthorizationIntegrationTest extends ControllerIntegr
   @Autowired private PreviewImportTokenService previewImportTokenService;
 
   @Test
+  void returns401ForManualCreationWithoutAuthentication() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(manualCreateJson(null)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void returns403ForManualCreationWithoutWritePermission() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:read"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(manualCreateJson(null)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void returns403ForManualCreationWithWriteAnyOnly() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(
+                    ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:write:any"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(manualCreateJson(null)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void createsManualTransactionForAuthenticatedSubjectWithWritePermission() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/transactions")
+                .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("transactions:write"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(manualCreateJson(OTHER_USER_ID)))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.ownerId").value(USER_ID));
+
+    assertThat(transactionRepository.findAll())
+        .singleElement()
+        .satisfies(transaction -> assertThat(transaction.getOwnerId()).isEqualTo(USER_ID));
+  }
+
+  @Test
   void returns401WithoutAuthentication() throws Exception {
     mockMvc.perform(get("/v1/transactions")).andExpect(status().isUnauthorized());
   }
@@ -475,5 +524,21 @@ class TransactionControllerAuthorizationIntegrationTest extends ControllerIntegr
 
   private String idsJson(Long firstId, Long secondId) {
     return "{\"ids\": [" + firstId + ", " + secondId + "]}";
+  }
+
+  private String manualCreateJson(String requestedOwnerId) {
+    var ownerProperty =
+        requestedOwnerId == null ? "" : "\"ownerId\": \"" + requestedOwnerId + "\",";
+    return """
+        {
+          %s
+          "date": "2024-01-15",
+          "description": "Coffee",
+          "amount": 4.50,
+          "currencyIsoCode": "USD",
+          "type": "DEBIT"
+        }
+        """
+        .formatted(ownerProperty);
   }
 }

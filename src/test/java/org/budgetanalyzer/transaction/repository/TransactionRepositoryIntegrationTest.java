@@ -6,6 +6,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Set;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -34,6 +37,8 @@ class TransactionRepositoryIntegrationTest {
 
   @Autowired private TransactionRepository transactionRepository;
 
+  @PersistenceContext private EntityManager entityManager;
+
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -59,6 +64,27 @@ class TransactionRepositoryIntegrationTest {
     assertThat(saved.getType()).isEqualTo(TransactionType.DEBIT);
     assertThat(saved.getBankName()).isEqualTo("Test Bank");
     assertThat(saved.getCurrencyIsoCode()).isEqualTo("USD");
+  }
+
+  @Test
+  void saveTransactionWithoutBankAccountOrFileImportPersistsAndReloads() {
+    var transaction = createTransaction("Manual purchase", BigDecimal.valueOf(12.34));
+    transaction.setBankName(null);
+    transaction.setAccountId(null);
+
+    var saved = transactionRepository.saveAndFlush(transaction);
+    var id = saved.getId();
+    entityManager.clear();
+
+    assertThat(transactionRepository.findById(id))
+        .isPresent()
+        .get()
+        .satisfies(
+            reloaded -> {
+              assertThat(reloaded.getBankName()).isNull();
+              assertThat(reloaded.getAccountId()).isNull();
+              assertThat(reloaded.getFileImport()).isNull();
+            });
   }
 
   // ==================== Read (Find) ====================

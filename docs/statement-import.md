@@ -11,6 +11,11 @@ changes. User-created generic PDF formats can be validated with the PDF wizard
 preview endpoint and routed through normal import when saved with a
 `PDF_TEXT_TABLE_CONFIG` parser revision.
 
+File import remains separate from manual transaction creation. Batch imports
+accept only reviewed rows backed by per-file preview tokens, and every imported
+row requires a nonblank bank name. `POST /v1/transactions` is the no-file path;
+the batch endpoint does not provide an alternative manual route.
+
 ## Supported Banks
 
 Currently configured banks:
@@ -914,6 +919,8 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 - `files[].transactions` (array, required, may be empty) - Reviewed rows from
   that source
 - `files[].transactions[]` elements are required and must not be `null`
+- `files[].transactions[].bankName` (string, required and nonblank) - Bank
+  identity used by import duplicate matching
 - `files[].transactions[].allowDuplicate` (boolean, optional) - Defaults to
   `false`
 
