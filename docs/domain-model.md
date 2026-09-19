@@ -21,18 +21,25 @@ endpoint contracts live in [API Documentation](api/README.md).
 - `ownerId` (`String`) - Authenticated user that owns the transaction.
 - `accountId` (`String`) - Optional account identifier supplied by the client or
   import flow.
-- `bankName` (`String`) - Bank where the transaction occurred.
+- `bankName` (`String`) - Optional bank where the transaction occurred; null means
+  no bank was recorded.
 - `date` (`LocalDate`) - Business date of the transaction.
 - `currencyIsoCode` (`String`) - ISO currency code.
 - `amount` (`BigDecimal`) - Stored transaction amount.
 - `type` (`TransactionType`) - `DEBIT` or `CREDIT`.
-- `description` (`String`) - Bank-provided transaction description.
+- `description` (`String`) - Transaction description supplied manually or by
+  an import parser.
 - `fileImport` (`FileImport`) - Optional source file record for token-backed
   batch imports.
 
 **Business Rules:**
 
 - Transactions are soft-deleted through `SoftDeletableEntity`.
+- Manually created transactions may omit bank, account, and file-import
+  provenance. Each valid manual creation is persisted independently without
+  duplicate suppression.
+- `accountId` and `fileImport` were already optional before `bankName` became
+  optional; manual rows without uploaded sources keep `fileImport` null.
 - Queries for normal user workflows exclude soft-deleted rows.
 - `GET /v1/transactions` intentionally exposes the authenticated owner's
   complete active collection as the browser's locally filtered, sorted, and

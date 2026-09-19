@@ -46,6 +46,19 @@ curl -H "X-User-Id: usr_test123" -H "X-Permissions: transactions:read" \
 
 ### Transactions
 
+**Create Manual Transaction**
+```
+POST /v1/transactions
+Body: CreateTransactionRequest (date, description, amount, currencyIsoCode, type; optional bankName and accountId)
+Response: TransactionResponse (201 Created)
+Location: Absolute canonical URI ending in /v1/transactions/{id}
+Permission: transactions:write
+Notes: Creates one active transaction owned by the authenticated user without
+file provenance, duplicate suppression, or saved-view membership. Blank
+optional bankName and accountId values are stored as absent. Repeated identical
+valid requests create independent transactions.
+```
+
 **List Transactions**
 ```
 GET /v1/transactions
@@ -415,6 +428,31 @@ Notes: Validates the confirmed mapping against the uploaded sample, then creates
 ```
 
 ## Request/Response Examples
+
+### CreateTransactionRequest
+
+```json
+{
+  "date": "2025-11-10",
+  "description": "Restaurant dinner",
+  "amount": 75.50,
+  "currencyIsoCode": "USD",
+  "type": "DEBIT",
+  "bankName": "Capital One",
+  "accountId": "checking-12345"
+}
+```
+
+`bankName` and `accountId` may be omitted. A missing bank means only that no
+bank was recorded; it is not translated into a cash transaction or another
+bank value. Null response properties are omitted, so `bankName` and
+`accountId` do not appear in the created representation when absent.
+
+A successful request returns `201 Created`, the created `TransactionResponse`,
+and an absolute `Location` header ending in `/v1/transactions/{id}`. Ownership
+always comes from the authenticated subject. This endpoint does not accept a
+preview token or `allowDuplicate`; it is separate from the file preview and
+token-backed batch import workflow.
 
 ### TransactionUpdateRequest
 
@@ -818,6 +856,9 @@ This service uses trusted claims-header-based security from `service-common`.
 - `GET /v1/transactions` and `GET /v1/transactions/count` require
   `X-Permissions: transactions:read` and are always scoped to the requesting user.
 - Write endpoints require `transactions:write`. Delete endpoints require `transactions:delete`.
+- `POST /v1/transactions` always creates for the authenticated user and does
+  not accept an owner field. `transactions:write:any` does not replace the
+  required self-scoped `transactions:write` permission.
 - Saved view endpoints require `views:read`, `views:write`, or `views:delete` respectively.
 - Saved views and every transaction added to them are owner-scoped. Unavailable
   additions return a generic `SAVED_VIEW_MEMBERSHIP_STALE` error without
@@ -920,6 +961,17 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 ```
 
 ## Validation Rules
+
+### Manual Transaction Creation (CreateTransactionRequest)
+
+- `date` - Required; year 2000 or later and no more than one day in the future
+- `description` - Required, non-blank, maximum 500 characters
+- `amount` - Required, positive, with at most 36 integer digits and 2 fractional digits
+- `currencyIsoCode` - Required, exactly three characters, and a valid ISO 4217 code;
+  normalized to uppercase before persistence
+- `type` - Required, `DEBIT` or `CREDIT`
+- `bankName` - Optional, maximum 255 characters; blank values are stored as absent
+- `accountId` - Optional, maximum 100 characters; blank values are stored as absent
 
 ### Batch Import (PreviewTransaction)
 

@@ -44,7 +44,7 @@ kubectl exec -it -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
 CREATE TABLE transaction (
     id BIGSERIAL PRIMARY KEY,
     account_id VARCHAR(255),
-    bank_name VARCHAR(255) NOT NULL,
+    bank_name VARCHAR(255),
     date DATE NOT NULL,
     currency_iso_code VARCHAR(3) NOT NULL,
     amount NUMERIC(38, 2) NOT NULL,
@@ -81,7 +81,8 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
 **Key Columns:**
 - `id` - BIGSERIAL primary key
 - `account_id` - Optional account identifier
-- `bank_name` - Bank where the transaction occurred
+- `bank_name` - Optional bank where the transaction occurred; null means no
+  bank was recorded
 - `date` - Business date (not creation timestamp)
 - `amount` - Stored numeric value; type indicates direction. Administrative
   `minAmount`, `maxAmount`, and amount sorting compare this stored value without
@@ -105,6 +106,13 @@ CREATE INDEX idx_transaction_owner_deleted_duplicate_candidates
   `currency_iso_code`. Duplicate matching intentionally ignores `account_id`.
   The current index shape is maintained by migration
   `V20__remove_account_id_from_duplicate_candidate_index.sql`.
+
+The nullable bank column and both bank-related indexes are compatible in
+PostgreSQL. Migration `V25__make_transaction_bank_name_nullable.sql` changes
+only the column constraint and requires no backfill for existing non-null rows.
+`account_id` and `file_import_id` were already nullable and receive no schema
+change. Manually created rows have no uploaded source, so their
+`file_import_id` remains null.
 
 Duplicate candidate lookups use the same normalized financial identity value
 that the service uses for grouping preview and batch rows. The native repository

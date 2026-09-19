@@ -38,6 +38,7 @@ import org.budgetanalyzer.transaction.repository.StatementFormatRepository;
 import org.budgetanalyzer.transaction.repository.TransactionRepository;
 import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
+import org.budgetanalyzer.transaction.service.dto.CreateTransactionCommand;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 
 @SpringBootTest
@@ -98,6 +99,93 @@ class TransactionServiceIntegrationTest {
     fileImportRepository.deleteAllInBatch();
     parserRevisionRepository.deleteAllByIdInBatch(createdParserRevisionIds);
     createdParserRevisionIds.clear();
+  }
+
+  @Test
+  void createTransactionPersistsOwnerFieldsAndNormalizedCurrency() {
+    var command =
+        new CreateTransactionCommand(
+            LocalDate.now(),
+            "Manual coffee purchase",
+            new BigDecimal("4.50"),
+            "usd",
+            TransactionType.DEBIT,
+            "Capital One",
+            ACCOUNT_ID);
+
+    var created = transactionService.createTransaction(command, USER_ID);
+    var persisted = transactionRepository.findById(created.getId()).orElseThrow();
+
+    assertThat(persisted.getOwnerId()).isEqualTo(USER_ID);
+    assertThat(persisted.getDate()).isEqualTo(command.date());
+    assertThat(persisted.getDescription()).isEqualTo(command.description());
+    assertThat(persisted.getAmount()).isEqualByComparingTo(command.amount());
+    assertThat(persisted.getCurrencyIsoCode()).isEqualTo("USD");
+    assertThat(persisted.getType()).isEqualTo(command.type());
+    assertThat(persisted.getBankName()).isEqualTo(command.bankName());
+    assertThat(persisted.getAccountId()).isEqualTo(command.accountId());
+    assertThat(persisted.getFileImport()).isNull();
+    assertThat(persisted.isDeleted()).isFalse();
+  }
+
+  @Test
+  void createTransactionLeavesOmittedOptionalValuesAndProvenanceNull() {
+    var command = manualCreateCommand(LocalDate.now(), "USD");
+
+    var created = transactionService.createTransaction(command, USER_ID);
+
+    assertThat(created.getBankName()).isNull();
+    assertThat(created.getAccountId()).isNull();
+    assertThat(created.getFileImport()).isNull();
+  }
+
+  @Test
+  void createTransactionPersistsIdenticalCommandsAsDistinctRows() {
+    var command = manualCreateCommand(LocalDate.now(), "USD");
+
+    var first = transactionService.createTransaction(command, USER_ID);
+    var second = transactionService.createTransaction(command, USER_ID);
+
+    assertThat(first.getId()).isNotEqualTo(second.getId());
+    assertThat(transactionRepository.findAll())
+        .extracting(Transaction::getId)
+        .containsExactlyInAnyOrder(first.getId(), second.getId());
+  }
+
+  @Test
+  void createTransactionRejectsDateBeforeYear2000ByCode() {
+    var command = manualCreateCommand(LocalDate.of(1999, 12, 31), "USD");
+
+    assertThatThrownBy(() -> transactionService.createTransaction(command, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getCode())
+                    .isEqualTo(BudgetAnalyzerError.TRANSACTION_DATE_TOO_OLD.name()));
+  }
+
+  @Test
+  void createTransactionRejectsDateAfterTomorrowByCode() {
+    var command = manualCreateCommand(LocalDate.now().plusDays(2), "USD");
+
+    assertThatThrownBy(() -> transactionService.createTransaction(command, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getCode())
+                    .isEqualTo(BudgetAnalyzerError.TRANSACTION_DATE_TOO_FAR_IN_FUTURE.name()));
+  }
+
+  @Test
+  void createTransactionRejectsInvalidCurrencyByCode() {
+    var command = manualCreateCommand(LocalDate.now(), "ZZZ");
+
+    assertThatThrownBy(() -> transactionService.createTransaction(command, USER_ID))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(
+            exception ->
+                assertThat(((BusinessException) exception).getCode())
+                    .isEqualTo(BudgetAnalyzerError.TRANSACTION_CURRENCY_INVALID.name()));
   }
 
   @Test
@@ -540,6 +628,17 @@ class TransactionServiceIntegrationTest {
         "USD",
         "capital-one-credit",
         allowDuplicate);
+  }
+
+  private CreateTransactionCommand manualCreateCommand(LocalDate date, String currencyIsoCode) {
+    return new CreateTransactionCommand(
+        date,
+        "Manual purchase",
+        new BigDecimal("12.34"),
+        currencyIsoCode,
+        TransactionType.DEBIT,
+        null,
+        null);
   }
 
   private BatchFileImportSource fileImportSource(String originalFilename) {

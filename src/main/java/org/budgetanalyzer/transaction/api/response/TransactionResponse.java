@@ -33,8 +33,8 @@ public record TransactionResponse(
             example = "checking-3223")
         String accountId,
     @Schema(
-            description = "Name of the bank where the transaction occurred",
-            requiredMode = Schema.RequiredMode.REQUIRED,
+            description = "Name of the bank; omitted when no bank was recorded",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED,
             example = "Capital One")
         String bankName,
     @Schema(

@@ -27,6 +27,8 @@ public enum BudgetAnalyzerError {
           "Transaction date is more than 1 day in the future. Future-dated transactions are not"
               + " allowed to prevent data entry errors.")
   TRANSACTION_DATE_TOO_FAR_IN_FUTURE,
+  @Schema(description = "The transaction currency is not a valid ISO 4217 currency code")
+  TRANSACTION_CURRENCY_INVALID,
   @Schema(
       description =
           "File with identical content has already been imported by this user. Duplicate file"

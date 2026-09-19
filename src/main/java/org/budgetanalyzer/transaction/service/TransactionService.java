@@ -2,9 +2,11 @@ package org.budgetanalyzer.transaction.service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Currency;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -28,6 +30,7 @@ import org.budgetanalyzer.transaction.service.dto.BatchFileImportSource;
 import org.budgetanalyzer.transaction.service.dto.BatchImportFile;
 import org.budgetanalyzer.transaction.service.dto.BatchImportFileResult;
 import org.budgetanalyzer.transaction.service.dto.BatchImportResult;
+import org.budgetanalyzer.transaction.service.dto.CreateTransactionCommand;
 import org.budgetanalyzer.transaction.service.dto.PreviewTransaction;
 import org.budgetanalyzer.transaction.service.dto.TransactionCriteria;
 
@@ -71,6 +74,33 @@ public class TransactionService {
    */
   public Transaction getTransaction(Long id, String userId, boolean canActOnAny) {
     return getTransactionWithOwnerCheck(id, userId, canActOnAny);
+  }
+
+  /**
+   * Creates one transaction owned by the supplied authenticated user.
+   *
+   * @param command the transaction values to persist
+   * @param ownerId the authenticated owner ID
+   * @return the created transaction
+   * @throws BusinessException if the date is outside the supported range or the currency is not a
+   *     valid ISO 4217 code
+   */
+  @Transactional
+  public Transaction createTransaction(CreateTransactionCommand command, String ownerId) {
+    validateTransactionDate(command.date());
+    var normalizedCurrencyIsoCode = normalizeCurrencyIsoCode(command.currencyIsoCode());
+
+    var transaction = new Transaction();
+    transaction.setDate(command.date());
+    transaction.setDescription(command.description());
+    transaction.setAmount(command.amount());
+    transaction.setCurrencyIsoCode(normalizedCurrencyIsoCode);
+    transaction.setType(command.type());
+    transaction.setBankName(command.bankName());
+    transaction.setAccountId(command.accountId());
+    transaction.setOwnerId(ownerId);
+
+    return transactionRepository.save(transaction);
   }
 
   /**
@@ -429,8 +459,7 @@ public class TransactionService {
    */
   private void validateBusinessRules(List<BatchImportFile> batchImportFiles) {
     var errors = new ArrayList<FieldError>();
-    var today = LocalDate.now();
-    var maxAllowedDate = today.plusDays(1);
+    var maxAllowedDate = maxAllowedTransactionDate();
 
     for (int fileIndex = 0; fileIndex < batchImportFiles.size(); fileIndex++) {
       var batchImportFile = batchImportFiles.get(fileIndex);
@@ -441,7 +470,7 @@ public class TransactionService {
         var date = previewTransaction.date();
         var field = "files[" + fileIndex + "].transactions[" + transactionIndex + "].date";
 
-        if (date.getYear() < 2000) {
+        if (isTransactionDateTooOld(date)) {
           errors.add(
               FieldError.forField(
                   field,
@@ -451,7 +480,7 @@ public class TransactionService {
                       + batchImportFile.source().originalFilename()
                       + "' is before year 2000. Transactions before 2000 are not supported.",
                   date));
-        } else if (date.isAfter(maxAllowedDate)) {
+        } else if (isTransactionDateTooFarInFuture(date, maxAllowedDate)) {
           errors.add(
               FieldError.forField(
                   field,
@@ -469,6 +498,44 @@ public class TransactionService {
     if (!errors.isEmpty()) {
       log.warn("Batch validation failed with {} error(s)", errors.size());
       throw new BatchValidationException(errors);
+    }
+  }
+
+  private void validateTransactionDate(LocalDate date) {
+    if (isTransactionDateTooOld(date)) {
+      throw new BusinessException(
+          "Transaction date is before year 2000. Transactions before 2000 are not supported.",
+          BudgetAnalyzerError.TRANSACTION_DATE_TOO_OLD.name());
+    }
+
+    if (isTransactionDateTooFarInFuture(date, maxAllowedTransactionDate())) {
+      throw new BusinessException(
+          "Transaction date is more than 1 day in the future. Future-dated transactions are not "
+              + "allowed.",
+          BudgetAnalyzerError.TRANSACTION_DATE_TOO_FAR_IN_FUTURE.name());
+    }
+  }
+
+  private boolean isTransactionDateTooOld(LocalDate date) {
+    return date.getYear() < 2000;
+  }
+
+  private boolean isTransactionDateTooFarInFuture(LocalDate date, LocalDate maxAllowedDate) {
+    return date.isAfter(maxAllowedDate);
+  }
+
+  private LocalDate maxAllowedTransactionDate() {
+    return LocalDate.now().plusDays(1);
+  }
+
+  private String normalizeCurrencyIsoCode(String currencyIsoCode) {
+    var normalizedCurrencyIsoCode = currencyIsoCode.toUpperCase(Locale.ROOT);
+    try {
+      return Currency.getInstance(normalizedCurrencyIsoCode).getCurrencyCode();
+    } catch (IllegalArgumentException exception) {
+      throw new BusinessException(
+          "Transaction currency must be a valid ISO 4217 currency code.",
+          BudgetAnalyzerError.TRANSACTION_CURRENCY_INVALID.name());
     }
   }
 

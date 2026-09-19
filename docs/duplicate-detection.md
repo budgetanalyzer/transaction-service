@@ -16,6 +16,20 @@ Duplicate detection applies to the file preview and batch import flow:
 Preview duplicate metadata is advisory. Batch import is authoritative because
 persisted transactions can change after preview.
 
+## Manual Creation Boundary
+
+Duplicate detection is limited to preview and token-backed batch imports.
+`POST /v1/transactions` persists every valid manual request independently and
+never silently deduplicates it; the manual request therefore has no
+`allowDuplicate` field.
+
+A bankless manual row cannot match an import candidate because imports require
+a nonblank bank name and the repository's strict bank equality does not match
+that value to null. A manual row that supplies the same bank and other matching
+identity fields remains an ordinary active persisted candidate under the rules
+below. Manual rows have no file-import provenance and do not participate in
+exact-file reupload tracking.
+
 ## Transaction Match Rule
 
 Duplicate transaction matching is scoped to the authenticated owner. Different
