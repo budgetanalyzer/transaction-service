@@ -69,6 +69,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var searchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1search/get");
 
     assertThat(searchOperationJsonNode.isMissingNode()).isFalse();
+    assertStandardSecurityResponses(searchOperationJsonNode);
     assertThat(openApiJsonNode.at("/components/schemas/TransactionResponse").isMissingNode())
         .isFalse();
     assertThat(openApiJsonNode.at("/components/schemas/PageMetadataResponse").isMissingNode())
@@ -148,6 +149,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var countOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1search~1count/get");
 
     assertThat(countOperationJsonNode.isMissingNode()).isFalse();
+    assertStandardSecurityResponses(countOperationJsonNode);
   }
 
   @Test
@@ -468,6 +470,16 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var schemaName = schemaReference.substring("#/components/schemas/".length());
     return openApiJsonNode.at("/components/schemas/" + escapeJsonPointerToken(schemaName));
+  }
+
+  private void assertStandardSecurityResponses(JsonNode operationJsonNode) {
+    for (var responseCode : List.of("401", "403")) {
+      assertThat(
+              operationJsonNode
+                  .at("/responses/" + responseCode + "/content/application~1json/schema/$ref")
+                  .asText())
+          .isEqualTo("#/components/schemas/ApiErrorResponse");
+    }
   }
 
   private JsonNode parameterNamed(JsonNode operationJsonNode, String parameterName) {
