@@ -169,14 +169,24 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var collectionPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views");
     var createOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1views/post");
     var updatePathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}");
-    var renameOperationJsonNode = updatePathJsonNode.path("patch");
     var membershipPathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{id}~1transactions");
+    var clonePathJsonNode = openApiJsonNode.at("/paths/~1v1~1views~1{sourceViewId}~1clone");
 
     assertThat(propertyNames(collectionPathJsonNode)).containsExactlyInAnyOrder("get", "post");
     assertThat(createOperationJsonNode.isMissingNode()).isFalse();
     assertThat(propertyNames(updatePathJsonNode))
         .containsExactlyInAnyOrder("get", "patch", "delete");
     assertThat(propertyNames(membershipPathJsonNode)).containsExactlyInAnyOrder("get", "patch");
+    assertThat(
+            List.of(
+                collectionPathJsonNode,
+                updatePathJsonNode,
+                membershipPathJsonNode,
+                clonePathJsonNode))
+        .allSatisfy(pathJsonNode -> assertThat(pathJsonNode.toString()).doesNotContain("\"*/*\""));
+    assertApiErrorResponse(updatePathJsonNode.path("delete"), "404");
+    assertApiErrorResponse(membershipPathJsonNode.path("patch"), "400");
+    assertApiErrorResponse(membershipPathJsonNode.path("patch"), "404");
     assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1pin").isMissingNode()).isTrue();
     assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1exclude").isMissingNode()).isTrue();
     assertThat(openApiJsonNode.at("/paths/~1v1~1views~1{id}~1pin~1{txnId}").isMissingNode())
@@ -202,6 +212,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         .isFalse();
 
     var createErrorResponseJsonNode = createOperationJsonNode.at("/responses/422");
+    var renameOperationJsonNode = updatePathJsonNode.path("patch");
     var renameErrorResponseJsonNode = renameOperationJsonNode.at("/responses/422");
     var membershipDeltaErrorResponseJsonNode = membershipPathJsonNode.at("/patch/responses/422");
     assertThat(createErrorResponseJsonNode.path("description").asText())
@@ -480,6 +491,14 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
                   .asText())
           .isEqualTo("#/components/schemas/ApiErrorResponse");
     }
+  }
+
+  private void assertApiErrorResponse(JsonNode operationJsonNode, String responseCode) {
+    var contentJsonNode = operationJsonNode.at("/responses/" + responseCode + "/content");
+
+    assertThat(propertyNames(contentJsonNode)).containsExactly("application/json");
+    assertThat(contentJsonNode.at("/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/ApiErrorResponse");
   }
 
   private JsonNode parameterNamed(JsonNode operationJsonNode, String parameterName) {

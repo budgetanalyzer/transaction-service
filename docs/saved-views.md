@@ -153,6 +153,11 @@ membership and metadata caches. An explicit delta updates the view's
 Repeating additions that already exist or removals that no longer exist leaves
 the timestamp unchanged.
 
+All saved-view error responses with bodies use `application/json` and the shared
+`ApiErrorResponse` schema. The shared OpenAPI configuration supplies standard
+method-specific `400` and `404` responses; endpoint annotations are reserved for
+additional response details such as saved-view-specific `422` error codes.
+
 Required permissions are `views:read`, `views:write`, and `views:delete` for
 the corresponding operations.
 

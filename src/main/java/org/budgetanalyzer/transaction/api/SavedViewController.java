@@ -190,12 +190,7 @@ public class SavedViewController {
 
   @PreAuthorize("hasAuthority('views:delete')")
   @Operation(summary = "Delete a static saved view")
-  @ApiResponses({
-    @ApiResponse(responseCode = "204"),
-    @ApiResponse(
-        responseCode = "404",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
-  })
+  @ApiResponse(responseCode = "204")
   @DeleteMapping(path = "/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteView(@PathVariable("id") UUID id) {
@@ -221,12 +216,6 @@ public class SavedViewController {
   @Operation(summary = "Apply a static saved-view membership delta")
   @ApiResponses({
     @ApiResponse(responseCode = "204"),
-    @ApiResponse(
-        responseCode = "400",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-    @ApiResponse(
-        responseCode = "404",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @ApiResponse(
         responseCode = "422",
         description =
