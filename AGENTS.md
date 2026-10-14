@@ -71,6 +71,11 @@ rg -n 'dependencies|implementation|testImplementation|runtimeOnly' build.gradle.
 sed -n '1,220p' src/main/resources/application.yml
 ```
 
+## Path Portability
+
+Use repository-relative, sibling-relative, or dynamically resolved paths.
+Never hardcode machine-specific checkout locations such as `/workspace`.
+
 ## Sources of Truth
 
 - **Purpose, prerequisites, setup, and local use:** Read
