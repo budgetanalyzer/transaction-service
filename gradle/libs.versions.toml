@@ -5,7 +5,7 @@ spotless = "8.10.4"
 checkstyle = "12.3.1"
 googleJavaFormat = "1.32.0"
 junitPlatform = "1.14.4"
-serviceCommon = "0.0.17"
+serviceCommon = "0.0.18-SNAPSHOT"
 jacoco = "0.8.15"
 pdfbox = "3.0.8"
 
