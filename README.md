@@ -31,7 +31,7 @@ The Transaction Service is responsible for:
 ## Technology Stack
 
 - **Java 25**
-- **Spring Boot 3.x**
+- **Spring Boot 4.x**
   - Spring Web (REST APIs)
   - Spring Data JPA (database access)
   - Spring Boot Actuator (monitoring)
@@ -39,7 +39,7 @@ The Transaction Service is responsible for:
 - **PostgreSQL** (database)
 - **Flyway** (database migrations)
 - **SpringDoc OpenAPI** (API documentation)
-- **JUnit 5** (testing)
+- **JUnit 6** (testing)
 
 ## Quick Start
 

@@ -23,15 +23,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
@@ -71,8 +71,8 @@ class TransactionImportServiceIntegrationTest {
   private static final float AMOUNT_X = 360F;
 
   @Container
-  private static final PostgreSQLContainer<?> postgres =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+  private static final PostgreSQLContainer postgres =
+      new PostgreSQLContainer("postgres:17-alpine")
           .withDatabaseName("testdb")
           .withUsername("test")
           .withPassword("test");

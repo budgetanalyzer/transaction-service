@@ -2,6 +2,7 @@ package org.budgetanalyzer.transaction.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.matchesRegex;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -24,7 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
@@ -39,9 +40,11 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
       "1111111111111111111111111111111111111111111111111111111111111111";
   private static final String SECOND_CONTENT_HASH =
       "2222222222222222222222222222222222222222222222222222222222222222";
+  private static final String ISO_INSTANT_PATTERN =
+      "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z";
 
   @Autowired private FileImportRepository fileImportRepository;
-  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JsonMapper jsonMapper;
   @Autowired private PreviewImportTokenService previewImportTokenService;
 
   @Test
@@ -73,10 +76,12 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
             .andExpect(jsonPath("$.bankName").doesNotExist())
             .andExpect(jsonPath("$.accountId").doesNotExist())
             .andExpect(jsonPath("$.createdAt").isNotEmpty())
+            .andExpect(jsonPath("$.createdAt").value(matchesRegex(ISO_INSTANT_PATTERN)))
             .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+            .andExpect(jsonPath("$.updatedAt").value(matchesRegex(ISO_INSTANT_PATTERN)))
             .andReturn();
 
-    var responseJsonNode = objectMapper.readTree(mvcResult.getResponse().getContentAsByteArray());
+    var responseJsonNode = jsonMapper.readTree(mvcResult.getResponse().getContentAsByteArray());
     var transactionId = responseJsonNode.path("id").asLong();
     var location = URI.create(mvcResult.getResponse().getHeader("Location"));
     assertThat(location.isAbsolute()).isTrue();
@@ -435,7 +440,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
             .andExpect(jsonPath("$.files[0].fileImport.alreadyImported").value(false))
             .andReturn();
     var firstPreviewJson =
-        objectMapper.readTree(firstPreviewResult.getResponse().getContentAsByteArray());
+        jsonMapper.readTree(firstPreviewResult.getResponse().getContentAsByteArray());
     var previewImportToken = firstPreviewJson.at("/files/0/previewImportToken").asText();
 
     mockMvc
@@ -1064,7 +1069,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                     .with(readUser()))
             .andExpect(status().isOk())
             .andReturn();
-    var previewJson = objectMapper.readTree(previewResult.getResponse().getContentAsByteArray());
+    var previewJson = jsonMapper.readTree(previewResult.getResponse().getContentAsByteArray());
     return previewJson.at("/files/0/previewImportToken").asText();
   }
 

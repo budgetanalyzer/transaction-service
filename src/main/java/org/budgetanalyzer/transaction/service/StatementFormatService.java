@@ -14,8 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
@@ -42,7 +42,7 @@ public class StatementFormatService {
   private final StatementFormatRepository statementFormatRepository;
   private final StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
   private final ParserRevisionRepository parserRevisionRepository;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
 
   /**
    * Constructs a new StatementFormatService.
@@ -50,17 +50,17 @@ public class StatementFormatService {
    * @param statementFormatRepository repository for format persistence
    * @param statementFormatUserPreferenceRepository repository for user format preferences
    * @param parserRevisionRepository repository for parser revision persistence
-   * @param objectMapper JSON mapper for parser configuration
+   * @param jsonMapper JSON mapper for parser configuration
    */
   public StatementFormatService(
       StatementFormatRepository statementFormatRepository,
       StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository,
       ParserRevisionRepository parserRevisionRepository,
-      ObjectMapper objectMapper) {
+      JsonMapper jsonMapper) {
     this.statementFormatRepository = statementFormatRepository;
     this.statementFormatUserPreferenceRepository = statementFormatUserPreferenceRepository;
     this.parserRevisionRepository = parserRevisionRepository;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
   }
 
   /**
@@ -287,12 +287,12 @@ public class StatementFormatService {
             command.typeHeader(),
             command.categoryHeader());
     try {
-      return objectMapper.writeValueAsString(csvColumnParserConfig);
-    } catch (JsonProcessingException jsonProcessingException) {
+      return jsonMapper.writeValueAsString(csvColumnParserConfig);
+    } catch (JacksonException jacksonException) {
       throw new BusinessException(
           "Failed to serialize CSV parser configuration.",
           BudgetAnalyzerError.CSV_PARSING_ERROR.name(),
-          jsonProcessingException);
+          jacksonException);
     }
   }
 

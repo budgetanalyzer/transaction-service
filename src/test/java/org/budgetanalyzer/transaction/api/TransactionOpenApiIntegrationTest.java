@@ -10,12 +10,12 @@ import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport {
 
-  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JsonMapper jsonMapper;
 
   @Test
   void manualCreationOpenApiDocumentsRequestResponseAndBankOptionality() throws Exception {
@@ -466,7 +466,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             .andReturn()
             .getResponse()
             .getContentAsString();
-    return objectMapper.readTree(responseBody);
+    return jsonMapper.readTree(responseBody);
   }
 
   private JsonNode resolveSchemaNode(JsonNode openApiJsonNode, JsonNode schemaJsonNode) {
@@ -474,7 +474,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
       return schemaJsonNode;
     }
 
-    var schemaReference = schemaJsonNode.path("$ref").textValue();
+    var schemaReference = schemaJsonNode.path("$ref").stringValue(null);
     if (schemaReference == null) {
       return schemaJsonNode;
     }
@@ -521,8 +521,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
   }
 
   private List<String> propertyNames(JsonNode jsonNode) {
-    return StreamSupport.stream(((Iterable<String>) jsonNode::fieldNames).spliterator(), false)
-        .toList();
+    return List.copyOf(jsonNode.propertyNames());
   }
 
   private boolean schemaAllowsNull(JsonNode schemaJsonNode) {

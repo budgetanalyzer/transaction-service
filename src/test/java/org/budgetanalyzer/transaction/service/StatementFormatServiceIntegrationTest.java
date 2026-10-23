@@ -15,17 +15,17 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.service.exception.ResourceNotFoundException;
@@ -62,8 +62,8 @@ class StatementFormatServiceIntegrationTest {
   private static final float FONT_SIZE = 10F;
 
   @Container
-  private static final PostgreSQLContainer<?> postgresqlContainer =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+  private static final PostgreSQLContainer postgresqlContainer =
+      new PostgreSQLContainer("postgres:17-alpine")
           .withDatabaseName("testdb")
           .withUsername("test")
           .withPassword("test");
@@ -81,7 +81,7 @@ class StatementFormatServiceIntegrationTest {
   @Autowired
   private StatementFormatUserPreferenceRepository statementFormatUserPreferenceRepository;
 
-  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JsonMapper jsonMapper;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
@@ -162,7 +162,7 @@ class StatementFormatServiceIntegrationTest {
     assertThat(parserRevision.getRevisionNumber()).isEqualTo(1);
     assertThat(parserRevision.getParserType()).isEqualTo(ParserType.CSV_COLUMN_CONFIG);
     var parserConfig =
-        objectMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
+        jsonMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
     assertThat(parserConfig.dateHeader()).isEqualTo("Date");
     assertThat(parserConfig.creditHeader()).isEqualTo("Amount");
     assertThat(parserConfig.debitHeader()).isEqualTo("Amount");
@@ -256,7 +256,7 @@ class StatementFormatServiceIntegrationTest {
     assertThat(saved.getOwnerId()).isEqualTo(OWNER_ID);
     var parserRevision = parserRevision(saved);
     var parserConfig =
-        objectMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
+        jsonMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
     assertThat(parserRevision.getParserType()).isEqualTo(ParserType.CSV_COLUMN_CONFIG);
     assertThat(parserConfig.creditHeader()).isEqualTo("Amount");
     assertThat(parserConfig.debitHeader()).isEqualTo("Amount");
@@ -283,7 +283,7 @@ class StatementFormatServiceIntegrationTest {
     assertThat(saved.getDefaultCurrencyIsoCode()).isEqualTo("USD");
     var parserRevision = parserRevision(saved);
     var parserConfig =
-        objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
+        jsonMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
     assertThat(parserRevision.getParserType()).isEqualTo(ParserType.PDF_TEXT_TABLE_CONFIG);
     assertThat(parserRevision.getHandlerKey()).isNull();
     assertThat(parserConfig.headerMustContain()).containsExactly("Date", "Description", "Amount");

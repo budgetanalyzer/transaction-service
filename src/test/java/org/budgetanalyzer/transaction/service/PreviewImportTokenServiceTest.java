@@ -19,10 +19,9 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.config.PreviewImportTokenProperties;
@@ -33,8 +32,8 @@ class PreviewImportTokenServiceTest {
   private static final Instant NOW = Instant.parse("2026-05-11T12:00:00Z");
   private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
   private static final Base64.Decoder BASE64_URL_DECODER = Base64.getUrlDecoder();
-  private static final ObjectMapper OBJECT_MAPPER =
-      JsonMapper.builder().addModule(new JavaTimeModule()).build();
+  private static final JsonMapper JSON_MAPPER =
+      JsonMapper.builder().enable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS).build();
 
   @Test
   void createAndVerifyTokenValidTokenReturnsPayload() {
@@ -192,12 +191,12 @@ class PreviewImportTokenServiceTest {
   private static PreviewImportTokenService service(Instant instant, Duration ttl) {
     return new PreviewImportTokenService(
         new PreviewImportTokenProperties(ENCRYPTION_SECRET, ttl),
-        OBJECT_MAPPER,
+        JSON_MAPPER,
         Clock.fixed(instant, ZoneOffset.UTC));
   }
 
   private static String encryptedToken(Map<String, Object> payload) throws Exception {
-    var payloadJson = OBJECT_MAPPER.writeValueAsBytes(payload);
+    var payloadJson = JSON_MAPPER.writeValueAsBytes(payload);
     var initializationVector = "123456789012".getBytes(StandardCharsets.UTF_8);
     var cipher = Cipher.getInstance("AES/GCM/NoPadding");
     cipher.init(
@@ -237,8 +236,8 @@ class PreviewImportTokenServiceTest {
   }
 
   private static void assertThatDecodedSegmentIsNotValidJson(String tokenSegment) {
-    assertThatThrownBy(() -> OBJECT_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegment)))
-        .isInstanceOf(JsonProcessingException.class);
+    assertThatThrownBy(() -> JSON_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegment)))
+        .isInstanceOf(JacksonException.class);
   }
 
   private static void assertInvalidToken(
