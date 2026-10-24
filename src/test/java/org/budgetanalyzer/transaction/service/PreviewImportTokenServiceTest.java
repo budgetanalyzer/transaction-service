@@ -2,6 +2,14 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.budgetanalyzer.transaction.util.TestConstants.ACCOUNT_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.CONTENT_HASH;
+import static org.budgetanalyzer.transaction.util.TestConstants.FILE_SIZE_BYTES;
+import static org.budgetanalyzer.transaction.util.TestConstants.ORIGINAL_FILENAME;
+import static org.budgetanalyzer.transaction.util.TestConstants.OTHER_USER_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.PARSER_REVISION_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.STATEMENT_FORMAT_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.USER_ID;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -41,17 +49,23 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            ACCOUNT_ID,
+            FILE_SIZE_BYTES);
 
-    var result = previewImportTokenService.verifyToken(token, "usr_test123");
+    var result = previewImportTokenService.verifyToken(token, USER_ID);
 
-    assertThat(result.ownerId()).isEqualTo("usr_test123");
-    assertThat(result.contentHash()).isEqualTo("hash-123");
-    assertThat(result.originalFilename()).isEqualTo("statement.csv");
-    assertThat(result.statementFormatId()).isEqualTo(42L);
-    assertThat(result.parserRevisionId()).isEqualTo(101L);
-    assertThat(result.accountId()).isEqualTo("checking-12345");
-    assertThat(result.fileSizeBytes()).isEqualTo(128L);
+    assertThat(result.ownerId()).isEqualTo(USER_ID);
+    assertThat(result.contentHash()).isEqualTo(CONTENT_HASH);
+    assertThat(result.originalFilename()).isEqualTo(ORIGINAL_FILENAME);
+    assertThat(result.statementFormatId()).isEqualTo(STATEMENT_FORMAT_ID);
+    assertThat(result.parserRevisionId()).isEqualTo(PARSER_REVISION_ID);
+    assertThat(result.accountId()).isEqualTo(ACCOUNT_ID);
+    assertThat(result.fileSizeBytes()).isEqualTo(FILE_SIZE_BYTES);
     assertThat(result.issuedAt()).isEqualTo(NOW);
     assertThat(result.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
   }
@@ -62,7 +76,13 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            ACCOUNT_ID,
+            FILE_SIZE_BYTES);
     var tokenSegments = token.split("\\.");
 
     assertThat(tokenSegments).hasSize(3);
@@ -77,7 +97,13 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var tamperedToken = tamperDecodedByte(token, 1, segmentLength -> 0);
 
     assertAuthenticationRejected(previewImportTokenService, tamperedToken);
@@ -88,7 +114,13 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var tamperedToken = tamperDecodedByte(token, 2, segmentLength -> 0);
 
     assertAuthenticationRejected(previewImportTokenService, tamperedToken);
@@ -99,7 +131,13 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var tamperedToken = tamperDecodedByte(token, 2, segmentLength -> segmentLength - 1);
 
     assertAuthenticationRejected(previewImportTokenService, tamperedToken);
@@ -110,10 +148,16 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var expiredService = service(NOW.plus(Duration.ofMinutes(31)), Duration.ofMinutes(30));
 
-    assertThatThrownBy(() -> expiredService.verifyToken(token, "usr_test123"))
+    assertThatThrownBy(() -> expiredService.verifyToken(token, USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -128,11 +172,11 @@ class PreviewImportTokenServiceTest {
         encryptedToken(
             Map.of(
                 "ownerId",
-                "usr_test123",
+                USER_ID,
                 "contentHash",
-                "hash-123",
+                CONTENT_HASH,
                 "fileSizeBytes",
-                128,
+                FILE_SIZE_BYTES,
                 "issuedAt",
                 NOW.toString(),
                 "expiresAt",
@@ -154,7 +198,13 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var tokenSegments = token.split("\\.");
     tokenSegments[0] = "v1";
     var wrongVersionToken = String.join(".", tokenSegments);
@@ -185,9 +235,15 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
 
-    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_other789"))
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, OTHER_USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -240,11 +296,11 @@ class PreviewImportTokenServiceTest {
   private static void assertDecodedSegmentDoesNotRevealPayload(String tokenSegment) {
     assertThat(decodedString(tokenSegment))
         .doesNotContain(
-            "hash-123",
-            "usr_test123",
-            "statement.csv",
+            CONTENT_HASH,
+            USER_ID,
+            ORIGINAL_FILENAME,
             "capital-one",
-            "checking-12345",
+            ACCOUNT_ID,
             "contentHash",
             "ownerId",
             "originalFilename",
@@ -260,7 +316,7 @@ class PreviewImportTokenServiceTest {
 
   private static void assertInvalidToken(
       PreviewImportTokenService previewImportTokenService, String token) {
-    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_test123"))
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -270,7 +326,7 @@ class PreviewImportTokenServiceTest {
 
   private static void assertAuthenticationRejected(
       PreviewImportTokenService previewImportTokenService, String token) {
-    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_test123"))
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception -> {
