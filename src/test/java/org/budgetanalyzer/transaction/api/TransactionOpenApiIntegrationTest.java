@@ -30,7 +30,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var createdResponseJsonNode = createOperationJsonNode.at("/responses/201");
     assertThat(createdResponseJsonNode.at("/headers/Location").isMissingNode()).isFalse();
-    assertThat(createdResponseJsonNode.at("/headers/Location/schema/format").asText())
+    assertThat(createdResponseJsonNode.at("/headers/Location/schema/format").asString())
         .isEqualTo("uri");
     var responseSchemaJsonNode =
         resolveSchemaNode(
@@ -80,7 +80,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             openApiJsonNode,
             searchOperationJsonNode.at("/responses/200/content/application~1json/schema"));
     assertThat(responseSchemaJsonNode.isMissingNode()).isFalse();
-    assertThat(responseSchemaJsonNode.at("/properties/content/type").asText()).isEqualTo("array");
+    assertThat(responseSchemaJsonNode.at("/properties/content/type").asString()).isEqualTo("array");
 
     var transactionSchemaJsonNode =
         resolveSchemaNode(openApiJsonNode, responseSchemaJsonNode.at("/properties/content/items"));
@@ -100,7 +100,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var parameterNames =
         StreamSupport.stream(searchOperationJsonNode.path("parameters").spliterator(), false)
-            .map(parameterJsonNode -> parameterJsonNode.path("name").asText())
+            .map(parameterJsonNode -> parameterJsonNode.path("name").asString())
             .toList();
     assertThat(parameterNames)
         .doesNotHaveDuplicates()
@@ -125,20 +125,22 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             "updatedBefore")
         .doesNotContain("filter");
 
-    assertThat(searchOperationJsonNode.path("description").asText())
+    assertThat(searchOperationJsonNode.path("description").asString())
         .contains(
             "stored numeric amount",
             "without currency normalization",
             "amount-only query",
             "independent exact criterion");
-    assertThat(parameterNamed(searchOperationJsonNode, "minAmount").path("description").asText())
+    assertThat(parameterNamed(searchOperationJsonNode, "minAmount").path("description").asString())
         .contains("stored numeric amount", "across currencies");
-    assertThat(parameterNamed(searchOperationJsonNode, "maxAmount").path("description").asText())
+    assertThat(parameterNamed(searchOperationJsonNode, "maxAmount").path("description").asString())
         .contains("stored numeric amount", "across currencies");
     assertThat(
-            parameterNamed(searchOperationJsonNode, "currencyIsoCode").path("description").asText())
+            parameterNamed(searchOperationJsonNode, "currencyIsoCode")
+                .path("description")
+                .asString())
         .contains("independent", "currency-specific");
-    assertThat(parameterNamed(searchOperationJsonNode, "sort").path("description").asText())
+    assertThat(parameterNamed(searchOperationJsonNode, "sort").path("description").asString())
         .contains("stored numeric amounts", "without currency normalization");
   }
 
@@ -204,9 +206,9 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         .containsExactlyInAnyOrder("name", "transactionIds");
     assertThat(createRequestSchemaJsonNode.at("/properties/name/maxLength").asInt()).isEqualTo(255);
     var createTransactionIdsJsonNode = createRequestSchemaJsonNode.at("/properties/transactionIds");
-    assertThat(createTransactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+    assertThat(createTransactionIdsJsonNode.path("type").asString()).isEqualTo("array");
     assertThat(createTransactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
-    assertThat(createTransactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
+    assertThat(createTransactionIdsJsonNode.at("/items/type").asString()).isEqualTo("integer");
     assertThat(createTransactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     assertThat(createOperationJsonNode.at("/responses/201/headers/Location").isMissingNode())
         .isFalse();
@@ -215,14 +217,14 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var renameOperationJsonNode = updatePathJsonNode.path("patch");
     var renameErrorResponseJsonNode = renameOperationJsonNode.at("/responses/422");
     var membershipDeltaErrorResponseJsonNode = membershipPathJsonNode.at("/patch/responses/422");
-    assertThat(createErrorResponseJsonNode.path("description").asText())
+    assertThat(createErrorResponseJsonNode.path("description").asString())
         .contains(
             "SAVED_VIEW_MEMBERSHIP_STALE",
             "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED",
             "SAVED_VIEW_NAME_ALREADY_EXISTS");
-    assertThat(renameErrorResponseJsonNode.path("description").asText())
+    assertThat(renameErrorResponseJsonNode.path("description").asString())
         .contains("SAVED_VIEW_NAME_ALREADY_EXISTS");
-    assertThat(membershipDeltaErrorResponseJsonNode.path("description").asText())
+    assertThat(membershipDeltaErrorResponseJsonNode.path("description").asString())
         .contains("SAVED_VIEW_MEMBERSHIP_STALE", "SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED");
     var createErrorSchemaJsonNode =
         createErrorResponseJsonNode.at("/content/application~1json/schema");
@@ -230,12 +232,12 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         renameErrorResponseJsonNode.at("/content/application~1json/schema");
     var membershipDeltaErrorSchemaJsonNode =
         membershipDeltaErrorResponseJsonNode.at("/content/application~1json/schema");
-    assertThat(createErrorSchemaJsonNode.path("$ref").asText())
+    assertThat(createErrorSchemaJsonNode.path("$ref").asString())
         .isEqualTo("#/components/schemas/ApiErrorResponse");
-    assertThat(renameErrorSchemaJsonNode.path("$ref").asText())
-        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asText());
-    assertThat(membershipDeltaErrorSchemaJsonNode.path("$ref").asText())
-        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asText());
+    assertThat(renameErrorSchemaJsonNode.path("$ref").asString())
+        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asString());
+    assertThat(membershipDeltaErrorSchemaJsonNode.path("$ref").asString())
+        .isEqualTo(createErrorSchemaJsonNode.path("$ref").asString());
     var apiErrorResponseSchemaJsonNode =
         resolveSchemaNode(openApiJsonNode, createErrorSchemaJsonNode);
     assertThat(propertyNames(apiErrorResponseSchemaJsonNode.path("properties")))
@@ -257,7 +259,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         .containsExactly("transactionIds");
     assertThat(propertyNames(membershipResponseSchemaJsonNode.path("properties")))
         .containsExactly("transactionIds");
-    assertThat(membershipResponseSchemaJsonNode.at("/properties/transactionIds/type").asText())
+    assertThat(membershipResponseSchemaJsonNode.at("/properties/transactionIds/type").asString())
         .isEqualTo("array");
 
     var membershipDeltaSchemaJsonNode =
@@ -271,9 +273,9 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     for (var propertyName : List.of("addTransactionIds", "removeTransactionIds")) {
       var transactionIdsJsonNode =
           membershipDeltaSchemaJsonNode.path("properties").path(propertyName);
-      assertThat(transactionIdsJsonNode.path("type").asText()).isEqualTo("array");
+      assertThat(transactionIdsJsonNode.path("type").asString()).isEqualTo("array");
       assertThat(transactionIdsJsonNode.path("maxItems").asInt()).isEqualTo(10_000);
-      assertThat(transactionIdsJsonNode.at("/items/type").asText()).isEqualTo("integer");
+      assertThat(transactionIdsJsonNode.at("/items/type").asString()).isEqualTo("integer");
       assertThat(transactionIdsJsonNode.at("/items/minimum").asLong()).isEqualTo(1);
     }
     assertThat(membershipPathJsonNode.at("/patch/responses/204/content").isMissingNode()).isTrue();
@@ -299,9 +301,9 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
     var previewOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1preview/post");
     var batchOperationJsonNode = openApiJsonNode.at("/paths/~1v1~1transactions~1batch/post");
-    assertThat(previewOperationJsonNode.path("description").asText())
+    assertThat(previewOperationJsonNode.path("description").asString())
         .contains("ordered", "advisory duplicate metadata", "completed earlier files");
-    assertThat(batchOperationJsonNode.path("description").asText())
+    assertThat(batchOperationJsonNode.path("description").asString())
         .contains(
             "different parser revisions",
             "share one statement format and account",
@@ -314,7 +316,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var previewTransactionSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/PreviewTransactionResponse");
     var previewResponseSchemaJsonNode = openApiJsonNode.at("/components/schemas/PreviewResponse");
-    assertThat(previewResponseSchemaJsonNode.at("/properties/files/type").asText())
+    assertThat(previewResponseSchemaJsonNode.at("/properties/files/type").asString())
         .isEqualTo("array");
     assertThat(previewResponseSchemaJsonNode.at("/properties/fileImport").isMissingNode()).isTrue();
     assertThat(previewResponseSchemaJsonNode.at("/properties/previewImportToken").isMissingNode())
@@ -336,13 +338,13 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         resolveSchemaNode(
             openApiJsonNode,
             previewOperationJsonNode.at("/requestBody/content/multipart~1form-data/schema"));
-    assertThat(previewRequestSchemaJsonNode.path("type").asText()).isEqualTo("object");
+    assertThat(previewRequestSchemaJsonNode.path("type").asString()).isEqualTo("object");
     assertThat(requiredPropertyNames(previewRequestSchemaJsonNode)).containsExactly("files");
     var previewFilesSchemaJsonNode = previewRequestSchemaJsonNode.at("/properties/files");
-    assertThat(previewFilesSchemaJsonNode.path("type").asText()).isEqualTo("array");
-    assertThat(previewFilesSchemaJsonNode.at("/items/format").asText()).isEqualTo("binary");
+    assertThat(previewFilesSchemaJsonNode.path("type").asString()).isEqualTo("array");
+    assertThat(previewFilesSchemaJsonNode.at("/items/format").asString()).isEqualTo("binary");
     assertThat(previewFilesSchemaJsonNode.path("minItems").asInt()).isEqualTo(1);
-    assertThat(previewFilesSchemaJsonNode.path("description").asText())
+    assertThat(previewFilesSchemaJsonNode.path("description").asString())
         .contains("Repeat the files multipart part");
     assertThat(previewOperationJsonNode.at("/requestBody/required").asBoolean()).isTrue();
 
@@ -390,7 +392,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             previewTransactionSchemaJsonNode
                 .at("/properties/duplicate")
                 .path("description")
-                .asText())
+                .asString())
         .contains("existing", "completed earlier source file", "not compared with each other");
     var duplicateReasonSchemaJsonNode =
         resolveSchemaNode(
@@ -403,7 +405,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
         openApiJsonNode.at("/components/schemas/BatchImportTransactionRequest");
     var batchImportRequestSchemaJsonNode =
         openApiJsonNode.at("/components/schemas/BatchImportRequest");
-    assertThat(batchImportRequestSchemaJsonNode.at("/properties/files/type").asText())
+    assertThat(batchImportRequestSchemaJsonNode.at("/properties/files/type").asString())
         .isEqualTo("array");
     assertThat(batchImportRequestSchemaJsonNode.at("/properties/files/minItems").asInt())
         .isEqualTo(1);
@@ -435,7 +437,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
             batchImportTransactionSchemaJsonNode
                 .at("/properties/allowDuplicate")
                 .path("description")
-                .asText())
+                .asString())
         .contains("existing transaction", "completed earlier file");
 
     var batchImportResponseSchemaJsonNode =
@@ -446,7 +448,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     assertThat(
             batchImportResponseSchemaJsonNode.at("/properties/duplicatesImported").isMissingNode())
         .isFalse();
-    assertThat(batchImportResponseSchemaJsonNode.at("/properties/files/type").asText())
+    assertThat(batchImportResponseSchemaJsonNode.at("/properties/files/type").asString())
         .isEqualTo("array");
     assertThat(requiredPropertyNames(batchImportResponseSchemaJsonNode))
         .contains("created", "duplicatesSkipped", "duplicatesImported", "files");
@@ -488,7 +490,7 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
       assertThat(
               operationJsonNode
                   .at("/responses/" + responseCode + "/content/application~1json/schema/$ref")
-                  .asText())
+                  .asString())
           .isEqualTo("#/components/schemas/ApiErrorResponse");
     }
   }
@@ -497,26 +499,27 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
     var contentJsonNode = operationJsonNode.at("/responses/" + responseCode + "/content");
 
     assertThat(propertyNames(contentJsonNode)).containsExactly("application/json");
-    assertThat(contentJsonNode.at("/application~1json/schema/$ref").asText())
+    assertThat(contentJsonNode.at("/application~1json/schema/$ref").asString())
         .isEqualTo("#/components/schemas/ApiErrorResponse");
   }
 
   private JsonNode parameterNamed(JsonNode operationJsonNode, String parameterName) {
     return StreamSupport.stream(operationJsonNode.path("parameters").spliterator(), false)
-        .filter(parameterJsonNode -> parameterName.equals(parameterJsonNode.path("name").asText()))
+        .filter(
+            parameterJsonNode -> parameterName.equals(parameterJsonNode.path("name").asString()))
         .findFirst()
         .orElseThrow();
   }
 
   private List<String> enumValues(JsonNode schemaJsonNode) {
     return StreamSupport.stream(schemaJsonNode.path("enum").spliterator(), false)
-        .map(JsonNode::asText)
+        .map(JsonNode::asString)
         .toList();
   }
 
   private List<String> requiredPropertyNames(JsonNode schemaJsonNode) {
     return StreamSupport.stream(schemaJsonNode.path("required").spliterator(), false)
-        .map(JsonNode::asText)
+        .map(JsonNode::asString)
         .toList();
   }
 
@@ -534,11 +537,11 @@ class TransactionOpenApiIntegrationTest extends ControllerIntegrationTestSupport
 
   private boolean schemaTypeIncludes(JsonNode schemaJsonNode, String type) {
     var typeJsonNode = schemaJsonNode.path("type");
-    if (typeJsonNode.isTextual()) {
-      return type.equals(typeJsonNode.asText());
+    if (typeJsonNode.isString()) {
+      return type.equals(typeJsonNode.asString());
     }
     return StreamSupport.stream(typeJsonNode.spliterator(), false)
-        .anyMatch(typeValueJsonNode -> type.equals(typeValueJsonNode.asText()));
+        .anyMatch(typeValueJsonNode -> type.equals(typeValueJsonNode.asString()));
   }
 
   private boolean enumIncludesNull(JsonNode schemaJsonNode) {

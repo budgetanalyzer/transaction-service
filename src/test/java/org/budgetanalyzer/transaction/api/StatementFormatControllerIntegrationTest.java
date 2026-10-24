@@ -130,7 +130,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                 .with(writeUser())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createFormatJson("System CSV", "SYSTEM")))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("FORMAT_NOT_SUPPORTED"));
 
@@ -166,7 +166,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                 .with(writeUser())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(pdfCreateRequest))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
         .andExpect(jsonPath("$.fieldErrors[?(@.field == 'formatType')]").exists());
@@ -191,7 +191,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                       "defaultCurrencyIsoCode": "USD"
                     }
                     """))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
         .andExpect(jsonPath("$.fieldErrors.length()").value(5))
@@ -253,7 +253,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                       "defaultCurrencyIsoCode": "   "
                     }
                     """))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("STATEMENT_FORMAT_VALIDATION_FAILED"))
         .andExpect(jsonPath("$.fieldErrors[?(@.field == 'displayName')]").exists())
@@ -366,7 +366,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                 .file(csvFile())
                 .file(jsonPart("request", invalidCsvMappingRequestJson()))
                 .with(writeUser()))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("CSV_WIZARD_VALIDATION_FAILED"))
         .andExpect(jsonPath("$.fieldErrors[0].field").value("mapping.typeColumn"));
@@ -431,7 +431,7 @@ class StatementFormatControllerIntegrationTest extends ControllerIntegrationTest
                     jsonPart(
                         "request", pdfPreviewRequestJson().replace("\"Amount\"", "\"Missing\"")))
                 .with(writeUser()))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("PDF_WIZARD_VALIDATION_FAILED"))
         .andExpect(jsonPath("$.fieldErrors[0].field").value("mapping"));

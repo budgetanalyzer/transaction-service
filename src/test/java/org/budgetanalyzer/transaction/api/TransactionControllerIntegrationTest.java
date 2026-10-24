@@ -196,7 +196,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                 .with(writeUser())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value(expectedCode));
   }
@@ -441,7 +441,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
             .andReturn();
     var firstPreviewJson =
         jsonMapper.readTree(firstPreviewResult.getResponse().getContentAsByteArray());
-    var previewImportToken = firstPreviewJson.at("/files/0/previewImportToken").asText();
+    var previewImportToken = firstPreviewJson.at("/files/0/previewImportToken").asString();
 
     mockMvc
         .perform(
@@ -492,7 +492,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                 .file(invalidFile)
                 .param("statementFormatId", parserRevision.getStatementFormat().getId().toString())
                 .with(readUser()))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("FORMAT_NOT_SUPPORTED"))
         .andExpect(jsonPath("$.files").doesNotExist());
@@ -624,7 +624,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                     {"files":[{"previewImportToken":"%s","transactions":[]}]}
                     """
                         .formatted(token)))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("BATCH_IMPORT_NO_TRANSACTIONS_CREATED"));
 
@@ -644,7 +644,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                 .with(writeUser())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(emptyGroupedBatchJson(firstToken, secondToken)))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("BATCH_IMPORT_SOURCE_MISMATCH"));
   }
@@ -662,7 +662,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                 .with(writeUser())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(emptyGroupedBatchJson(firstToken, secondToken)))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("BATCH_IMPORT_SOURCE_MISMATCH"));
 
@@ -681,7 +681,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
                     """
                     {"files":[{"previewImportToken":"bad-token","transactions":[]}]}
                     """))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("PREVIEW_IMPORT_TOKEN_INVALID"));
   }
@@ -1070,7 +1070,7 @@ class TransactionControllerIntegrationTest extends ControllerIntegrationTestSupp
             .andExpect(status().isOk())
             .andReturn();
     var previewJson = jsonMapper.readTree(previewResult.getResponse().getContentAsByteArray());
-    return previewJson.at("/files/0/previewImportToken").asText();
+    return previewJson.at("/files/0/previewImportToken").asString();
   }
 
   private String createToken(
