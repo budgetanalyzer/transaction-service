@@ -5,9 +5,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 
@@ -17,8 +17,8 @@ import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 class TransactionServiceApplicationIntegrationTest {
 
   @Container
-  private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+  private static final PostgreSQLContainer POSTGRESQL_CONTAINER =
+      new PostgreSQLContainer("postgres:17-alpine")
           .withDatabaseName("transaction_application_test")
           .withUsername("test")
           .withPassword("test");

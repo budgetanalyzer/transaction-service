@@ -15,9 +15,9 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers
 class SavedViewSchemaMigrationIntegrationTest {
@@ -28,8 +28,8 @@ class SavedViewSchemaMigrationIntegrationTest {
   private static final String CASE_VARIANT_VIEW_NAME = "MONTHLY";
 
   @Container
-  private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+  private static final PostgreSQLContainer POSTGRESQL_CONTAINER =
+      new PostgreSQLContainer("postgres:17-alpine")
           .withDatabaseName("saved_view_migration")
           .withUsername("test")
           .withPassword("test");

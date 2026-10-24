@@ -1,6 +1,5 @@
 package org.budgetanalyzer.transaction.service;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -14,8 +13,8 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.config.PreviewImportTokenProperties;
@@ -36,7 +35,7 @@ public class PreviewImportTokenService {
       TOKEN_VERSION.getBytes(StandardCharsets.UTF_8);
 
   private final PreviewImportTokenProperties previewImportTokenProperties;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
   private final Clock clock;
   private final SecureRandom secureRandom = new SecureRandom();
 
@@ -44,15 +43,15 @@ public class PreviewImportTokenService {
    * Constructs a new PreviewImportTokenService.
    *
    * @param previewImportTokenProperties token encryption and expiration configuration
-   * @param objectMapper the JSON mapper used for token payloads
+   * @param jsonMapper the JSON mapper used for token payloads
    * @param clock the clock used for issued and expiration timestamps
    */
   public PreviewImportTokenService(
       PreviewImportTokenProperties previewImportTokenProperties,
-      ObjectMapper objectMapper,
+      JsonMapper jsonMapper,
       Clock clock) {
     this.previewImportTokenProperties = previewImportTokenProperties;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
     this.clock = clock;
   }
 
@@ -120,7 +119,7 @@ public class PreviewImportTokenService {
 
   private String encode(PreviewImportToken previewImportToken) {
     try {
-      var payloadJson = objectMapper.writeValueAsBytes(previewImportToken);
+      var payloadJson = jsonMapper.writeValueAsBytes(previewImportToken);
       var initializationVector = newInitializationVector();
       var ciphertext = encrypt(payloadJson, initializationVector);
       return TOKEN_VERSION
@@ -128,7 +127,7 @@ public class PreviewImportTokenService {
           + BASE64_URL_ENCODER.encodeToString(initializationVector)
           + "."
           + BASE64_URL_ENCODER.encodeToString(ciphertext);
-    } catch (GeneralSecurityException | JsonProcessingException e) {
+    } catch (GeneralSecurityException | JacksonException e) {
       throw invalidToken("Failed to create preview import token.", e);
     }
   }
@@ -153,8 +152,8 @@ public class PreviewImportTokenService {
       }
       var ciphertext = decodeBase64(parts[2]);
       var payloadJson = decrypt(ciphertext, initializationVector);
-      return objectMapper.readValue(payloadJson, PreviewImportToken.class);
-    } catch (GeneralSecurityException | IOException e) {
+      return jsonMapper.readValue(payloadJson, PreviewImportToken.class);
+    } catch (GeneralSecurityException | JacksonException e) {
       throw invalidToken("Preview import token payload is invalid.", e);
     }
   }
