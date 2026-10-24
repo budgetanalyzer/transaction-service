@@ -22,7 +22,6 @@ spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-boot-starter-data-jpa-test = { module = "org.springframework.boot:spring-boot-starter-data-jpa-test" }
 spring-boot-starter-security-test = { module = "org.springframework.boot:spring-boot-starter-security-test" }
-spring-security-test = { module = "org.springframework.security:spring-security-test" }
 
 # SpringDoc OpenAPI
 springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui" }

@@ -511,9 +511,6 @@ kubectl exec -i -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \
 ### Test Data
 
 ```bash
-# Seed test data
-curl -X POST http://localhost:8082/admin/seed-test-data
-
 # Clear all data (DANGEROUS - dev only)
 POSTGRES_POD=$(kubectl get pods -n infrastructure -l app=postgresql -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n infrastructure "$POSTGRES_POD" -- /bin/sh -c \

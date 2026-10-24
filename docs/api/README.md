@@ -1,7 +1,7 @@
 # Transaction Service - API Documentation
 
 **Service:** transaction-service
-**Base URL (Local):** http://localhost:8082
+**Base URL (Local):** http://localhost:8082/transaction-service
 **Gateway URL:** http://localhost:8080/api/v1
 **API Version:** v1
 
@@ -19,27 +19,27 @@ This service provides RESTful APIs for financial transaction management, includi
 ./gradlew bootRun
 
 # Open browser
-open http://localhost:8082/swagger-ui.html
+open http://localhost:8082/transaction-service/swagger-ui.html
 ```
 
 **OpenAPI Spec:**
 ```bash
 # View spec
-curl http://localhost:8082/v3/api-docs
+curl http://localhost:8082/transaction-service/v3/api-docs
 
 # Download spec
-curl http://localhost:8082/v3/api-docs > openapi.json
+curl http://localhost:8082/transaction-service/v3/api-docs > openapi.json
 ```
 
 ### Test Endpoints
 
 ```bash
 # Health check
-curl http://localhost:8082/actuator/health
+curl http://localhost:8082/transaction-service/actuator/health
 
 # List transactions (requires auth headers)
 curl -H "X-User-Id: usr_test123" -H "X-Permissions: transactions:read" \
-  http://localhost:8082/v1/transactions
+  http://localhost:8082/transaction-service/v1/transactions
 ```
 
 ## API Endpoints
@@ -348,7 +348,7 @@ enabled.
 
 Example:
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/123/hide \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/123/hide \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write"
 ```
@@ -363,7 +363,7 @@ Restores the format to the current user's default statement-format list.
 
 Example:
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/123/unhide \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/123/unhide \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write"
 ```
@@ -637,12 +637,10 @@ PDF text.
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "category": null,
       "bankName": "Example Bank",
       "currencyIsoCode": "USD",
       "accountId": "checking-001",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
   ],
   "diagnostics": [
@@ -678,7 +676,7 @@ shape as preview and adds `displayName`.
 
 PDF wizard analysis returns unsupported or low-confidence files as `200 OK`
 with user-facing `rejectionReasons`. Mapping preview and save validation
-failures return `422 Unprocessable Entity` with `code:
+failures return `422 Unprocessable Content` with `code:
 PDF_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`.
 
 ### BatchImportRequest
@@ -734,12 +732,12 @@ detection. Set it to `true` only for rows that should be intentionally imported
 despite matching an existing transaction or a completed earlier file. Rows are
 not compared with other rows in their own file. Every `previewImportToken` must
 be valid, unexpired, and owned by the authenticated user. Tokens must share one
-statement format and account. A mismatch returns `422 Unprocessable Entity`
+statement format and account. A mismatch returns `422 Unprocessable Content`
 with type `APPLICATION_ERROR` and code `BATCH_IMPORT_SOURCE_MISMATCH`; parser
 revisions may differ. An empty file group retains its ordered zero-count result
 and creates no provenance when another group creates a transaction. If no rows
 are created across the aggregate request, including an all-empty request, the
-service returns `422 Unprocessable Entity` with type `APPLICATION_ERROR` and
+service returns `422 Unprocessable Content` with type `APPLICATION_ERROR` and
 code `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`. See
 [Transaction Duplicate Detection](../duplicate-detection.md) for matching rules,
 token verification order, and empty-import behavior.
@@ -841,7 +839,7 @@ and no `files` preview payload is returned.
 - `204 No Content` - Successful DELETE and saved-view membership delta operations
 - `400 Bad Request` - Validation error or invalid request
 - `404 Not Found` - Resource not found
-- `422 Unprocessable Entity` - Business rule violation (e.g., unsupported format)
+- `422 Unprocessable Content` - Business rule violation (e.g., unsupported format)
 - `500 Internal Server Error` - Server error
 
 **Error Response Format:**
@@ -890,7 +888,7 @@ Example local cross-user search request:
 curl \
   -H "X-User-Id: usr_admin456" \
   -H "X-Permissions: transactions:read,transactions:read:any" \
-  http://localhost:8082/v1/transactions/search
+  http://localhost:8082/transaction-service/v1/transactions/search
 ```
 
 ## Rate Limiting
@@ -993,7 +991,7 @@ GET /v1/transactions/search?page=0&size=20&sort=date,desc&sort=id,desc
 
 An individual empty `transactions` array passes request validation. The batch
 still must create at least one transaction in aggregate; otherwise it returns
-`422 Unprocessable Entity`, type `APPLICATION_ERROR`, and code
+`422 Unprocessable Content`, type `APPLICATION_ERROR`, and code
 `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
 
 ### Transaction Update (TransactionUpdateRequest)
@@ -1008,15 +1006,15 @@ still must create at least one transaction in aggregate; otherwise it returns
 grep -r "@RestController" src/main/java
 
 # Find all endpoints
-grep -r "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" src/main/java
+grep -r "@GetMapping\|@PostMapping\|@PutMapping\|@PatchMapping\|@DeleteMapping" src/main/java
 
 # View OpenAPI configuration
-cat src/main/java/*/config/OpenApiConfig.java
+cat src/main/java/org/budgetanalyzer/transaction/config/OpenApiConfig.java
 ```
 
 ## References
 
-- **Swagger UI:** http://localhost:8082/swagger-ui.html (when service running)
-- **OpenAPI Spec:** http://localhost:8082/v3/api-docs
+- **Swagger UI:** http://localhost:8082/transaction-service/swagger-ui.html (when service running)
+- **OpenAPI Spec:** http://localhost:8082/transaction-service/v3/api-docs
 - **Domain Model:** [../domain-model.md](../domain-model.md)
 - **Error Handling:** [@service-common/docs/error-handling.md](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)

@@ -290,7 +290,7 @@ The JSON create endpoint is available for clients that already know exact
 column names:
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats \
   -H "Content-Type: application/json" \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
@@ -366,7 +366,7 @@ a sample PDF, returns ranked transaction-table candidates and inferred mappings,
 and never persists the uploaded file or creates import state.
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/analyze \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/pdf-wizard/analyze \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.pdf"
@@ -394,9 +394,6 @@ curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/analyze \
         "descriptionHeader": "Description",
         "amountMode": "SIGNED_AMOUNT",
         "amountHeader": "Amount",
-        "debitHeader": null,
-        "creditHeader": null,
-        "typeHeader": null,
         "negativeMeans": "CREDIT"
       },
       "confidence": 0.91,
@@ -427,7 +424,7 @@ import preview token, `file_import`, statement format, or transaction rows. It
 also does not perform duplicate detection or expose batch import actions.
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/preview \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/pdf-wizard/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.pdf" \
@@ -458,12 +455,10 @@ curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/preview \
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "category": null,
       "bankName": "Example Bank",
       "currencyIsoCode": "USD",
       "accountId": "checking-001",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
   ],
   "diagnostics": [
@@ -483,7 +478,7 @@ full month names, with or without a comma before a four-digit year, for example
 `MMM d`, `MMM d, uuuu`, `MMMM d`, and `MMMM d, uuuu`. Yearless date formats
 require `yearSource: STATEMENT_PERIOD` and a four-digit year elsewhere in the
 extracted PDF text. Mapping validation errors return `422 Unprocessable
-Entity` with `code: PDF_WIZARD_VALIDATION_FAILED` and field-addressable
+Content` with `code: PDF_WIZARD_VALIDATION_FAILED` and field-addressable
 `fieldErrors`.
 
 ### PDF Wizard Save
@@ -495,7 +490,7 @@ PDF before persisting anything. On success it creates a user-scoped
 as `statementFormatId` in `POST /v1/transactions/preview`.
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/pdf-wizard/save \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/pdf-wizard/save \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.pdf" \
@@ -536,7 +531,7 @@ currency are required, the uploaded sample must have a `.pdf` filename, the
 date format must be supported, signed amount columns must declare either
 `negativeMeans` or a usable `typeHeader`, separate debit and credit columns
 must be unambiguous, and the sample must parse at least `minimumRows`
-transactions. Validation errors return `422 Unprocessable Entity` with `code:
+transactions. Validation errors return `422 Unprocessable Content` with `code:
 PDF_WIZARD_VALIDATION_FAILED`.
 
 The saved format participates in the same revision-selection behavior as
@@ -548,7 +543,7 @@ using the returned top-level statement format `id`.
 #### Analyze Sample
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/analyze \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/csv-wizard/analyze \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.csv"
@@ -572,10 +567,7 @@ curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/analyze \
     "descriptionColumn": "Description",
     "amountMode": "SINGLE_AMOUNT_WITH_TYPE",
     "amountColumn": "Amount",
-    "debitColumn": null,
-    "creditColumn": null,
-    "typeColumn": "Type",
-    "categoryColumn": null
+    "typeColumn": "Type"
   },
   "confidence": 0.95,
   "columnConfidences": {
@@ -595,7 +587,7 @@ import preview token, `file_import`, statement format, or transaction rows. It
 also does not perform duplicate detection or expose batch import actions.
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/preview \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/csv-wizard/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.csv" \
@@ -623,12 +615,10 @@ curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/preview \
       "description": "Coffee Shop",
       "amount": 4.50,
       "type": "DEBIT",
-      "category": null,
       "bankName": "Example Bank",
       "currencyIsoCode": "USD",
       "accountId": "checking-001",
-      "duplicate": false,
-      "duplicateReason": null
+      "duplicate": false
     }
   ],
   "warnings": []
@@ -638,7 +628,7 @@ curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/preview \
 #### Save Confirmed Mapping
 
 ```bash
-curl -X POST http://localhost:8082/v1/statement-formats/csv-wizard/save \
+curl -X POST http://localhost:8082/transaction-service/v1/statement-formats/csv-wizard/save \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:write" \
   -F "file=@sample.csv" \
@@ -677,7 +667,7 @@ The saved `id` can immediately be used as `statementFormatId` in
 **Validation behavior:** Wizard preview and save validate required columns,
 date format, amount mode, credit/debit direction, bank name, ISO currency, and
 that the mapping parses at least one valid transaction row. Mapping validation
-errors return `422 Unprocessable Entity` with `code:
+errors return `422 Unprocessable Content` with `code:
 CSV_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`, for example:
 
 ```json
@@ -688,8 +678,7 @@ CSV_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`, for example:
   "fieldErrors": [
     {
       "field": "mapping.typeColumn",
-      "message": "Column is required.",
-      "rejectedValue": null
+      "message": "Column is required."
     }
   ]
 }
@@ -700,7 +689,7 @@ CSV_WIZARD_VALIDATION_FAILED` and field-addressable `fieldErrors`, for example:
 ```bash
 curl -H "X-User-Id: usr_test123" \
   -H "X-Permissions: statementformats:read" \
-  http://localhost:8082/v1/statement-formats/123
+  http://localhost:8082/transaction-service/v1/statement-formats/123
 ```
 
 No restart required - formats are loaded from database.
@@ -714,7 +703,7 @@ advisory duplicate indicators, exact-file reupload status, and a distinct
 encrypted, time-limited `previewImportToken`. No preview data is persisted:
 
 ```bash
-curl -X POST http://localhost:8082/v1/transactions/preview \
+curl -X POST http://localhost:8082/transaction-service/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
   -F "files=@january.csv" \
@@ -756,7 +745,7 @@ persistence and links each source's created transactions to that source's
 separate `file_import` metadata:
 
 ```bash
-curl -X POST http://localhost:8082/v1/transactions/batch \
+curl -X POST http://localhost:8082/transaction-service/v1/transactions/batch \
   -H "Content-Type: application/json" \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:write" \
@@ -831,7 +820,7 @@ avoid `413 Request Entity Too Large` responses before the service handles it.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8082/v1/transactions/preview \
+curl -X POST http://localhost:8082/transaction-service/v1/transactions/preview \
   -H "X-User-Id: usr_test123" \
   -H "X-Permissions: transactions:read" \
   -F "files=@january.csv" \
@@ -889,7 +878,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 }
 ```
 
-**Missing Filename Error Response:** `422 Unprocessable Entity`
+**Missing Filename Error Response:** `422 Unprocessable Content`
 ```json
 {
   "type": "APPLICATION_ERROR",
@@ -898,7 +887,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 }
 ```
 
-**Parsing Error Response:** `422 Unprocessable Entity`
+**Parsing Error Response:** `422 Unprocessable Content`
 ```json
 {
   "type": "APPLICATION_ERROR",
@@ -927,7 +916,7 @@ curl -X POST http://localhost:8082/v1/transactions/preview \
 The batch endpoint is token-backed. There is no manual no-file batch import
 path for file preview results. Every token is owner-verified before the service
 transaction begins. Mixed statement format IDs or account IDs are rejected;
-the response is `422 Unprocessable Entity` with type `APPLICATION_ERROR` and
+the response is `422 Unprocessable Content` with type `APPLICATION_ERROR` and
 code `BATCH_IMPORT_SOURCE_MISMATCH`. Different parser revision IDs are
 accepted. Request-shape and business validation paths retain both indexes, for
 example `files[1].transactions[4].date`; business validation messages also
@@ -935,7 +924,7 @@ identify the verified source filename. An empty source group retains its
 verified source and ordered zero-count response position, but creates no
 provenance when another group creates a transaction. If the aggregate request
 creates no rows, whether because every group is empty or no reviewed row
-survives duplicate filtering, the response is `422 Unprocessable Entity` with
+survives duplicate filtering, the response is `422 Unprocessable Content` with
 type `APPLICATION_ERROR` and code `BATCH_IMPORT_NO_TRANSACTIONS_CREATED`.
 
 **Response:** `200 OK`
@@ -1051,7 +1040,7 @@ File-read failures use a safe, generic filename-bearing client message. The
 service retains the original read or parser failure in its internal exception
 cause chain for diagnostics without returning those internal details.
 
-Batch source identity mismatches return `422 Unprocessable Entity`, type
+Batch source identity mismatches return `422 Unprocessable Content`, type
 `APPLICATION_ERROR`, and code `BATCH_IMPORT_SOURCE_MISMATCH`. Different parser
 revision IDs remain valid when the statement format and account match. A batch
 that creates no transactions in aggregate returns the same status and type

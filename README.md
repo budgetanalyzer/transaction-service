@@ -32,7 +32,7 @@ The Transaction Service is responsible for:
 
 - **Java 25**
 - **Spring Boot 4.x**
-  - Spring Web (REST APIs)
+  - Spring Web MVC (REST APIs)
   - Spring Data JPA (database access)
   - Spring Boot Actuator (monitoring)
   - Spring Validation
@@ -82,9 +82,9 @@ The service runs on port 8082 for development/debugging. See
 - OpenAPI YAML: `https://api.budgetanalyzer.localhost/api/docs/openapi.yaml`
 
 **Development access** (direct to service):
-- Swagger UI: `http://localhost:8082/swagger-ui.html`
-- OpenAPI Spec: `http://localhost:8082/v3/api-docs`
-- Health Check: `http://localhost:8082/actuator/health`
+- Swagger UI: `http://localhost:8082/transaction-service/swagger-ui.html`
+- OpenAPI Spec: `http://localhost:8082/transaction-service/v3/api-docs`
+- Health Check: `http://localhost:8082/transaction-service/actuator/health`
 
 ## Development
 
