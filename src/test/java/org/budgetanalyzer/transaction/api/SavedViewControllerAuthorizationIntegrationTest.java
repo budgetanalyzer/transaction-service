@@ -6,7 +6,6 @@ import static org.budgetanalyzer.transaction.util.TestConstants.PERMISSION_VIEWS
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -28,14 +27,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.security.test.ClaimsHeaderTestBuilder;
 import org.budgetanalyzer.transaction.domain.SavedView;
 
 class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrationTestSupport {
 
-  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JsonMapper jsonMapper;
   @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
@@ -135,10 +134,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"name\":\"Oversized\",\"transactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
-        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
+        .andExpect(jsonPath("$.fieldErrors").doesNotExist());
   }
 
   @Test
@@ -185,8 +184,8 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
             .andExpect(jsonPath("$.updatedAt").isNotEmpty())
             .andReturn();
 
-    var responseJson = objectMapper.readTree(mvcResult.getResponse().getContentAsString());
-    var targetViewId = UUID.fromString(responseJson.get("id").asText());
+    var responseJson = jsonMapper.readTree(mvcResult.getResponse().getContentAsString());
+    var targetViewId = UUID.fromString(responseJson.get("id").asString());
 
     assertThat(targetViewId).isNotEqualTo(sourceView.getId());
     assertThat(mvcResult.getResponse().getHeader(HttpHeaders.LOCATION))
@@ -291,10 +290,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                             .withPermissions(PERMISSION_VIEWS_WRITE))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"Rejected stale copy\"}"))
-            .andExpect(status().isUnprocessableEntity())
+            .andExpect(status().isUnprocessableContent())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
-            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andExpect(jsonPath("$.fieldErrors").doesNotExist())
             .andExpect(
                 content()
                     .string(
@@ -324,10 +323,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                             .withPermissions(PERMISSION_VIEWS_WRITE))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"  EXISTING TARGET  \"}"))
-            .andExpect(status().isUnprocessableEntity())
+            .andExpect(status().isUnprocessableContent())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
-            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andExpect(jsonPath("$.fieldErrors").doesNotExist())
             .andReturn();
 
     assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
@@ -376,7 +375,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"name\":\"Rejected\",\"transactionIds\":["
                         + foreignTransaction.getId()
                         + "]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
         .andExpect(
@@ -398,10 +397,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"  test view  \",\"transactionIds\":[]}"))
-            .andExpect(status().isUnprocessableEntity())
+            .andExpect(status().isUnprocessableContent())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
-            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andExpect(jsonPath("$.fieldErrors").doesNotExist())
             .andReturn();
 
     assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
@@ -470,10 +469,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"addTransactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "],\"removeTransactionIds\":[]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
-        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
+        .andExpect(jsonPath("$.fieldErrors").doesNotExist());
   }
 
   @Test
@@ -509,10 +508,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"addTransactionIds\":[],\"removeTransactionIds\":["
                         + repeatedTransactionIdsJson(1L, 10_001)
                         + "]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_LIMIT_EXCEEDED"))
-        .andExpect(jsonPath("$.fieldErrors").value(nullValue()));
+        .andExpect(jsonPath("$.fieldErrors").doesNotExist());
   }
 
   @Test
@@ -561,10 +560,10 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     .with(ClaimsHeaderTestBuilder.user(USER_ID).withPermissions("views:write"))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"name\":\"  TEST VIEW  \"}"))
-            .andExpect(status().isUnprocessableEntity())
+            .andExpect(status().isUnprocessableContent())
             .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
             .andExpect(jsonPath("$.code").value("SAVED_VIEW_NAME_ALREADY_EXISTS"))
-            .andExpect(jsonPath("$.fieldErrors").value(nullValue()))
+            .andExpect(jsonPath("$.fieldErrors").doesNotExist())
             .andReturn();
 
     assertNoPersistenceDiagnostics(mvcResult.getResponse().getContentAsString());
@@ -757,7 +756,7 @@ class SavedViewControllerAuthorizationIntegrationTest extends ControllerIntegrat
                     "{\"addTransactionIds\":["
                         + foreignTransaction.getId()
                         + "],\"removeTransactionIds\":[]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.type").value("APPLICATION_ERROR"))
         .andExpect(jsonPath("$.code").value("SAVED_VIEW_MEMBERSHIP_STALE"))
         .andExpect(

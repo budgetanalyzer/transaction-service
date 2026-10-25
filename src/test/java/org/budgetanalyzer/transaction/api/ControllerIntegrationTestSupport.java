@@ -5,13 +5,13 @@ import java.time.LocalDate;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
@@ -36,7 +36,7 @@ abstract class ControllerIntegrationTestSupport {
   protected static final String OTHER_USER_ID = "usr_other789";
   protected static final String ADMIN_USER_ID = "usr_admin456";
 
-  private static final PostgreSQLContainer<?> POSTGRESQL_CONTAINER = startPostgresqlContainer();
+  private static final PostgreSQLContainer POSTGRESQL_CONTAINER = startPostgresqlContainer();
 
   @Autowired protected MockMvc mockMvc;
   @Autowired protected TransactionRepository transactionRepository;
@@ -110,9 +110,9 @@ abstract class ControllerIntegrationTestSupport {
     return parserRevisionRepository.save(parserRevision);
   }
 
-  private static PostgreSQLContainer<?> startPostgresqlContainer() {
+  private static PostgreSQLContainer startPostgresqlContainer() {
     var postgresqlContainer =
-        new PostgreSQLContainer<>("postgres:17-alpine")
+        new PostgreSQLContainer("postgres:17-alpine")
             .withDatabaseName("transaction_controller_integration")
             .withUsername("test")
             .withPassword("test");

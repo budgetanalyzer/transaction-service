@@ -2,6 +2,14 @@ package org.budgetanalyzer.transaction.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.budgetanalyzer.transaction.util.TestConstants.ACCOUNT_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.CONTENT_HASH;
+import static org.budgetanalyzer.transaction.util.TestConstants.FILE_SIZE_BYTES;
+import static org.budgetanalyzer.transaction.util.TestConstants.ORIGINAL_FILENAME;
+import static org.budgetanalyzer.transaction.util.TestConstants.OTHER_USER_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.PARSER_REVISION_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.STATEMENT_FORMAT_ID;
+import static org.budgetanalyzer.transaction.util.TestConstants.USER_ID;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -12,17 +20,17 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Map;
+import java.util.function.IntUnaryOperator;
 
+import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.config.PreviewImportTokenProperties;
@@ -33,8 +41,7 @@ class PreviewImportTokenServiceTest {
   private static final Instant NOW = Instant.parse("2026-05-11T12:00:00Z");
   private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
   private static final Base64.Decoder BASE64_URL_DECODER = Base64.getUrlDecoder();
-  private static final ObjectMapper OBJECT_MAPPER =
-      JsonMapper.builder().addModule(new JavaTimeModule()).build();
+  private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
 
   @Test
   void createAndVerifyTokenValidTokenReturnsPayload() {
@@ -42,17 +49,23 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            ACCOUNT_ID,
+            FILE_SIZE_BYTES);
 
-    var result = previewImportTokenService.verifyToken(token, "usr_test123");
+    var result = previewImportTokenService.verifyToken(token, USER_ID);
 
-    assertThat(result.ownerId()).isEqualTo("usr_test123");
-    assertThat(result.contentHash()).isEqualTo("hash-123");
-    assertThat(result.originalFilename()).isEqualTo("statement.csv");
-    assertThat(result.statementFormatId()).isEqualTo(42L);
-    assertThat(result.parserRevisionId()).isEqualTo(101L);
-    assertThat(result.accountId()).isEqualTo("checking-12345");
-    assertThat(result.fileSizeBytes()).isEqualTo(128L);
+    assertThat(result.ownerId()).isEqualTo(USER_ID);
+    assertThat(result.contentHash()).isEqualTo(CONTENT_HASH);
+    assertThat(result.originalFilename()).isEqualTo(ORIGINAL_FILENAME);
+    assertThat(result.statementFormatId()).isEqualTo(STATEMENT_FORMAT_ID);
+    assertThat(result.parserRevisionId()).isEqualTo(PARSER_REVISION_ID);
+    assertThat(result.accountId()).isEqualTo(ACCOUNT_ID);
+    assertThat(result.fileSizeBytes()).isEqualTo(FILE_SIZE_BYTES);
     assertThat(result.issuedAt()).isEqualTo(NOW);
     assertThat(result.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
   }
@@ -63,7 +76,13 @@ class PreviewImportTokenServiceTest {
 
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, "checking-12345", 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            ACCOUNT_ID,
+            FILE_SIZE_BYTES);
     var tokenSegments = token.split("\\.");
 
     assertThat(tokenSegments).hasSize(3);
@@ -74,29 +93,54 @@ class PreviewImportTokenServiceTest {
   }
 
   @Test
-  void verifyTokenTamperedCiphertextThrowsInvalidToken() {
-    var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
-    var token =
-        previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
-    var replacement = token.endsWith("x") ? "y" : "x";
-    var tamperedToken = token.substring(0, token.length() - 1) + replacement;
-
-    assertInvalidToken(previewImportTokenService, tamperedToken);
-  }
-
-  @Test
   void verifyTokenTamperedInitializationVectorThrowsInvalidToken() {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
-    var tokenSegments = token.split("\\.");
-    var replacement = tokenSegments[1].endsWith("x") ? "y" : "x";
-    tokenSegments[1] = tokenSegments[1].substring(0, tokenSegments[1].length() - 1) + replacement;
-    var tamperedToken = String.join(".", tokenSegments);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
+    var tamperedToken = tamperDecodedByte(token, 1, segmentLength -> 0);
 
-    assertInvalidToken(previewImportTokenService, tamperedToken);
+    assertAuthenticationRejected(previewImportTokenService, tamperedToken);
+  }
+
+  @Test
+  void verifyTokenTamperedCiphertextThrowsInvalidToken() {
+    var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
+    var token =
+        previewImportTokenService.createToken(
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
+    var tamperedToken = tamperDecodedByte(token, 2, segmentLength -> 0);
+
+    assertAuthenticationRejected(previewImportTokenService, tamperedToken);
+  }
+
+  @Test
+  void verifyTokenTamperedAuthenticationTagThrowsInvalidToken() {
+    var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
+    var token =
+        previewImportTokenService.createToken(
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
+    var tamperedToken = tamperDecodedByte(token, 2, segmentLength -> segmentLength - 1);
+
+    assertAuthenticationRejected(previewImportTokenService, tamperedToken);
   }
 
   @Test
@@ -104,10 +148,16 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var expiredService = service(NOW.plus(Duration.ofMinutes(31)), Duration.ofMinutes(30));
 
-    assertThatThrownBy(() -> expiredService.verifyToken(token, "usr_test123"))
+    assertThatThrownBy(() -> expiredService.verifyToken(token, USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -122,11 +172,11 @@ class PreviewImportTokenServiceTest {
         encryptedToken(
             Map.of(
                 "ownerId",
-                "usr_test123",
+                USER_ID,
                 "contentHash",
-                "hash-123",
+                CONTENT_HASH,
                 "fileSizeBytes",
-                128,
+                FILE_SIZE_BYTES,
                 "issuedAt",
                 NOW.toString(),
                 "expiresAt",
@@ -148,7 +198,13 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
     var tokenSegments = token.split("\\.");
     tokenSegments[0] = "v1";
     var wrongVersionToken = String.join(".", tokenSegments);
@@ -179,9 +235,15 @@ class PreviewImportTokenServiceTest {
     var previewImportTokenService = service(NOW, Duration.ofMinutes(30));
     var token =
         previewImportTokenService.createToken(
-            "usr_test123", "hash-123", "statement.csv", 42L, 101L, null, 128L);
+            USER_ID,
+            CONTENT_HASH,
+            ORIGINAL_FILENAME,
+            STATEMENT_FORMAT_ID,
+            PARSER_REVISION_ID,
+            null,
+            FILE_SIZE_BYTES);
 
-    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_other789"))
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, OTHER_USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -192,12 +254,12 @@ class PreviewImportTokenServiceTest {
   private static PreviewImportTokenService service(Instant instant, Duration ttl) {
     return new PreviewImportTokenService(
         new PreviewImportTokenProperties(ENCRYPTION_SECRET, ttl),
-        OBJECT_MAPPER,
+        JSON_MAPPER,
         Clock.fixed(instant, ZoneOffset.UTC));
   }
 
   private static String encryptedToken(Map<String, Object> payload) throws Exception {
-    var payloadJson = OBJECT_MAPPER.writeValueAsBytes(payload);
+    var payloadJson = JSON_MAPPER.writeValueAsBytes(payload);
     var initializationVector = "123456789012".getBytes(StandardCharsets.UTF_8);
     var cipher = Cipher.getInstance("AES/GCM/NoPadding");
     cipher.init(
@@ -216,6 +278,17 @@ class PreviewImportTokenServiceTest {
     return new SecretKeySpec(normalizedKey, "AES");
   }
 
+  private static String tamperDecodedByte(
+      String token, int segmentIndex, IntUnaryOperator byteIndexForSegmentLength) {
+    var tokenSegments = token.split("\\.");
+    var segmentBytes = BASE64_URL_DECODER.decode(tokenSegments[segmentIndex]);
+    var byteIndex = byteIndexForSegmentLength.applyAsInt(segmentBytes.length);
+    segmentBytes[byteIndex] ^= 0x01;
+    tokenSegments[segmentIndex] = BASE64_URL_ENCODER.encodeToString(segmentBytes);
+
+    return String.join(".", tokenSegments);
+  }
+
   private static String decodedString(String tokenSegment) {
     return new String(BASE64_URL_DECODER.decode(tokenSegment), StandardCharsets.UTF_8);
   }
@@ -223,11 +296,11 @@ class PreviewImportTokenServiceTest {
   private static void assertDecodedSegmentDoesNotRevealPayload(String tokenSegment) {
     assertThat(decodedString(tokenSegment))
         .doesNotContain(
-            "hash-123",
-            "usr_test123",
-            "statement.csv",
+            CONTENT_HASH,
+            USER_ID,
+            ORIGINAL_FILENAME,
             "capital-one",
-            "checking-12345",
+            ACCOUNT_ID,
             "contentHash",
             "ownerId",
             "originalFilename",
@@ -237,17 +310,29 @@ class PreviewImportTokenServiceTest {
   }
 
   private static void assertThatDecodedSegmentIsNotValidJson(String tokenSegment) {
-    assertThatThrownBy(() -> OBJECT_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegment)))
-        .isInstanceOf(JsonProcessingException.class);
+    assertThatThrownBy(() -> JSON_MAPPER.readTree(BASE64_URL_DECODER.decode(tokenSegment)))
+        .isInstanceOf(JacksonException.class);
   }
 
   private static void assertInvalidToken(
       PreviewImportTokenService previewImportTokenService, String token) {
-    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, "usr_test123"))
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, USER_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
                 assertThat(exception.getCode())
                     .isEqualTo(BudgetAnalyzerError.PREVIEW_IMPORT_TOKEN_INVALID.name()));
+  }
+
+  private static void assertAuthenticationRejected(
+      PreviewImportTokenService previewImportTokenService, String token) {
+    assertThatThrownBy(() -> previewImportTokenService.verifyToken(token, USER_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> {
+              assertThat(exception.getCode())
+                  .isEqualTo(BudgetAnalyzerError.PREVIEW_IMPORT_TOKEN_INVALID.name());
+              assertThat(exception).hasCauseInstanceOf(AEADBadTagException.class);
+            });
   }
 }

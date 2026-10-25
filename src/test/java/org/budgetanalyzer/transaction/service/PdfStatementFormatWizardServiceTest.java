@@ -16,7 +16,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.exception.BusinessException;
 import org.budgetanalyzer.transaction.domain.TransactionType;
@@ -38,7 +38,10 @@ class PdfStatementFormatWizardServiceTest {
 
   private final PdfStatementFormatWizardService pdfStatementFormatWizardService =
       new PdfStatementFormatWizardService(
-          new PdfTextExtractionService(), null, null, new ObjectMapper().findAndRegisterModules());
+          new PdfTextExtractionService(),
+          null,
+          null,
+          JsonMapper.builder().findAndAddModules().build());
 
   @Test
   void analyzeRanksTransactionTableAndInfersSignedAmountMapping() throws IOException {

@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.api.FieldError;
 import org.budgetanalyzer.service.exception.BusinessException;
@@ -61,7 +61,7 @@ public class PdfStatementFormatWizardService {
   private final PdfTextExtractionService pdfTextExtractionService;
   private final StatementFormatRepository statementFormatRepository;
   private final ParserRevisionRepository parserRevisionRepository;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
   private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
       new PdfTextTableParserConfigValidator();
 
@@ -71,17 +71,17 @@ public class PdfStatementFormatWizardService {
    * @param pdfTextExtractionService text-PDF extraction service
    * @param statementFormatRepository repository for statement format persistence
    * @param parserRevisionRepository repository for parser revision persistence
-   * @param objectMapper JSON mapper for parser configuration
+   * @param jsonMapper JSON mapper for parser configuration
    */
   public PdfStatementFormatWizardService(
       PdfTextExtractionService pdfTextExtractionService,
       StatementFormatRepository statementFormatRepository,
       ParserRevisionRepository parserRevisionRepository,
-      ObjectMapper objectMapper) {
+      JsonMapper jsonMapper) {
     this.pdfTextExtractionService = pdfTextExtractionService;
     this.statementFormatRepository = statementFormatRepository;
     this.parserRevisionRepository = parserRevisionRepository;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
   }
 
   /**
@@ -316,12 +316,12 @@ public class PdfStatementFormatWizardService {
 
   private String serializeParserConfig(PdfTextTableParserConfig pdfTextTableParserConfig) {
     try {
-      return objectMapper.writeValueAsString(pdfTextTableParserConfig);
-    } catch (JsonProcessingException jsonProcessingException) {
+      return jsonMapper.writeValueAsString(pdfTextTableParserConfig);
+    } catch (JacksonException jacksonException) {
       throw new BusinessException(
           "Failed to serialize PDF parser configuration.",
           BudgetAnalyzerError.PDF_WIZARD_VALIDATION_FAILED.name(),
-          jsonProcessingException);
+          jacksonException);
     }
   }
 

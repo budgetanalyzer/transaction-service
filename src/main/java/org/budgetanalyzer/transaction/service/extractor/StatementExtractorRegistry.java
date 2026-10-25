@@ -10,8 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.core.csv.CsvParser;
 import org.budgetanalyzer.service.exception.BusinessException;
@@ -41,7 +41,7 @@ public class StatementExtractorRegistry {
 
   private final ParserRevisionRepository parserRevisionRepository;
   private final CsvParser csvParser;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
   private final PdfTextExtractionService pdfTextExtractionService;
   private final PdfTextTableParserConfigValidator pdfTextTableParserConfigValidator =
       new PdfTextTableParserConfigValidator();
@@ -54,18 +54,18 @@ public class StatementExtractorRegistry {
    * @param staticExtractors list of static extractors
    * @param parserRevisionRepository repository for parser revision entities
    * @param csvParser the CSV parser to use for dynamic extractors
-   * @param objectMapper JSON mapper for parser configuration
+   * @param jsonMapper JSON mapper for parser configuration
    * @param pdfTextExtractionService text-PDF extraction service
    */
   public StatementExtractorRegistry(
       List<StatementExtractor> staticExtractors,
       ParserRevisionRepository parserRevisionRepository,
       CsvParser csvParser,
-      ObjectMapper objectMapper,
+      JsonMapper jsonMapper,
       PdfTextExtractionService pdfTextExtractionService) {
     this.parserRevisionRepository = parserRevisionRepository;
     this.csvParser = csvParser;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
     this.pdfTextExtractionService = pdfTextExtractionService;
     this.staticExtractorsByHandlerKey = buildStaticExtractorMap(staticExtractors);
     log.info(
@@ -152,7 +152,7 @@ public class StatementExtractorRegistry {
       StatementFormat statementFormat, ParserRevision parserRevision) {
     try {
       var csvColumnParserConfig =
-          objectMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
+          jsonMapper.readValue(parserRevision.getParserConfig(), CsvColumnParserConfig.class);
       return new ConfigurableCsvStatementExtractor(
           statementFormat, parserRevision, csvColumnParserConfig, csvParser);
     } catch (Exception exception) {
@@ -168,13 +168,13 @@ public class StatementExtractorRegistry {
     PdfTextTableParserConfig pdfTextTableParserConfig;
     try {
       pdfTextTableParserConfig =
-          objectMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
-    } catch (JsonProcessingException jsonProcessingException) {
+          jsonMapper.readValue(parserRevision.getParserConfig(), PdfTextTableParserConfig.class);
+    } catch (JacksonException jacksonException) {
       throw new BusinessException(
           "Invalid PDF text-table parser configuration for parser revision "
               + parserRevision.getId(),
           BudgetAnalyzerError.STATEMENT_FORMAT_VALIDATION_FAILED.name(),
-          jsonProcessingException);
+          jacksonException);
     }
     pdfTextTableParserConfigValidator.validateOrThrow(pdfTextTableParserConfig);
     return new ConfigurablePdfTextTableStatementExtractor(

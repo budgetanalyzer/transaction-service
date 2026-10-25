@@ -16,17 +16,17 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.security.test.TestClaimsSecurityConfig;
 import org.budgetanalyzer.transaction.domain.ParserRevision;
@@ -57,8 +57,8 @@ class StatementExtractorRegistryIntegrationTest {
   private static final float AMOUNT_X = 360F;
 
   @Container
-  private static final PostgreSQLContainer<?> postgresqlContainer =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+  private static final PostgreSQLContainer postgresqlContainer =
+      new PostgreSQLContainer("postgres:17-alpine")
           .withDatabaseName("testdb")
           .withUsername("test")
           .withPassword("test");
@@ -69,7 +69,7 @@ class StatementExtractorRegistryIntegrationTest {
 
   @Autowired private ParserRevisionRepository parserRevisionRepository;
 
-  @Autowired private ObjectMapper objectMapper;
+  @Autowired private JsonMapper jsonMapper;
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
@@ -86,13 +86,13 @@ class StatementExtractorRegistryIntegrationTest {
             StatementFormat.createCsvFormat("Registry CSV", "Registry Bank", "USD", OWNER_ID));
     var matchingParserRevision =
         ParserRevision.createCsvColumnConfig(
-            statementFormat, 1, objectMapper.writeValueAsString(csvConfig("Transaction Date")));
+            statementFormat, 1, jsonMapper.writeValueAsString(csvConfig("Transaction Date")));
     var notApplicableParserRevision =
         ParserRevision.createCsvColumnConfig(
-            statementFormat, 2, objectMapper.writeValueAsString(csvConfig("Posted Date")));
+            statementFormat, 2, jsonMapper.writeValueAsString(csvConfig("Posted Date")));
     var disabledParserRevision =
         ParserRevision.createCsvColumnConfig(
-            statementFormat, 3, objectMapper.writeValueAsString(csvConfig("Transaction Date")));
+            statementFormat, 3, jsonMapper.writeValueAsString(csvConfig("Transaction Date")));
     disabledParserRevision.setEnabled(false);
     parserRevisionRepository.saveAllAndFlush(
         List.of(matchingParserRevision, notApplicableParserRevision, disabledParserRevision));
@@ -132,10 +132,10 @@ class StatementExtractorRegistryIntegrationTest {
                 "Registry Failure CSV", "Registry Bank", "USD", OWNER_ID));
     var failedParserRevision =
         ParserRevision.createCsvColumnConfig(
-            statementFormat, 1, objectMapper.writeValueAsString(csvConfig("Transaction Date")));
+            statementFormat, 1, jsonMapper.writeValueAsString(csvConfig("Transaction Date")));
     var notApplicableParserRevision =
         ParserRevision.createCsvColumnConfig(
-            statementFormat, 2, objectMapper.writeValueAsString(csvConfig("Posted Date")));
+            statementFormat, 2, jsonMapper.writeValueAsString(csvConfig("Posted Date")));
     parserRevisionRepository.saveAllAndFlush(
         List.of(failedParserRevision, notApplicableParserRevision));
 
@@ -162,7 +162,7 @@ class StatementExtractorRegistryIntegrationTest {
             StatementFormat.createSystemPdfFormat("Registry PDF", "Registry PDF Bank", "USD"));
     var pdfTextTableParserRevision =
         ParserRevision.createPdfTextTableConfig(
-            statementFormat, 1, objectMapper.writeValueAsString(pdfConfig()));
+            statementFormat, 1, jsonMapper.writeValueAsString(pdfConfig()));
     var unknownStaticParserRevision =
         ParserRevision.createStaticHandler(statementFormat, 2, "missing-handler");
     parserRevisionRepository.saveAllAndFlush(
