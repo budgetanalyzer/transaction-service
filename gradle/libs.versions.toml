@@ -4,7 +4,7 @@ springBoot = "4.1.2"
 spotless = "8.10.4"
 checkstyle = "14.3.0"
 googleJavaFormat = "1.32.0"
-serviceCommon = "0.1.0-SNAPSHOT"
+serviceCommon = "0.1.0"
 jacoco = "0.8.15"
 pdfbox = "3.0.8"
 
