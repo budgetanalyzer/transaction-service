@@ -6,7 +6,17 @@ server:
 logging:
   level:
     root: WARN
-    org.budgetanalyzer: TRACE
+    budgetanalyzer.audit: INFO
+    org.budgetanalyzer: INFO
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
 
 spring:
   application:
@@ -58,7 +68,5 @@ budgetanalyzer:
     http-logging:
       enabled: true
       log-level: DEBUG
-      include-request-body: true
-      include-response-body: true
       max-body-size: 10000
       # Default exclude-patterns: /actuator/**, /swagger-ui/**, /v3/api-docs/**
