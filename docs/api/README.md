@@ -881,6 +881,8 @@ This service uses trusted claims-header-based security from `service-common`.
 - Disable a statement format through `PUT /v1/statement-formats/{id}` with
   `{"enabled": false}`.
 - OpenAPI docs and health endpoints remain public.
+- `RuntimeSecurityIntegrationTest` fails the build if any application request handler lacks a
+  method- or class-level `@PreAuthorize`. Its exception list is empty.
 
 Example local cross-user search request:
 
